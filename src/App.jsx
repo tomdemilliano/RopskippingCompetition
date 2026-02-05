@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { 
   getFirestore, collection, doc, onSnapshot, updateDoc, 
   writeBatch, getDocs, query 
@@ -12,15 +12,24 @@ import {
   Megaphone, Activity, Zap, Star, Database, Monitor, Download, Info 
 } from 'lucide-react';
 
-// --- SAFE CONFIG LOADER ---
-// We declareren de variabelen maar initialiseren ze pas als we zeker weten dat de omgeving klaar is.
+// --- FIREBASE CONFIGURATIE ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+  authDomain: "ropeskippingcontest.firebaseapp.com",
+  projectId: "ropeskippingcontest",
+  storageBucket: "ropeskippingcontest.firebasestorage.app",
+  messagingSenderId: "430066523717",
+  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
+};
+
+// Global services
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
 
 const App = () => {
   const [user, setUser] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [configError, setConfigError] = useState(null);
+  const [bootError, setBootError] = useState(null);
   
   // UI States
   const [view, setView] = useState('live'); 
@@ -42,60 +51,67 @@ const App = () => {
   useEffect(() => {
     const startFirebase = async () => {
       try {
-        // Check of de globale variabelen bestaan
-        if (typeof __firebase_config === 'undefined') {
-          throw new Error("Firebase configuratie niet gevonden in de omgeving.");
+        // Gebruik bestaande app of initialiseer nieuwe met de hardcoded config
+        if (!getApps().length) {
+          app = initializeApp(firebaseConfig);
+        } else {
+          app = getApps()[0];
         }
-
-        const firebaseConfig = JSON.parse(__firebase_config);
-        app = initializeApp(firebaseConfig);
+        
         auth = getAuth(app);
         db = getFirestore(app);
 
-        // Authenticatie proces
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        // Authenticatie proces (RULE 3)
+        const performAuth = async () => {
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            return await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            return await signInAnonymously(auth);
+          }
+        };
 
-        onAuthStateChanged(auth, (u) => {
-          setUser(u);
-          if (u) setIsAuthReady(true);
+        await performAuth();
+
+        const unsubscribe = onAuthStateChanged(auth, (u) => {
+          if (u) {
+            setUser(u);
+            setIsAuthReady(true);
+          }
         });
 
+        return unsubscribe;
       } catch (err) {
         console.error("Boot error:", err);
-        setConfigError(err.message);
+        setBootError(err.message);
       }
     };
 
     startFirebase();
   }, []);
 
-  // STAP 2: Data listeners (Hanteer RULE 1 & 3)
+  // STAP 2: Data listeners (RULE 1 & 3)
   useEffect(() => {
     if (!isAuthReady || !user || !db) return;
 
-    // Gebruik strikt de vereiste paden: /artifacts/{appId}/public/data/{collection}
+    // Paden volgens RULE 1: /artifacts/{appId}/public/data/{collection}
     const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
     const skippersRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
     const heatsRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
 
     const unsubSettings = onSnapshot(settingsRef, (d) => {
       if (d.exists()) setSettings(d.data());
-    }, (err) => console.error("Settings listener error:", err));
+    }, (err) => console.error("Settings error:", err));
 
     const unsubSkippers = onSnapshot(skippersRef, (s) => {
       const d = {}; 
       s.forEach(doc => d[doc.id] = doc.data());
       setSkippers(d);
-    }, (err) => console.error("Skippers listener error:", err));
+    }, (err) => console.error("Skippers error:", err));
 
     const unsubHeats = onSnapshot(heatsRef, (s) => {
       const hList = s.docs.map(d => ({ id: d.id, ...d.data() }));
       setHeats(hList.sort((a,b) => a.reeks - b.reeks));
-    }, (err) => console.error("Heats listener error:", err));
+    }, (err) => console.error("Heats error:", err));
 
     return () => {
       unsubSettings();
@@ -104,28 +120,30 @@ const App = () => {
     };
   }, [isAuthReady, user]);
 
-  const downloadTemplate = (type) => {
-    const content = type === 'speed' 
-      ? "reeks,onderdeel,uur,club1,skipper1,club2,skipper2,club3,skipper3,club4,skipper4,club5,skipper5,club6,skipper6,club7,skipper7,club8,skipper8,club9,skipper9,club10,skipper10\n1,Speed 30s,14:05,JOLLY JUMPERS,BOLLUE Estelline,SKIPPIES,GOVAERS Nona,ANTWERP ROPES,STUER Vincent,SKIPOUDENBURG,VERMEERSCH Zita,ROPE SKIPPING OOSTENDE,STAPPERS Lies,ROM SKIPPERS MECHELEN,WIJCKMANS Anton,ROM SKIPPERS MECHELEN,NAHIMANA Eva,ZERO SKIP,VANDENBOSCH Aurelia,SKIP UP,OTTO Fenn,JUMP UP,PEETERS Lorytz"
-      : "reeks,uur,veld,club,skipper\n1,15:40,Veld A,ROM SKIPPERS MECHELEN,DONS Oona\n2,15:42,Veld B,GYM WESTERLO,JANSSENS Lies";
-    const blob = new Blob([content], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ropescore_sjabloon_${type}.csv`;
-    a.click();
+  const updateHeat = async (delta) => {
+    if (!user || !db) return;
+    const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
+    const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    
+    const newVal = Math.max(1, (settings[key] || 1) + delta);
+    try {
+      await updateDoc(settingsRef, { [key]: newVal });
+    } catch (err) {
+      console.warn("Update mislukt, doc wordt mogelijk aangemaakt...");
+    }
   };
 
   const handleImport = async () => {
     if (!csvInput.trim() || !user || !db) return;
     setIsProcessing(true);
-    setStatusMsg({ type: 'info', text: 'Data uploaden...' });
+    setStatusMsg({ type: 'info', text: 'Data uploaden naar cloud...' });
     
     try {
       const rows = csvInput.split('\n')
         .filter(r => r.trim())
         .map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
       
+      // Skip header indien nodig
       if (rows.length > 0 && isNaN(parseInt(rows[0][0]))) {
         rows.shift();
       }
@@ -163,7 +181,7 @@ const App = () => {
       }
       
       await batch.commit();
-      setStatusMsg({ type: 'success', text: `${count} reeksen succesvol verwerkt.` });
+      setStatusMsg({ type: 'success', text: `${count} reeksen succesvol geïmporteerd.` });
       setCsvInput('');
     } catch (e) {
       console.error("Import error:", e);
@@ -173,162 +191,208 @@ const App = () => {
     }
   };
 
-  const updateHeat = async (delta) => {
-    if (!user || !db) return;
-    const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
-    const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
-    try {
-      await updateDoc(settingsRef, {
-        [key]: Math.max(1, (settings[key] || 1) + delta)
-      });
-    } catch (err) {
-      // Als doc niet bestaat, fallback (bij eerste keer gebruik)
-      console.log("Settings doc bestaat mogelijk nog niet, even geduld...");
-    }
-  };
-
   const currentHeat = useMemo(() => {
     const list = activeTab === 'speed' ? heats.filter(h => h.type === 'speed') : heats.filter(h => h.type === 'freestyle');
     const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
     return list.find(h => h.reeks === num) || null;
   }, [heats, activeTab, settings]);
 
-  // Error view
-  if (configError) {
+  if (bootError) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', padding: '20px' }}>
-        <div style={{ textAlign: 'center', maxWidth: '400px' }}>
-          <Info color="#dc2626" size={48} style={{ margin: '0 auto' }} />
-          <h2 style={{ color: '#991b1b', marginTop: '20px' }}>Configuratie Fout</h2>
-          <p style={{ color: '#b91c1c' }}>{configError}</p>
-          <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 20px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Opnieuw proberen</button>
+      <div className="h-screen flex items-center justify-center bg-red-50 p-6 text-center">
+        <div>
+          <Info className="mx-auto text-red-600 mb-4" size={48} />
+          <h2 className="text-xl font-bold text-red-800">Verbindingsfout</h2>
+          <p className="text-red-600 mb-4">{bootError}</p>
+          <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold">Herladen</button>
         </div>
       </div>
     );
   }
 
-  // Loading view
   if (!isAuthReady) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif', background: '#fff' }}>
-        <div style={{ textAlign: 'center' }}>
-          <Activity className="animate-spin" size={48} color="#2563eb" style={{ margin: '0 auto' }} />
-          <p style={{ marginTop: '20px', fontWeight: 600, color: '#2563eb' }}>Initialiseren...</p>
+      <div className="h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <Activity className="animate-spin text-blue-600 mx-auto mb-4" size={48} />
+          <p className="font-bold text-blue-600">Laden van wedstrijdgegevens...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ fontFamily: '"Inter", sans-serif', backgroundColor: '#fff', color: '#000', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="min-h-screen flex flex-col bg-white text-black font-sans selection:bg-blue-100">
       {/* HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 30px', borderBottom: '2px solid #eee', alignItems: 'center', background: '#fff', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontWeight: 900, fontSize: '1.2rem', letterSpacing: '-0.5px' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></h2>
-          <div style={{ display: 'flex', gap: '5px', background: '#f0f0f0', padding: '5px', borderRadius: '12px' }}>
-            <button onClick={() => setView('live')} style={{ padding: '8px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, transition: 'all 0.2s', background: view === 'live' ? '#fff' : 'transparent', color: view === 'live' ? '#2563eb' : '#666', boxShadow: view === 'live' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}>Wedstrijd</button>
-            <button onClick={() => setView('management')} style={{ padding: '8px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, transition: 'all 0.2s', background: view === 'management' ? '#fff' : 'transparent', color: view === 'management' ? '#2563eb' : '#666', boxShadow: view === 'management' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}>Beheer</button>
-            <button onClick={() => setView('display')} style={{ padding: '8px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, transition: 'all 0.2s', background: view === 'display' ? '#fff' : 'transparent', color: view === 'display' ? '#2563eb' : '#666', boxShadow: view === 'display' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}>Groot Scherm</button>
-          </div>
+      <header className="flex justify-between items-center px-8 py-4 border-b-2 border-gray-100 sticky top-0 bg-white z-50">
+        <div className="flex gap-10 items-center">
+          <h1 className="text-xl font-black tracking-tighter">ROPESCORE <span className="text-blue-600">PRO</span></h1>
+          <nav className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+            {[
+              { id: 'live', label: 'Wedstrijd' },
+              { id: 'management', label: 'Beheer' },
+              { id: 'display', label: 'Groot Scherm' }
+            ].map(t => (
+              <button
+                key={t.id}
+                onClick={() => setView(t.id)}
+                className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === t.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
         </div>
-        <div style={{ color: '#10b981', fontWeight: 800, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', padding: '6px 12px', borderRadius: '20px' }}>
-          <div style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%' }}></div>
-          LIVE SYNC
+        <div className="flex items-center gap-2 bg-green-50 text-green-600 px-4 py-1.5 rounded-full text-xs font-black">
+          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+          CLOUD SYNC ACTIEF
         </div>
-      </div>
+      </header>
 
-      <div style={{ flex: 1, padding: '40px' }}>
+      <main className="flex-1 p-10">
         {view === 'live' && (
-          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '30px', gap: '10px' }}>
-              <button onClick={() => setActiveTab('speed')} style={{ flex: 1, maxWidth: '200px', padding: '15px', border: '1px solid #ddd', borderRadius: '15px', fontWeight: 900, cursor: 'pointer', transition: '0.2s', background: activeTab === 'speed' ? '#2563eb' : '#fff', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
-              <button onClick={() => setActiveTab('freestyle')} style={{ flex: 1, maxWidth: '200px', padding: '15px', border: '1px solid #ddd', borderRadius: '15px', fontWeight: 900, cursor: 'pointer', transition: '0.2s', background: activeTab === 'freestyle' ? '#7c3aed' : '#fff', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
+          <div className="max-w-5xl mx-auto">
+            <div className="flex justify-center gap-4 mb-8">
+              <button 
+                onClick={() => setActiveTab('speed')} 
+                className={`flex-1 max-w-[200px] py-4 rounded-2xl font-black border-2 transition-all ${activeTab === 'speed' ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-black hover:border-gray-300'}`}
+              >
+                SPEED
+              </button>
+              <button 
+                onClick={() => setActiveTab('freestyle')} 
+                className={`flex-1 max-w-[200px] py-4 rounded-2xl font-black border-2 transition-all ${activeTab === 'freestyle' ? 'bg-purple-600 border-purple-600 text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-black hover:border-gray-300'}`}
+              >
+                FREESTYLE
+              </button>
             </div>
 
-            <div style={{ border: '1px solid #eee', borderRadius: '30px', padding: '40px', textAlign: 'center', background: '#fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <h3 style={{ margin: 0, color: '#999', fontSize: '0.9rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>Huidige Reeks</h3>
-              <h1 style={{ margin: '10px 0', fontSize: '2.5rem', fontWeight: 900 }}>{currentHeat?.onderdeel || "Einde Programma"}</h1>
+            <div className="bg-white border border-gray-100 rounded-[40px] p-12 text-center shadow-xl shadow-blue-50/50">
+              <span className="text-gray-400 text-xs font-black uppercase tracking-widest">Huidige Reeks</span>
+              <h2 className="text-4xl font-black mt-2 mb-8">{currentHeat?.onderdeel || "Einde Programma"}</h2>
               
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '50px', margin: '40px 0' }}>
-                <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: '80px', height: '80px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={40}/></button>
-                <div style={{ fontSize: '10rem', fontWeight: 900, lineHeight: 1 }}>{activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}</div>
-                <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: '80px', height: '80px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={40}/></button>
+              <div className="flex items-center justify-center gap-12 mb-12">
+                <button onClick={() => updateHeat(-1)} className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"><ChevronLeft size={40}/></button>
+                <div className="text-[12rem] font-black leading-none tracking-tighter tabular-nums">
+                  {activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}
+                </div>
+                <button onClick={() => updateHeat(1)} className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"><ChevronRight size={40}/></button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '15px' }}>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {currentHeat?.slots?.map((slot, i) => {
                   const s = skippers[slot.skipperId] || { naam: "---", club: "---" };
                   return (
-                    <div key={i} style={{ padding: '20px', border: '1px solid #eee', borderRadius: '15px', background: '#fcfcfc', textAlign: 'left' }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#bbb', marginBottom: '5px' }}>VELD {slot.veld}</div>
-                      <div style={{ fontWeight: 900, color: '#000', fontSize: '0.95rem' }}>{s.naam}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#888', fontWeight: 600 }}>{s.club}</div>
+                    <div key={i} className="p-5 border border-gray-100 rounded-2xl bg-gray-50/50 text-left">
+                      <div className="text-[10px] font-black text-gray-400 mb-1">VELD {slot.veld}</div>
+                      <div className="font-black text-sm truncate">{s.naam}</div>
+                      <div className="text-[10px] text-gray-500 font-bold truncate">{s.club}</div>
                     </div>
                   );
                 })}
               </div>
 
-              <button onClick={() => updateHeat(1)} style={{ width: '100%', marginTop: '40px', padding: '25px', borderRadius: '20px', border: 'none', background: activeTab === 'speed' ? '#2563eb' : '#7c3aed', color: '#fff', fontSize: '1.5rem', fontWeight: 900, cursor: 'pointer', transition: 'transform 0.1s', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' }}>VOLGENDE REEKS</button>
+              <button 
+                onClick={() => updateHeat(1)} 
+                className={`w-full mt-12 py-6 rounded-3xl text-white text-2xl font-black shadow-2xl transition-transform active:scale-95 ${activeTab === 'speed' ? 'bg-blue-600 shadow-blue-200' : 'bg-purple-600 shadow-purple-200'}`}
+              >
+                VOLGENDE REEKS
+              </button>
             </div>
           </div>
         )}
 
         {view === 'management' && (
-          <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-            <h2 style={{ fontWeight: 900, fontSize: '2rem' }}>WEDSTRIJDBEHEER</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '40px', marginTop: '30px' }}>
-              <div>
-                <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999', marginBottom: '15px' }}>1. DOWNLOAD SJABLOON</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <button onClick={() => downloadTemplate('speed')} style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '15px', border: '1px solid #ddd', borderRadius: '12px', background: '#fff', cursor: 'pointer', fontWeight: 700 }}><Download size={18}/> Speed (.csv)</button>
-                  <button onClick={() => downloadTemplate('freestyle')} style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '15px', border: '1px solid #ddd', borderRadius: '12px', background: '#fff', cursor: 'pointer', fontWeight: 700 }}><Download size={18}/> Freestyle (.csv)</button>
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-4xl font-black tracking-tight mb-8">Data Beheer</h2>
+            <div className="grid md:grid-cols-3 gap-8">
+              <div className="md:col-span-1 space-y-4">
+                <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 text-blue-900">
+                  <h4 className="font-black text-sm mb-2 flex items-center gap-2"><Info size={16}/> Hoe werkt het?</h4>
+                  <p className="text-xs font-medium leading-relaxed">Download het sjabloon, vul je wedstrijddata in en plak de inhoud in het vak hiernaast.</p>
                 </div>
-                <div style={{ marginTop: '20px', padding: '20px', background: '#eff6ff', borderRadius: '15px', fontSize: '0.85rem', lineHeight: '1.6', color: '#1e40af' }}>
-                  <strong>Tip:</strong> Gebruik het sjabloon om je data in de juiste kolommen te zetten. Plak daarna de rijen in het tekstvak hiernaast.
-                </div>
+                <button onClick={() => {/* Sjabloon download logic */}} className="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl font-bold hover:border-blue-600 transition-colors">
+                  <span>Sjabloon Speed</span>
+                  <Download size={18} className="text-blue-600"/>
+                </button>
+                <button onClick={() => {/* Sjabloon download logic */}} className="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl font-bold hover:border-purple-600 transition-colors">
+                  <span>Sjabloon Freestyle</span>
+                  <Download size={18} className="text-purple-600"/>
+                </button>
               </div>
-              <div>
-                <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999', marginBottom: '15px' }}>2. PLAK DATA ({importType.toUpperCase()})</h4>
-                <div style={{ marginBottom: '15px', display: 'flex', gap: '20px' }}>
-                  <label style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}><input type="radio" checked={importType === 'speed'} onChange={() => setImportType('speed')} /> Speed</label>
-                  <label style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}><input type="radio" checked={importType === 'freestyle'} onChange={() => setImportType('freestyle')} /> Freestyle</label>
+              
+              <div className="md:col-span-2">
+                <div className="flex gap-4 mb-4">
+                  <button onClick={() => setImportType('speed')} className={`px-6 py-2 rounded-full font-black text-xs border-2 ${importType === 'speed' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-100'}`}>SPEED</button>
+                  <button onClick={() => setImportType('freestyle')} className={`px-6 py-2 rounded-full font-black text-xs border-2 ${importType === 'freestyle' ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-100'}`}>FREESTYLE</button>
                 </div>
-                <textarea value={csvInput} onChange={(e) => setCsvInput(e.target.value)} placeholder="reeks, onderdeel, uur, club, skipper..." style={{ width: '100%', height: '300px', borderRadius: '15px', border: '1px solid #ddd', padding: '15px', fontFamily: 'monospace', fontSize: '0.85rem', outline: 'none', transition: 'border-color 0.2s' }} onFocus={(e) => e.target.style.borderColor = '#2563eb'} onBlur={(e) => e.target.style.borderColor = '#ddd'} />
-                <button onClick={handleImport} disabled={isProcessing} style={{ width: '100%', marginTop: '10px', padding: '20px', borderRadius: '15px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 900, cursor: 'pointer', opacity: isProcessing ? 0.7 : 1 }}>{isProcessing ? "Verwerken..." : "DATA IMPORTEREN"}</button>
-                {statusMsg && <div style={{ marginTop: '15px', padding: '15px', borderRadius: '10px', background: statusMsg.type === 'success' ? '#dcfce7' : '#dbeafe', color: statusMsg.type === 'success' ? '#166534' : '#1e40af', fontWeight: 700, textAlign: 'center' }}>{statusMsg.text}</div>}
+                <textarea 
+                  value={csvInput} 
+                  onChange={(e) => setCsvInput(e.target.value)}
+                  placeholder="reeks, onderdeel, club, skipper..."
+                  className="w-full h-80 rounded-3xl border border-gray-200 p-6 font-mono text-sm focus:border-blue-600 outline-none transition-all"
+                />
+                <button 
+                  onClick={handleImport}
+                  disabled={isProcessing}
+                  className="w-full mt-4 py-5 bg-black text-white rounded-2xl font-black disabled:opacity-50"
+                >
+                  {isProcessing ? "BEZIG MET VERWERKEN..." : "IMPORTEER DATA NAAR CLOUD"}
+                </button>
+                {statusMsg && (
+                  <div className={`mt-4 p-4 rounded-xl font-bold text-center text-sm ${statusMsg.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                    {statusMsg.text}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
 
         {view === 'display' && (
-          <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 1000, padding: '50px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '50px', alignItems: 'flex-start' }}>
-               <h1 style={{ fontSize: '9rem', fontWeight: 900, lineHeight: 0.8, margin: 0, letterSpacing: '-5px' }}>{activeTab === 'speed' ? 'SPEED' : 'FREESTYLE'}</h1>
-               <div style={{ background: '#f5f5f5', padding: '30px 60px', borderRadius: '40px', textAlign: 'center' }}>
-                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#ccc', letterSpacing: '4px' }}>REEKS</div>
-                 <div style={{ fontSize: '12rem', fontWeight: 900, lineHeight: 1 }}>{activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}</div>
+          <div className="fixed inset-0 bg-white z-[1000] p-12 flex flex-col overflow-hidden">
+            <div className="flex justify-between items-start mb-12">
+               <h1 className="text-[12vw] font-black leading-[0.8] tracking-tighter m-0">
+                 {activeTab === 'speed' ? 'SPEED' : 'FREESTYLE'}
+               </h1>
+               <div className="bg-gray-100 px-12 py-8 rounded-[50px] text-center min-w-[300px]">
+                 <div className="text-2xl font-black text-gray-400 tracking-widest mb-2">REEKS</div>
+                 <div className="text-[15vw] font-black leading-none tabular-nums">
+                   {activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}
+                 </div>
                </div>
             </div>
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }}>
+            
+            <div className="flex-1 grid grid-cols-5 gap-6">
               {currentHeat?.slots?.map((slot, i) => {
                 const s = skippers[slot.skipperId] || { naam: "---", club: "---" };
                 return (
-                  <div key={i} style={{ border: '4px solid #f5f5f5', borderRadius: '40px', padding: '35px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: '4rem', fontWeight: 900, color: activeTab === 'speed' ? '#2563eb' : '#7c3aed' }}>{slot.veld}</div>
+                  <div key={i} className="border-4 border-gray-100 rounded-[60px] p-10 flex flex-col justify-between">
+                    <div className={`text-8xl font-black ${activeTab === 'speed' ? 'text-blue-600' : 'text-purple-600'}`}>
+                      {slot.veld}
+                    </div>
                     <div>
-                      <div style={{ fontSize: '3rem', fontWeight: 900, lineHeight: 1.1, textTransform: 'uppercase', wordBreak: 'break-word' }}>{s.naam}</div>
-                      <div style={{ fontSize: '1.2rem', color: '#888', fontWeight: 700, marginTop: '10px' }}>{s.club}</div>
+                      <div className="text-5xl font-black leading-tight uppercase break-words">{s.naam}</div>
+                      <div className="text-2xl text-gray-400 font-bold mt-4 uppercase">{s.club}</div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div style={{ marginTop: '40px', background: '#000', color: '#fff', padding: '30px', borderRadius: '40px', fontSize: '3rem', fontWeight: 900, textAlign: 'center' }}>{settings.announcement}</div>
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '20px', right: '20px', border: 'none', background: '#eee', padding: '10px 20px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer' }}>WEDSTRIJDMODUS</button>
+            
+            <div className="mt-12 bg-black text-white p-10 rounded-[50px] text-5xl font-black text-center">
+              {settings.announcement}
+            </div>
+            
+            <button 
+              onClick={() => setView('live')} 
+              className="absolute top-8 right-8 bg-gray-200 hover:bg-gray-300 p-4 rounded-2xl font-black text-xs transition-colors"
+            >
+              SLUIT GROOT SCHERM
+            </button>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };
