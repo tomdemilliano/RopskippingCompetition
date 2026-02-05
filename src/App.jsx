@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
     getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, addDoc, query, deleteDoc, getDocs 
@@ -8,7 +8,8 @@ import {
 } from 'firebase/auth';
 import { 
     Layout, Users, Play, Monitor, Plus, Calendar, MapPin, ChevronLeft, ChevronRight, 
-    Upload, Trash2, Edit3, X, Search, Trophy, Settings, ArrowLeft, UserMinus
+    Upload, Trash2, Edit3, X, Search, Trophy, Settings, ArrowLeft, UserMinus, Timer,
+    SkipForward, SkipBack, RefreshCw, Volume2
 } from 'lucide-react';
 
 // Firebase configuratie
@@ -39,12 +40,11 @@ const GlobalStyles = () => (
 
 export default function App() {
     // State management
-    const [view, setView] = useState('management'); // management, live, display
+    const [view, setView] = useState('management'); 
     const [activeCompId, setActiveCompId] = useState(null);
-    const [isEditingComp, setIsEditingComp] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
-    const [activeTab, setActiveTab] = useState('speed');
-    const [mgmtTab, setMgmtTab] = useState('overview'); // overview, skippers, imports, settings
+    const [mgmtTab, setMgmtTab] = useState('overview'); 
+    const [activeTab, setActiveTab] = useState('speed'); // speed of freestyle in LIVE view
     
     const [competitions, setCompetitions] = useState([]);
     const [skippers, setSkippers] = useState({});
@@ -56,6 +56,11 @@ export default function App() {
     const [newComp, setNewComp] = useState({ name: '', date: '', location: '', status: 'gepland' });
     const [user, setUser] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+
+    // Timer States (Live)
+    const [timer, setTimer] = useState(0);
+    const [isTimerRunning, setIsTimerRunning] = useState(false);
+    const timerRef = useRef(null);
 
     // Auth logic
     useEffect(() => {
@@ -93,11 +98,20 @@ export default function App() {
 
     const selectedComp = competitions.find(c => c.id === activeCompId);
 
+    // Filter heats per type
+    const speedHeats = useMemo(() => heats.filter(h => h.type === 'speed').sort((a,b) => a.reeks - b.reeks), [heats]);
+    const freestyleHeats = useMemo(() => heats.filter(h => h.type === 'freestyle').sort((a,b) => a.reeks - b.reeks), [heats]);
+
+    const currentHeatData = useMemo(() => {
+        if (activeTab === 'speed') return speedHeats.find(h => h.reeks === (compSettings.currentSpeedHeat || 1));
+        return freestyleHeats.find(h => h.reeks === (compSettings.currentFreestyleHeat || 1));
+    }, [speedHeats, freestyleHeats, activeTab, compSettings]);
+
     // Handlers
     const handleCreateComp = async (e) => {
         e.preventDefault();
         const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), {
-            ...newComp, currentSpeedHeat: 1, currentFreestyleHeat: 1
+            ...newComp, currentSpeedHeat: 1, currentFreestyleHeat: 1, timerState: 'stop'
         });
         setNewComp({ name: '', date: '', location: '', status: 'gepland' });
         setShowCreateModal(false);
@@ -106,7 +120,6 @@ export default function App() {
 
     const handleUpdateComp = async () => {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), compSettings);
-        setIsEditingComp(false);
     };
 
     const handleDeleteComp = async (id) => {
@@ -119,18 +132,13 @@ export default function App() {
         if (!window.confirm("Skipper overal verwijderen?")) return;
         const batch = writeBatch(db);
         const baseRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
-        
-        // Remove from skippers collection
         batch.delete(doc(collection(baseRef, 'skippers'), skipperId));
-        
-        // Remove from all heats
         heats.forEach(heat => {
             const newSlots = heat.slots.filter(s => s.skipperId !== skipperId);
             if (newSlots.length !== heat.slots.length) {
                 batch.update(doc(collection(baseRef, 'heats'), heat.id), { slots: newSlots });
             }
         });
-        
         await batch.commit();
     };
 
@@ -164,10 +172,25 @@ export default function App() {
         setMgmtTab('skippers');
     };
 
+    // Live Handlers
+    const updateCurrentHeat = async (type, delta) => {
+        const field = type === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
+        const newVal = Math.max(1, (compSettings[field] || 1) + delta);
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), { [field]: newVal });
+    };
+
+    const handleTimerToggle = async () => {
+        const newState = !isTimerRunning;
+        setIsTimerRunning(newState);
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), { 
+            timerState: newState ? 'run' : 'stop' 
+        });
+    };
+
     // Styles
     const s = {
         card: { background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' },
-        btn: (bg = '#2563eb', color = 'white') => ({ background: bg, color, padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }),
+        btn: (bg = '#2563eb', color = 'white') => ({ background: bg, color, padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s' }),
         input: { padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', width: '100%', boxSizing: 'border-box' },
         badge: (color) => ({ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 800, background: color + '15', color: color }),
         tab: (active) => ({ padding: '12px 24px', cursor: 'pointer', borderBottom: active ? '3px solid #2563eb' : '3px solid transparent', color: active ? '#2563eb' : '#64748b', fontWeight: 700, fontSize: '14px' })
@@ -178,26 +201,26 @@ export default function App() {
             <GlobalStyles />
             
             {/* Navigatie */}
-            <header style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '0 2rem', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <header style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '0 2rem', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 100 }}>
                 <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '-0.02em' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></div>
                 <div style={{ display: 'flex', gap: '8px', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
                     <button onClick={() => setView('management')} style={{ ...s.btn(view === 'management' ? 'white' : 'transparent', view === 'management' ? '#2563eb' : '#64748b'), boxShadow: view === 'management' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}><Layout size={16}/> BEHEER</button>
-                    <button onClick={() => setView('live')} style={{ ...s.btn(view === 'live' ? 'white' : 'transparent', view === 'live' ? '#2563eb' : '#64748b'), boxShadow: view === 'live' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}><Play size={16}/> LIVE</button>
-                    <button onClick={() => setView('display')} style={{ ...s.btn(view === 'display' ? 'white' : 'transparent', view === 'display' ? '#2563eb' : '#64748b'), boxShadow: view === 'display' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}><Monitor size={16}/> SCHERM</button>
+                    <button onClick={() => setView('live')} style={{ ...s.btn(view === 'live' ? 'white' : 'transparent', view === 'live' ? '#2563eb' : '#64748b'), boxShadow: view === 'live' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }} disabled={!activeCompId}><Play size={16}/> LIVE</button>
+                    <button onClick={() => setView('display')} style={{ ...s.btn(view === 'display' ? 'white' : 'transparent', view === 'display' ? '#2563eb' : '#64748b'), boxShadow: view === 'display' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }} disabled={!activeCompId}><Monitor size={16}/> SCHERM</button>
                 </div>
             </header>
 
-            <main style={{ flex: 1, padding: '2rem' }}>
+            <main style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+                {/* MANAGEMENT VIEW */}
                 {view === 'management' && !activeCompId && (
-                    <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+                    <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                             <h1 style={{ fontWeight: 900, fontSize: '28px' }}>Wedstrijden</h1>
                             <button onClick={() => setShowCreateModal(true)} style={s.btn()}><Plus size={20}/> NIEUWE WEDSTRIJD</button>
                         </div>
-                        
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
                             {competitions.map(c => (
-                                <div key={c.id} style={{ ...s.card, cursor: 'pointer', transition: 'transform 0.2s' }} onClick={() => setActiveCompId(c.id)}>
+                                <div key={c.id} style={{ ...s.card, cursor: 'pointer' }} onClick={() => setActiveCompId(c.id)}>
                                     <div style={{ padding: '1.5rem' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                                             <span style={s.badge(c.status === 'actief' ? '#16a34a' : '#64748b')}>{c.status.toUpperCase()}</span>
@@ -218,9 +241,8 @@ export default function App() {
                 )}
 
                 {view === 'management' && activeCompId && (
-                    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+                    <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
                         <button onClick={() => setActiveCompId(null)} style={{ ...s.btn('transparent', '#64748b'), padding: '0', marginBottom: '1.5rem' }}><ArrowLeft size={16}/> Terug naar overzicht</button>
-                        
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
                             <div>
                                 <h1 style={{ fontWeight: 900, fontSize: '32px', margin: 0 }}>{selectedComp?.name}</h1>
@@ -242,7 +264,6 @@ export default function App() {
                                 <div onClick={() => setMgmtTab('skippers')} style={s.tab(mgmtTab === 'skippers')}>DEELNEMERS ({Object.keys(skippers).length})</div>
                                 <div onClick={() => setMgmtTab('imports')} style={s.tab(mgmtTab === 'imports')}>IMPORT & REEKSEN</div>
                             </div>
-
                             <div style={{ padding: '2rem' }}>
                                 {mgmtTab === 'overview' && (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
@@ -252,15 +273,14 @@ export default function App() {
                                         </div>
                                         <div style={{ ...s.card, padding: '1.5rem', textAlign: 'center' }}>
                                             <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 900, marginBottom: '0.5rem' }}>SPEED REEKSEN</div>
-                                            <div style={{ fontSize: '42px', fontWeight: 900 }}>{heats.filter(h => h.type === 'speed').length}</div>
+                                            <div style={{ fontSize: '42px', fontWeight: 900 }}>{speedHeats.length}</div>
                                         </div>
                                         <div style={{ ...s.card, padding: '1.5rem', textAlign: 'center' }}>
                                             <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 900, marginBottom: '0.5rem' }}>FREESTYLES</div>
-                                            <div style={{ fontSize: '42px', fontWeight: 900 }}>{heats.filter(h => h.type === 'freestyle').length}</div>
+                                            <div style={{ fontSize: '42px', fontWeight: 900 }}>{freestyleHeats.length}</div>
                                         </div>
                                     </div>
                                 )}
-
                                 {mgmtTab === 'skippers' && (
                                     <div>
                                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -307,7 +327,6 @@ export default function App() {
                                         </table>
                                     </div>
                                 )}
-
                                 {mgmtTab === 'imports' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -325,7 +344,6 @@ export default function App() {
                                         <button onClick={handleImport} style={{ ...s.btn(), alignSelf: 'flex-end' }}>DATA IMPORTEREN</button>
                                     </div>
                                 )}
-
                                 {mgmtTab === 'settings' && (
                                     <div style={{ maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                         <div>
@@ -348,14 +366,121 @@ export default function App() {
                     </div>
                 )}
 
-                {/* Live & Display views blijven grotendeels hetzelfde maar met verbeterde fonts/layout */}
-                {(view === 'live' || view === 'display') && activeCompId && (
-                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                        {/* Live UI implementation... (zie vorige versie voor detail) */}
-                        <div style={{ textAlign: 'center', padding: '2rem' }}>
-                            <h2 style={{ fontWeight: 900 }}>Live View voor {selectedComp?.name}</h2>
-                            <p>Klik op 'Display' bovenaan voor het publieksscherm.</p>
-                            {/* In een volledige app zou hier de gedetailleerde heat-controller staan */}
+                {/* LIVE VIEW */}
+                {view === 'live' && activeCompId && (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                            <div style={{ display: 'flex', gap: '4px', background: '#e2e8f0', padding: '4px', borderRadius: '12px' }}>
+                                <button onClick={() => setActiveTab('speed')} style={s.tab(activeTab === 'speed')}>SPEED</button>
+                                <button onClick={() => setActiveTab('freestyle')} style={s.tab(activeTab === 'freestyle')}>FREESTYLE</button>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <span style={{ fontWeight: 800, color: '#64748b' }}>REEKS {currentHeatData?.reeks || '-'} / {activeTab === 'speed' ? speedHeats.length : freestyleHeats.length}</span>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button onClick={() => updateCurrentHeat(activeTab, -1)} style={{ ...s.btn('#f1f5f9', '#475569') }}><SkipBack size={18}/></button>
+                                    <button onClick={() => updateCurrentHeat(activeTab, 1)} style={{ ...s.btn('#f1f5f9', '#475569') }}><SkipForward size={18}/></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {activeTab === 'speed' ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1.5rem', flex: 1 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    <div style={{ ...s.card, flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'white' }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 900, color: '#2563eb', marginBottom: '1rem', letterSpacing: '0.1em' }}>{currentHeatData?.onderdeel?.toUpperCase() || 'GEEN DATA'}</div>
+                                        <div style={{ fontSize: '120px', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace', color: isTimerRunning ? '#2563eb' : '#0f172a' }}>
+                                            {timer.toFixed(1)}
+                                        </div>
+                                        <button 
+                                            onClick={handleTimerToggle}
+                                            style={{ ...s.btn(isTimerRunning ? '#ef4444' : '#2563eb'), padding: '20px 60px', fontSize: '20px', marginTop: '2rem' }}
+                                        >
+                                            {isTimerRunning ? 'STOP TIMER' : 'START TIMER'}
+                                        </button>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
+                                        {[1,2,3,4,5,6,7,8,9,10].map(v => {
+                                            const slot = currentHeatData?.slots?.find(s => s.veldNr === v);
+                                            const skipper = skippers[slot?.skipperId];
+                                            return (
+                                                <div key={v} style={{ ...s.card, padding: '1rem', background: slot ? 'white' : '#f8fafc', border: slot ? '1px solid #e2e8f0' : '1px dashed #cbd5e1' }}>
+                                                    <div style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8' }}>VELD {v}</div>
+                                                    <div style={{ fontWeight: 800, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skipper?.naam || '-'}</div>
+                                                    <div style={{ fontSize: '11px', color: '#64748b' }}>{skipper?.club || '-'}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div style={{ ...s.card, display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', fontWeight: 800 }}>REEKS OVERZICHT</div>
+                                    <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }} className="custom-scrollbar">
+                                        {speedHeats.map(h => (
+                                            <div key={h.id} style={{ padding: '0.75rem', borderRadius: '8px', background: h.reeks === compSettings.currentSpeedHeat ? '#eff6ff' : 'transparent', color: h.reeks === compSettings.currentSpeedHeat ? '#2563eb' : '#0f172a', marginBottom: '4px', cursor: 'pointer' }} onClick={() => updateCurrentHeat('speed', h.reeks - compSettings.currentSpeedHeat)}>
+                                                <div style={{ fontSize: '12px', fontWeight: 800 }}>Reeks {h.reeks} - {h.uur}</div>
+                                                <div style={{ fontSize: '11px', opacity: 0.7 }}>{h.onderdeel}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Freestyle Live View */
+                            <div style={{ ...s.card, flex: 1, padding: '3rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                                {currentHeatData?.slots?.[0] ? (
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 900, color: '#7c3aed', marginBottom: '2rem', letterSpacing: '0.2em' }}>NU OP HET VELD (FREESTYLE)</div>
+                                        <div style={{ fontSize: '64px', fontWeight: 900, marginBottom: '1rem' }}>{skippers[currentHeatData.slots[0].skipperId]?.naam}</div>
+                                        <div style={{ fontSize: '24px', fontWeight: 600, color: '#64748b' }}>{skippers[currentHeatData.slots[0].skipperId]?.club}</div>
+                                        <div style={{ marginTop: '3rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                                            <button style={{ ...s.btn('#7c3aed'), padding: '15px 40px' }}><Volume2 size={20}/> SPEEL MUZIEK</button>
+                                            <button onClick={() => updateCurrentHeat('freestyle', 1)} style={{ ...s.btn('#f1f5f9', '#475569'), padding: '15px 40px' }}>VOLGENDE <ChevronRight/></button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ color: '#94a3b8' }}>Geen freestyle data gevonden voor deze reeks.</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* DISPLAY VIEW (PUBLIC SCREEN) */}
+                {view === 'display' && activeCompId && (
+                    <div style={{ flex: 1, background: '#0f172a', margin: '-2rem', display: 'flex', flexDirection: 'column', color: 'white' }}>
+                        <div style={{ padding: '2rem', background: 'rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <div style={{ fontSize: '14px', fontWeight: 800, color: '#38bdf8' }}>{selectedComp?.name?.toUpperCase()}</div>
+                                <div style={{ fontSize: '24px', fontWeight: 900 }}>{currentHeatData?.onderdeel || 'Pauze'}</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '14px', fontWeight: 800, color: '#94a3b8' }}>REEKS</div>
+                                <div style={{ fontSize: '32px', fontWeight: 900 }}>{currentHeatData?.reeks || '-'}</div>
+                            </div>
+                        </div>
+                        
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                            {activeTab === 'speed' ? (
+                                <div style={{ width: '100%', maxWidth: '1400px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gridTemplateRows: 'repeat(2, 1fr)', gap: '2rem', height: '80%' }}>
+                                    {[1,2,3,4,5,6,7,8,9,10].map(v => {
+                                        const slot = currentHeatData?.slots?.find(s => s.veldNr === v);
+                                        const sk = skippers[slot?.skipperId];
+                                        return (
+                                            <div key={v} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '24px', padding: '2rem', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                                <div style={{ fontSize: '16px', fontWeight: 900, color: '#38bdf8', marginBottom: '1rem' }}>VELD {v}</div>
+                                                <div style={{ fontSize: '28px', fontWeight: 800, lineHeight: 1.2, marginBottom: '0.5rem' }}>{sk?.naam || '-'}</div>
+                                                <div style={{ fontSize: '18px', color: '#94a3b8' }}>{sk?.club || '-'}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: '24px', fontWeight: 800, color: '#a78bfa', marginBottom: '2rem', letterSpacing: '0.3em' }}>NEXT UP</div>
+                                    <div style={{ fontSize: '120px', fontWeight: 900, lineHeight: 1 }}>{skippers[currentHeatData?.slots?.[0]?.skipperId]?.naam || 'EINDE'}</div>
+                                    <div style={{ fontSize: '48px', color: '#94a3b8', marginTop: '2rem' }}>{skippers[currentHeatData?.slots?.[0]?.skipperId]?.club || '-'}</div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
