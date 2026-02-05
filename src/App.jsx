@@ -10,12 +10,12 @@ import { Layout, Users, Play, Monitor, Plus, Calendar, MapPin, ChevronLeft, Chev
 
 // Firebase configuratie
 const firebaseConfig = {
-    apiKey: "", // Wordt door omgeving ingevuld
-    authDomain: "ropeskippingcontest.firebaseapp.com",
-    projectId: "ropeskippingcontest",
-    storageBucket: "ropeskippingcontest.firebasestorage.app",
-    messagingSenderId: "430066523717",
-    appId: "1:430066523717:web:eea53ced41773af66a4d2c",
+  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+  authDomain: "ropeskippingcontest.firebaseapp.com",
+  projectId: "ropeskippingcontest",
+  storageBucket: "ropeskippingcontest.firebasestorage.app",
+  messagingSenderId: "430066523717",
+  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
 
 // Initialisatie
