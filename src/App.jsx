@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  ChevronRight, ChevronLeft, Activity, Upload, AlertCircle, CheckCircle2, Trophy
+  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATIE ---
@@ -218,6 +218,12 @@ const App = () => {
     return list.find(h => h.reeks === num) || null;
   }, [heats, activeTab, settings]);
 
+  const nextHeat = useMemo(() => {
+    const list = heats.filter(h => h.type === activeTab);
+    const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
+    return list.find(h => h.reeks === num + 1) || null;
+  }, [heats, activeTab, settings]);
+
   const speedSlots = useMemo(() => {
     if (activeTab !== 'speed') return currentHeat?.slots || [];
     const fullList = [];
@@ -242,8 +248,8 @@ const App = () => {
     main: { flex: 1, padding: '1rem', width: '100%', boxSizing: 'border-box', overflowY: 'auto', display: 'flex', flexDirection: 'column' },
     contentWrapper: { maxWidth: '1200px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', flex: 1 },
     card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%', boxSizing: 'border-box', backgroundColor: '#fff' },
-    heatNav: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2rem', marginBottom: '1rem' },
-    heatNum: { fontSize: '4rem', fontWeight: 900, lineHeight: 1 },
+    heatNav: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem' },
+    heatNum: { fontSize: '2.5rem', fontWeight: 900, lineHeight: 1 },
     list: { display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' },
     listItem: { display: 'grid', gridTemplateColumns: '70px 1fr 120px', alignItems: 'center', padding: '0.6rem 1rem', background: '#f9f9f9', borderRadius: '0.75rem', border: '1px solid #f0f0f0', width: '100%', boxSizing: 'border-box', overflow: 'hidden' },
     textTruncate: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
@@ -282,13 +288,19 @@ const App = () => {
                 )}
                 
                 <div style={styles.heatNav}>
-                  <button onClick={() => updateHeat(-1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
+                  <button onClick={() => updateHeat(-1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={20}/></button>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ color: '#999', fontWeight: 900, fontSize: '0.7rem' }}>REEKS</div>
                     <div style={styles.heatNum}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
                   </div>
-                  <button onClick={() => updateHeat(1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight size={20}/></button>
+                  <button onClick={() => updateHeat(1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={20}/></button>
                 </div>
+
+                {currentHeat && (
+                  <div style={{ textAlign: 'center', marginBottom: '1rem', backgroundColor: activeTab === 'speed' ? '#eff6ff' : '#f5f3ff', padding: '0.5rem', borderRadius: '1rem', color: activeTab === 'speed' ? '#2563eb' : '#7c3aed', fontWeight: 900 }}>
+                    {currentHeat.onderdeel.toUpperCase()}
+                  </div>
+                )}
 
                 <div style={styles.list}>
                   {speedSlots.map((s, i) => (
@@ -334,30 +346,44 @@ const App = () => {
           {view === 'display' && (
             <div style={{ position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 100, padding: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h1 style={{ fontSize: '3rem', fontWeight: 900, margin: 0 }}>{activeTab.toUpperCase()}</h1>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f5f5f5', padding: '0.5rem 2rem', borderRadius: '1.5rem' }}>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#bbb' }}>REEKS</span>
-                  <span style={{ fontSize: '3rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+                <div>
+                    <h1 style={{ fontSize: '3.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel.toUpperCase() || activeTab.toUpperCase()}</h1>
+                    <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1.2rem', marginTop: '0.2rem' }}>{activeTab === 'speed' ? 'SPEED COMPETITION' : 'FREESTYLE'}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f5f5f5', padding: '0.5rem 2.5rem', borderRadius: '1.5rem' }}>
+                  <span style={{ fontSize: '1.5rem', fontWeight: 900, color: '#bbb' }}>REEKS</span>
+                  <span style={{ fontSize: '4rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
                 </div>
               </div>
+
+              {/* Melding volgend onderdeel type */}
+              {nextHeat && currentHeat && nextHeat.onderdeel !== currentHeat.onderdeel && (
+                <div style={{ backgroundColor: '#fff7ed', border: '2px solid #fb923c', padding: '1rem 2rem', borderRadius: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ backgroundColor: '#fb923c', color: '#fff', padding: '0.5rem', borderRadius: '50%' }}><Info size={32} /></div>
+                    <div>
+                        <div style={{ color: '#c2410c', fontWeight: 900, fontSize: '1.1rem' }}>OPGELET: VOLGENDE REEKS IS EEN ANDER TYPE</div>
+                        <div style={{ color: '#ea580c', fontWeight: 700 }}>Vanaf reeks {nextHeat.reeks}: <span style={{ textDecoration: 'underline' }}>{nextHeat.onderdeel}</span></div>
+                    </div>
+                </div>
+              )}
               
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative', width: '100%', boxSizing: 'border-box' }}>
                 {speedSlots.map((s, i) => (
                   <div key={i} style={{ 
                     flex: 1, 
                     display: 'grid', 
-                    gridTemplateColumns: '120px 1fr 1fr', 
+                    gridTemplateColumns: '150px 1fr 1fr', 
                     alignItems: 'center', 
-                    padding: '0 2rem', 
-                    borderRadius: '1rem', 
+                    padding: '0 2.5rem', 
+                    borderRadius: '1.2rem', 
                     border: '2px solid #f0f0f0',
                     backgroundColor: s.empty ? 'transparent' : '#fff',
                     opacity: s.empty ? 0.3 : 1,
                     overflow: 'hidden'
                   }}>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: activeTab === 'speed' ? '#2563eb' : '#7c3aed', ...styles.textTruncate }}>{s.veld}</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 900, ...styles.textTruncate }}>{skippers[s.skipperId]?.naam || ""}</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#aaa', textAlign: 'right', ...styles.textTruncate }}>{skippers[s.skipperId]?.club || ""}</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: activeTab === 'speed' ? '#2563eb' : '#7c3aed', ...styles.textTruncate }}>{s.veld}</div>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 900, ...styles.textTruncate }}>{skippers[s.skipperId]?.naam || ""}</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#aaa', textAlign: 'right', ...styles.textTruncate }}>{skippers[s.skipperId]?.club || ""}</div>
                   </div>
                 ))}
 
