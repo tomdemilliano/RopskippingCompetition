@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc 
+  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc, addDoc, deleteDoc, arrayRemove, arrayUnion
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
@@ -30,11 +30,15 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('speed');
   const [skippers, setSkippers] = useState({});
   const [heats, setHeats] = useState([]);
+  const [competitions, setCompetitions] = useState([]); // nieuw
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState(null); // voor beheer
+  const [participants, setParticipants] = useState({}); // deelnemers voor geselecteerde competitie
   const [currentTime, setCurrentTime] = useState(new Date());
   const [settings, setSettings] = useState({
     currentSpeedHeat: 1,
     currentFreestyleHeat: 1,
     announcement: "Welkom!",
+    activeCompetitionId: null, // nieuw: id van actieve wedstrijd
   });
 
   const [importType, setImportType] = useState('speed');
@@ -80,6 +84,7 @@ const App = () => {
     const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
     const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
     const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
+    const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions');
 
     const unsubS = onSnapshot(sRef, async (d) => {
       if (d.exists()) {
@@ -98,8 +103,34 @@ const App = () => {
       setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
     }, (err) => console.error("Heats error:", err));
 
-    return () => { unsubS(); unsubSk(); unsubH(); };
+    const unsubC = onSnapshot(cRef, s => {
+      // competitie documenten bevatten: name, date, location, status
+      setCompetitions(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')));
+    }, (err) => console.error("Competitions error:", err));
+
+    return () => { unsubS(); unsubSk(); unsubH(); unsubC(); };
   }, [isAuthReady, user]);
+
+  // luister naar participants subcollectie wanneer geselecteerde competitie verandert
+  useEffect(() => {
+    if (!isAuthReady || !user || !db) return;
+    if (!selectedCompetitionId) {
+      setParticipants({});
+      return;
+    }
+    const pRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants');
+    const unsubP = onSnapshot(pRef, s => {
+      const d = {};
+      s.forEach(doc => d[doc.id] = doc.data());
+      setParticipants(d);
+    }, err => console.error("Participants error:", err));
+    return () => unsubP();
+  }, [isAuthReady, user, selectedCompetitionId]);
+
+  // actieve competitie object (uit settings)
+  const activeCompetition = useMemo(() => {
+    return competitions.find(c => c.id === settings.activeCompetitionId) || null;
+  }, [competitions, settings]);
 
   const currentHeat = useMemo(() => {
     const list = heats.filter(h => h.type === activeTab);
@@ -133,15 +164,33 @@ const App = () => {
     }
   }, [currentHeat, currentTime]);
 
+  // speedSlots: wanneer er een actieve competitie is, vullen we velden op basis van deelnemers die een startVeld/veldNr hebben of simpelweg show deelnemers
   const speedSlots = useMemo(() => {
     if (activeTab !== 'speed') return currentHeat?.slots || [];
-    const fullList = [];
-    for (let i = 1; i <= 10; i++) {
-      const found = currentHeat?.slots?.find(s => s.veldNr === i || s.veld === `Veld ${i}`);
-      fullList.push(found || { veld: `Veld ${i}`, skipperId: null, empty: true });
+    // probeer eerst gebruik te maken van currentHeat.slots (bestaat mogelijk)
+    if (currentHeat?.slots?.length) {
+      const fullList = [];
+      for (let i = 1; i <= 10; i++) {
+        const found = currentHeat?.slots?.find(s => s.veldNr === i || s.veld === `Veld ${i}`);
+        fullList.push(found || { veld: `Veld ${i}`, skipperId: null, empty: true });
+      }
+      return fullList;
     }
-    return fullList;
-  }, [currentHeat, activeTab]);
+    // fallback: vul met deelnemers uit actieve competitie die deelnemen aan speed
+    if (activeCompetition && Object.keys(participants).length) {
+      const partArr = Object.values(participants).filter(p => p.events?.includes('speed'));
+      const fullList = [];
+      for (let i = 1; i <= 10; i++) {
+        const p = partArr[i-1];
+        fullList.push(p ? { veld: `Veld ${i}`, skipperId: p.id, empty: false } : { veld: `Veld ${i}`, skipperId: null, empty: true });
+      }
+      return fullList;
+    }
+    // default
+    const defaultList = [];
+    for (let i = 1; i <= 10; i++) defaultList.push({ veld: `Veld ${i}`, skipperId: null, empty: true });
+    return defaultList;
+  }, [currentHeat, activeTab, activeCompetition, participants]);
 
   const updateHeat = async (delta) => {
     if (!db || !user) return;
@@ -162,53 +211,146 @@ const App = () => {
     } catch (e) { console.error(e); }
   };
 
-  const handleImport = async () => {
-    if (!csvInput.trim() || !db || !user) return;
+  // Competitie aanmaken
+  const addCompetition = async ({ name, date, location, setActive=false }) => {
+    if (!name || !db || !user) return;
+    try {
+      const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions');
+      const docRef = await addDoc(cRef, { name, date, location, status: 'gepland', createdAt: new Date().toISOString() });
+      if (setActive) {
+        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+        await updateDoc(sRef, { activeCompetitionId: docRef.id });
+      }
+      setStatus({ type: 'success', msg: 'Competitie toegevoegd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // Stel actieve competitie in
+  const setActiveCompetition = async (competitionId) => {
+    if (!db || !user) return;
+    try {
+      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+      await updateDoc(sRef, { activeCompetitionId: competitionId });
+      // zet status van deze competitie op 'actief' en andere op 'gepland' indien gewenst
+      // Eenvoudige aanpak: update alleen gekozen competitie status -> 'actief'
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { status: 'actief' });
+      setStatus({ type: 'success', msg: 'Actieve wedstrijd ingesteld' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // Wijzig status van competitie
+  const setCompetitionStatus = async (competitionId, newStatus) => {
+    if (!db || !user) return;
+    try {
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { status: newStatus });
+      setStatus({ type: 'success', msg: 'Status bijgewerkt' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // Verwijder competitie (en deelnemers subcollectie) - voorzichtig: hier verwijderen we alleen competitie-doc en deelnemers docs
+  const deleteCompetition = async (competitionId) => {
+    if (!db || !user) return;
+    try {
+      // verwijder deelnemers in subcollectie
+      const pRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants');
+      // geen getDocs import gebruikt om bulk te verwijderen: we kunnen batch verwijderen op basis van onSnapshot data (client-side)
+      // Simpelere aanpak: probeer alle deelnemers te verwijderen via participants state indien deze competitie geselecteerd is
+      if (selectedCompetitionId === competitionId) {
+        for (const pid of Object.keys(participants)) {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', pid));
+        }
+      } else {
+        // Onzekerheid - probeer niets verder (of implementeer getDocs indien gewenst)
+      }
+      // verwijder competitie-doc
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId));
+      setStatus({ type: 'success', msg: 'Competitie verwijderd' });
+      // als dit de actieve competitie was, clear settings.activeCompetitionId
+      if (settings.activeCompetitionId === competitionId) {
+        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+        await updateDoc(sRef, { activeCompetitionId: null });
+      }
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // CSV import deelnemers voor een competitie
+  const importParticipantsForCompetition = async (competitionId, csvText) => {
+    if (!competitionId || !csvText || !db || !user) return;
     setIsProcessing(true);
     try {
-      const lines = csvInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
       const batch = writeBatch(db);
-
+      const compBase = 'artifacts/' + appId + '/public/data/competitions/' + competitionId + '/participants';
       for (const row of rows) {
-        const reeksNum = parseInt(row[0]);
-        if (isNaN(reeksNum)) continue;
-
-        if (importType === 'speed') {
-          const heatId = `speed_${reeksNum}`;
-          const slots = [];
-          for (let v = 1; v <= 10; v++) {
-            const club = row[3 + (v - 1) * 2];
-            const naam = row[4 + (v - 1) * 2];
-            if (naam && naam !== "") {
-              const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
-              batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam, club });
-              slots.push({ veld: `Veld ${v}`, skipperId: sid, veldNr: v });
-            }
-          }
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId), { 
-            type: 'speed', reeks: reeksNum, onderdeel: row[1], uur: row[2], slots, status: 'pending' 
-          });
-        } else {
-          const sid = `s_${row[2]}_${row[1]}`.replace(/[^a-zA-Z0-9]/g, '_');
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam: row[2], club: row[1] });
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', `fs_${reeksNum}`), { 
-            type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', uur: '00:00', slots: [{ veld: row[3] || 'Veld A', skipperId: sid }], status: 'pending' 
-          });
-        }
+        // verwacht CSV format (voorbeeld): naam,club,events (events gescheiden door ;)
+        const naam = row[0] || '';
+        const club = row[1] || '';
+        const eventsRaw = row[2] || '';
+        const events = eventsRaw.split(';').map(e => e.trim()).filter(e => e);
+        // generate id-safe
+        const pid = `p_${(naam + '_' + club).replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const pDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', pid);
+        batch.set(pDocRef, { id: pid, naam, club, events, createdAt: new Date().toISOString() });
+        // (optioneel) ook zetten in globale skippers
+        const skRef = doc(db, 'artifacts', appId, 'public', 'data', 'skippers', pid);
+        batch.set(skRef, { id: pid, naam, club }, { merge: true });
       }
       await batch.commit();
-      setStatus({ type: 'success', msg: "Import succesvol!" });
-      setCsvInput('');
-    } catch (e) { setStatus({ type: 'error', msg: e.message }); }
+      setStatus({ type: 'success', msg: 'Deelnemers geïmporteerd' });
+      // herlaad deelnemers via snapshot listener
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
     setIsProcessing(false);
+  };
+
+  // Verwijder deelnemer uit competitie
+  const removeParticipantFromCompetition = async (competitionId, participantId) => {
+    if (!competitionId || !participantId || !db || !user) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', participantId));
+      setStatus({ type: 'success', msg: 'Deelnemer verwijderd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // schrappen uit onderdeel (remove event from participant.events)
+  const removeParticipantFromEvent = async (competitionId, participantId, eventName) => {
+    if (!competitionId || !participantId || !eventName || !db || !user) return;
+    try {
+      const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', participantId);
+      // We gebruiken arrayRemove om het event te verwijderen
+      await updateDoc(pRef, { events: arrayRemove(eventName) });
+      setStatus({ type: 'success', msg: `${eventName} verwijderd voor deelnemer` });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
   };
 
   const styles = {
     container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', color: '#000', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' },
     header: { display: 'flex', justifyContent: 'space-between', padding: '0.5rem 1.5rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
     main: { flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
-    card: { border: '1px solid #eee', borderRadius: '1rem', padding: '1rem', width: '100%', maxWidth: '700px', backgroundColor: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' },
+    card: { border: '1px solid #eee', borderRadius: '1rem', padding: '1rem', width: '100%', maxWidth: '900px', backgroundColor: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' },
     displayOverlay: { 
       position: 'fixed', 
       inset: 0, 
@@ -222,6 +364,10 @@ const App = () => {
     }
   };
 
+  // beheer: formulier state
+  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', setActive: false });
+  const [compCsvInput, setCompCsvInput] = useState(''); // CSV voor deelnemers import binnen beheer
+
   return (
     <div style={styles.container}>
       <header style={styles.header}>
@@ -230,7 +376,7 @@ const App = () => {
           <nav style={{ display: 'flex', gap: '0.25rem', background: '#f5f5f5', padding: '0.2rem', borderRadius: '0.5rem' }}>
             <button onClick={() => setView('live')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'live' ? '#fff' : 'transparent' }}>Live</button>
             <button onClick={() => setView('management')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'management' ? '#fff' : 'transparent' }}>Beheer</button>
-            <button onClick={() => setView('display')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'display' ? '#fff' : 'transparent' }}>Scherm</button>
+            <button onClick={() => setView('display')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'display' ? '#fff' : 'transparent' }}>Display</button>
           </nav>
         </div>
         <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>{currentTime.toLocaleTimeString('nl-BE')}</div>
@@ -240,8 +386,8 @@ const App = () => {
         {view === 'live' && (
           <div style={styles.card}>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-              <button onClick={() => setActiveTab('speed')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#f5f5f5', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
-              <button onClick={() => setActiveTab('freestyle')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#7c3aed' : '#f5f5f5', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
+              <button onClick={() => setActiveTab('speed')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#f3f4f6', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#2563eb' : '#f3f4f6', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
             </div>
 
             <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
@@ -251,20 +397,26 @@ const App = () => {
                 <span style={{ fontSize: '3rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
                 <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight size={20}/></button>
               </div>
-              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#666' }}>Gepland: {currentHeat?.uur || "--:--"}</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#666' }}>
+                Gepland: {currentHeat?.uur || "--:--"} {activeCompetition ? `— Wedstrijd: ${activeCompetition.name} (${activeCompetition.location || '-'}, ${activeCompetition.date || '-'})` : ''}
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {speedSlots.map((s, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr', padding: '0.5rem 1rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '0.6rem', border: s.empty ? '1px dashed #eee' : '1px solid #eee' }}>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr', padding: '0.5rem 1rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '0.6rem', border: '1px solid rgba(0,0,0,0.03)' }}>
                   <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.7rem' }}>{s.veld}</span>
-                  <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{skippers[s.skipperId]?.naam || (s.empty ? "" : "...")}</span>
-                  <span style={{ textAlign: 'right', color: '#999', fontSize: '0.75rem' }}>{skippers[s.skipperId]?.club || ""}</span>
+                  <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                    { participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || (s.empty ? "" : "...") }
+                  </span>
+                  <span style={{ textAlign: 'right', color: '#999', fontSize: '0.75rem' }}>
+                    { participants[s.skipperId]?.club || skippers[s.skipperId]?.club || "" }
+                  </span>
                 </div>
               ))}
             </div>
 
-            <button onClick={finishHeat} style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', borderRadius: '0.75rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <button onClick={finishHeat} style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', borderRadius: '0.75rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900 }}>
               <CheckCircle2 size={18}/> VOLTOOID
             </button>
           </div>
@@ -272,9 +424,93 @@ const App = () => {
 
         {view === 'management' && (
           <div style={styles.card}>
-            <h2 style={{ fontWeight: 900, marginBottom: '0.5rem' }}>Import</h2>
-            <textarea value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder="CSV data..." style={{ width: '100%', height: '150px', borderRadius: '0.5rem', border: '1px solid #eee', padding: '0.5rem' }} />
-            <button onClick={handleImport} style={{ width: '100%', marginTop: '0.5rem', padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: '#000', color: '#fff', fontWeight: 800 }}>IMPORT</button>
+            <h2 style={{ fontWeight: 900, marginBottom: '0.5rem' }}>Wedstrijden (Competities)</h2>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1, border: '1px solid #eee', padding: '0.75rem', borderRadius: '0.6rem' }}>
+                <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>Nieuwe wedstrijd toevoegen</h3>
+                <input placeholder="Naam" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }} />
+                <input placeholder="Datum (YYYY-MM-DD)" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }} />
+                <input placeholder="Locatie" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <input type="checkbox" checked={newComp.setActive} onChange={e => setNewComp({...newComp, setActive: e.target.checked})} /> Stel actief
+                </label>
+                <button onClick={() => { addCompetition({ ...newComp }); setNewComp({ name: '', date: '', location: '', setActive: false }); }} style={{ padding: '0.6rem', width: '100%', background: '#000', color: '#fff', border: 'none', borderRadius: '0.4rem' }}>Toevoegen</button>
+              </div>
+
+              <div style={{ flex: 1, border: '1px solid #eee', padding: '0.75rem', borderRadius: '0.6rem' }}>
+                <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>Bestaan­de wedstrijden</h3>
+                <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                  {competitions.map(c => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.2rem', borderBottom: '1px solid #f3f4f6' }}>
+                      <div>
+                        <div style={{ fontWeight: 900 }}>{c.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#666' }}>{c.date} — {c.location} <span style={{ marginLeft: '0.5rem', fontWeight: 900, color: c.status === 'actief' ? '#10b981' : '#64748b' }}>{c.status}</span></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button onClick={() => { setSelectedCompetitionId(c.id); }} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Select</button>
+                        <button onClick={() => setActiveCompetition(c.id)} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Maak actief</button>
+                        <button onClick={() => setCompetitionStatus(c.id, c.status === 'gepland' ? 'actief' : (c.status === 'actief' ? 'beëindigd' : 'gepland'))} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Toggle status</button>
+                        <button onClick={() => deleteCompetition(c.id)} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #fee2e2', background: '#fff' }}>Verwijder</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <hr />
+
+            <h3 style={{ marginTop: '0.5rem' }}>Geselecteerde wedstrijd</h3>
+            {!selectedCompetitionId && <div style={{ color: '#666', marginBottom: '0.5rem' }}>Selecteer een wedstrijd uit de lijst om deelnemers te beheren.</div>}
+
+            {selectedCompetitionId && (
+              <>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 900 }}>
+                      {competitions.find(c => c.id === selectedCompetitionId)?.name || '...' }
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                      {competitions.find(c => c.id === selectedCompetitionId)?.date} — {competitions.find(c => c.id === selectedCompetitionId)?.location}
+                    </div>
+                  </div>
+
+                  <div style={{ flexBasis: '320px', border: '1px solid #eee', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                    <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>Import deelnemers (CSV)</div>
+                    <textarea placeholder="CSV: naam,club,events(sep ;)" value={compCsvInput} onChange={e => setCompCsvInput(e.target.value)} style={{ width: '100%', height: '100px', padding: '0.5rem' }} />
+                    <button onClick={() => { importParticipantsForCompetition(selectedCompetitionId, compCsvInput); setCompCsvInput(''); }} disabled={isProcessing} style={{ marginTop: '0.4rem', padding: '0.5rem', width: '100%', background: '#000', color: '#fff', border: 'none', borderRadius: '0.4rem' }}>{isProcessing ? 'Bezig...' : 'Importeer deelnemers'}</button>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #eee', borderRadius: '0.6rem', padding: '0.6rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 900 }}>Deelnemers overzicht</div>
+                    <div style={{ fontSize: '0.85rem', color: '#666' }}>{Object.keys(participants).length} deelnemers</div>
+                  </div>
+
+                  <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                    {Object.values(participants).map(p => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0.2rem', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: 900 }}>{p.naam}</div>
+                          <div style={{ fontSize: '0.8rem', color: '#666' }}>{p.club} — { (p.events || []).join(', ') }</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          {(p.events || []).map(ev => (
+                            <button key={ev} onClick={() => removeParticipantFromEvent(selectedCompetitionId, p.id, ev)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Verwijder {ev}</button>
+                          ))}
+                          <button onClick={() => removeParticipantFromCompetition(selectedCompetitionId, p.id)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #fee2e2' }}>Verwijder deelnemer</button>
+                        </div>
+                      </div>
+                    ))}
+                    {Object.keys(participants).length === 0 && <div style={{ color: '#666', padding: '0.5rem' }}>Geen deelnemers</div>}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {status.msg && <div style={{ marginTop: '0.6rem', color: status.type === 'error' ? '#dc2626' : '#10b981' }}>{status.msg}</div>}
           </div>
         )}
 
@@ -282,12 +518,12 @@ const App = () => {
           <div style={styles.displayOverlay}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
               <div>
-                <h1 style={{ fontSize: '1.8rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
+                <h1 style={{ fontSize: '1.8rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || (activeTab === 'speed' ? "SPEED" : "FREESTYLE")}</h1>
                 <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '0.8rem' }}>ROPESKIPPING LIVE</div>
+                {activeCompetition && <div style={{ marginTop: '0.25rem', fontSize: '0.9rem', fontWeight: 800 }}>{activeCompetition.name} — {activeCompetition.date} — {activeCompetition.location}</div>}
               </div>
 
               <div style={{ display: 'flex', gap: '1rem' }}>
-                {/* DEBUG EN GEPLAND BLOK */}
                 <div style={{ textAlign: 'right', backgroundColor: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
                   <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#64748b' }}>DEBUG GEPLAND</div>
                   <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>{currentHeat?.uur || "GEEN DATA"}</div>
@@ -304,7 +540,7 @@ const App = () => {
                <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#64748b' }}>REEKS</span>
                <span style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
                {timeDifferenceInfo && (
-                  <div style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 900, backgroundColor: timeDifferenceInfo.isBehind ? '#fee2e2' : '#dcfce7', color: timeDifferenceInfo.isBehind ? '#dc2626' : '#16a34a' }}>
+                  <div style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 900, backgroundColor: timeDifferenceInfo.isBehind ? '#fee2e2' : '#ecfccb', color: timeDifferenceInfo.isBehind ? '#991b1b' : '#134e4a' }}>
                     {timeDifferenceInfo.label}m vertraging
                   </div>
                )}
@@ -325,13 +561,13 @@ const App = () => {
                   boxShadow: s.empty ? 'none' : '0 1px 2px rgba(0,0,0,0.02)'
                 }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
-                  <span style={{ fontSize: '1.4rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.naam || ""}</span>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.club || ""}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || ""}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.club || skippers[s.skipperId]?.club || ""}</span>
                 </div>
               ))}
             </div>
 
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.25rem', left: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.6rem', border: 'none', background: '#f1f5f9', cursor: 'pointer', opacity: 0.2 }}>TERUG</button>
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.25rem', left: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.6rem', border: 'none', background: '#f1f5f9', borderRadius: '0.35rem' }}>Terug</button>
           </div>
         )}
       </main>
