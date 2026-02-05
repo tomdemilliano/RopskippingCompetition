@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  ChevronRight, ChevronLeft, Activity, Upload, AlertCircle, CheckCircle2
+  ChevronRight, ChevronLeft, Activity, Upload, AlertCircle, CheckCircle2, Trophy
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATIE ---
@@ -112,6 +112,23 @@ const App = () => {
     }
   };
 
+  const finishHeat = async () => {
+    if (!currentHeat || !db || !user) return;
+    
+    try {
+      // Markeer huidige reeks als klaar
+      const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', currentHeat.id);
+      await updateDoc(heatRef, { status: 'finished' });
+      
+      // Ga naar de volgende reeks
+      await updateHeat(1);
+      setStatus({ type: 'success', msg: `Reeks ${currentHeat.reeks} voltooid!` });
+      setTimeout(() => setStatus({ type: null, msg: null }), 3000);
+    } catch (e) {
+      console.error("Finish heat failed", e);
+    }
+  };
+
   const handleImport = async () => {
     if (!csvInput.trim() || !db || !user) {
         setStatus({ type: 'error', msg: "Geen data of niet ingelogd." });
@@ -156,7 +173,8 @@ const App = () => {
                     type: 'speed', 
                     reeks: reeksNum, 
                     onderdeel: row[1] || 'Speed', 
-                    slots: slots 
+                    slots: slots,
+                    status: 'pending'
                 });
                 count++;
             }
@@ -184,7 +202,8 @@ const App = () => {
                     type: 'freestyle', 
                     reeks: reeksNum, 
                     onderdeel: 'Freestyle', 
-                    slots: [{ veld, skipperId: sid }] 
+                    slots: [{ veld, skipperId: sid }],
+                    status: 'pending'
                 });
                 count++;
             }
@@ -207,7 +226,6 @@ const App = () => {
     return list.find(h => h.reeks === num) || null;
   }, [heats, activeTab, settings]);
 
-  // Helper om altijd 10 velden te tonen bij Speed
   const speedSlots = useMemo(() => {
     if (activeTab !== 'speed') return currentHeat?.slots || [];
     const fullList = [];
@@ -230,12 +248,13 @@ const App = () => {
     nav: { display: 'flex', gap: '0.5rem', background: '#f5f5f5', padding: '0.2rem', borderRadius: '0.5rem' },
     navBtn: (active) => ({ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', backgroundColor: active ? '#fff' : 'transparent', color: active ? '#2563eb' : '#666', boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }),
     main: { flex: 1, padding: '1rem 2rem', maxWidth: '1200px', margin: '0 auto', width: '100%', overflowY: 'auto' },
-    card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', height: '100%' },
+    card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' },
     heatNav: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2rem', marginBottom: '1rem' },
     heatNum: { fontSize: '4rem', fontWeight: 900, lineHeight: 1 },
     list: { display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: 1 },
     listItem: { display: 'grid', gridTemplateColumns: '80px 1fr 1fr', alignItems: 'center', padding: '0.6rem 1.2rem', background: '#f9f9f9', borderRadius: '0.75rem', border: '1px solid #f0f0f0' },
-    btnPrimary: (color) => ({ width: '100%', padding: '1rem', borderRadius: '1rem', border: 'none', backgroundColor: color, color: '#fff', fontSize: '1rem', fontWeight: 900, cursor: 'pointer' })
+    btnPrimary: (color) => ({ width: '100%', padding: '1rem', borderRadius: '1rem', border: 'none', backgroundColor: color, color: '#fff', fontSize: '1rem', fontWeight: 900, cursor: 'pointer' }),
+    finishBtn: { backgroundColor: '#10b981', color: 'white', padding: '1.2rem', borderRadius: '1rem', border: 'none', fontWeight: 900, cursor: 'pointer', fontSize: '1.2rem', marginTop: '1rem', boxShadow: '0 4px 14px 0 rgba(16, 185, 129, 0.39)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }
   };
 
   return (
@@ -261,6 +280,12 @@ const App = () => {
             </div>
 
             <div style={styles.card}>
+              {currentHeat?.status === 'finished' && (
+                <div style={{ backgroundColor: '#f0fdf4', color: '#10b981', padding: '0.5rem', borderRadius: '0.5rem', textAlign: 'center', fontWeight: 800, marginBottom: '1rem', border: '1px solid #10b981' }}>
+                  ✓ DEZE REEKS IS REEDS VOLTOOID
+                </div>
+              )}
+              
               <div style={styles.heatNav}>
                 <button onClick={() => updateHeat(-1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
                 <div style={{ textAlign: 'center' }}>
@@ -279,6 +304,12 @@ const App = () => {
                   </div>
                 ))}
               </div>
+
+              {activeTab === 'speed' && currentHeat?.status !== 'finished' && (
+                <button onClick={finishHeat} style={styles.finishBtn}>
+                  <CheckCircle2 size={24} /> REEKS VOLTOOID
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -292,10 +323,16 @@ const App = () => {
               placeholder="Plak CSV data..." 
               style={{ width: '100%', height: '200px', borderRadius: '1rem', border: '1px solid #ddd', padding: '1rem', fontFamily: 'monospace', fontSize: '0.8rem' }}
             />
-            <button onClick={handleImport} disabled={isProcessing} style={{ ...styles.btnPrimary('#000'), marginTop: '1rem' }}>
-              {isProcessing ? "Verwerken..." : "IMPORTEER GEGEVENS"}
-            </button>
-            {status.msg && <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.5rem', backgroundColor: '#f0fdf4', fontSize: '0.85rem' }}>{status.msg}</div>}
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                <select value={importType} onChange={e => setImportType(e.target.value)} style={{ padding: '0.5rem', borderRadius: '0.5rem' }}>
+                    <option value="speed">Speed Import</option>
+                    <option value="freestyle">Freestyle Import</option>
+                </select>
+                <button onClick={handleImport} disabled={isProcessing} style={{ ...styles.btnPrimary('#000'), flex: 1 }}>
+                {isProcessing ? "Verwerken..." : "IMPORTEER GEGEVENS"}
+                </button>
+            </div>
+            {status.msg && <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.5rem', backgroundColor: status.type === 'error' ? '#fef2f2' : '#f0fdf4', color: status.type === 'error' ? '#ef4444' : '#10b981', fontSize: '0.85rem', fontWeight: 700 }}>{status.msg}</div>}
           </div>
         )}
 
@@ -309,7 +346,7 @@ const App = () => {
               </div>
             </div>
             
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingBottom: '1rem' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingBottom: '1rem', position: 'relative' }}>
               {speedSlots.map((s, i) => (
                 <div key={i} style={{ 
                   flex: 1, 
@@ -327,6 +364,26 @@ const App = () => {
                   <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#aaa', textAlign: 'right' }}>{skippers[s.skipperId]?.club || ""}</div>
                 </div>
               ))}
+
+              {/* OVERLAY BIJ VOLTOOIING OP HET GROTE SCHERM */}
+              {currentHeat?.status === 'finished' && (
+                <div style={{ 
+                    position: 'absolute', 
+                    inset: 0, 
+                    backgroundColor: 'rgba(16, 185, 129, 0.9)', 
+                    borderRadius: '1.5rem', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    color: 'white',
+                    zIndex: 10
+                }}>
+                  <Trophy size={120} />
+                  <div style={{ fontSize: '6rem', fontWeight: 900 }}>REEKS VOLTOOID</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 700, opacity: 0.8 }}>Wachten op volgende reeks...</div>
+                </div>
+              )}
             </div>
             <button onClick={() => setView('live')} style={{ position: 'absolute', bottom: '1rem', right: '1rem', border: 'none', background: '#eee', padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', opacity: 0.3 }}>Sluiten</button>
           </div>
