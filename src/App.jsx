@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch 
+  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc 
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  ChevronRight, ChevronLeft, Activity, Download, Info 
+  ChevronRight, ChevronLeft, Activity, Upload, AlertCircle, CheckCircle2
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATIE ---
@@ -20,7 +20,6 @@ const firebaseConfig = {
   appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
 
-// Global vars
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
 
@@ -40,7 +39,7 @@ const App = () => {
   const [importType, setImportType] = useState('speed');
   const [csvInput, setCsvInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [statusMsg, setStatusMsg] = useState(null);
+  const [status, setStatus] = useState({ type: null, msg: null });
 
   useEffect(() => {
     const init = async () => {
@@ -75,58 +74,135 @@ const App = () => {
     const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
     const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
 
-    const unsubS = onSnapshot(sRef, d => d.exists() && setSettings(d.data()));
+    const unsubS = onSnapshot(sRef, async (d) => {
+      if (d.exists()) {
+        setSettings(d.data());
+      } else {
+        // Document bestaat niet, maak het aan
+        await setDoc(sRef, settings);
+      }
+    }, (err) => console.error("Settings error:", err));
+
     const unsubSk = onSnapshot(skRef, s => {
       const d = {}; s.forEach(doc => d[doc.id] = doc.data());
       setSkippers(d);
-    });
+    }, (err) => console.error("Skippers error:", err));
+
     const unsubH = onSnapshot(hRef, s => {
       setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
-    });
+    }, (err) => console.error("Heats error:", err));
 
     return () => { unsubS(); unsubSk(); unsubH(); };
   }, [isAuthReady, user]);
 
   const updateHeat = async (delta) => {
-    if (!db) return;
+    if (!db || !user) return;
     const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
     const ref = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
-    await updateDoc(ref, { [key]: Math.max(1, (settings[key] || 1) + delta) });
+    
+    try {
+      const docSnap = await getDoc(ref);
+      if (!docSnap.exists()) {
+        await setDoc(ref, { ...settings, [key]: Math.max(1, (settings[key] || 1) + delta) });
+      } else {
+        await updateDoc(ref, { [key]: Math.max(1, (settings[key] || 1) + delta) });
+      }
+    } catch (e) {
+      console.error("Update failed.", e);
+      setStatus({ type: 'error', msg: "Update mislukt. Controleer je Database Rules." });
+    }
   };
 
   const handleImport = async () => {
-    if (!csvInput.trim() || !db) return;
+    if (!csvInput.trim() || !db || !user) {
+        setStatus({ type: 'error', msg: "Geen data of niet ingelogd." });
+        return;
+    }
     setIsProcessing(true);
+    setStatus({ type: 'info', msg: "Bezig met verwerken..." });
+
     try {
-      const rows = csvInput.split('\n').filter(r => r.trim()).map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-      if (rows.length > 0 && isNaN(parseInt(rows[0][0]))) rows.shift();
+      const lines = csvInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
 
       const batch = writeBatch(db);
+      let count = 0;
+
       for (const row of rows) {
-        const reeksNum = parseInt(row[0]);
-        if (isNaN(reeksNum)) continue;
-        
         if (importType === 'speed') {
-          const slots = [];
-          for (let i = 0; i < 10; i++) {
-            const club = row[3 + (i * 2)], naam = row[4 + (i * 2)];
-            if (naam) {
-              const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
-              batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam, club });
-              slots.push({ veld: i + 1, skipperId: sid });
+            // Logica voor SP_deelnemers.csv: Reeks is kolom 0, daarna Velden (3,4), (5,6), etc.
+            const reeksNum = parseInt(row[0]);
+            if (isNaN(reeksNum)) continue;
+
+            const heatId = `speed_${reeksNum}`;
+            const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId);
+            const slots = [];
+
+            // We lopen door de kolommen voor veld 1 t/m 10
+            for (let v = 1; v <= 10; v++) {
+                const clubCol = 3 + (v - 1) * 2;
+                const nameCol = 4 + (v - 1) * 2;
+                
+                const club = row[clubCol];
+                const naam = row[nameCol];
+
+                if (naam && naam.trim() !== "" && club) {
+                    const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
+                    const skipperRef = doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid);
+                    batch.set(skipperRef, { id: sid, naam, club });
+                    slots.push({ veld: `Veld ${v}`, skipperId: sid });
+                }
             }
-          }
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', `speed_${reeksNum}`), { type: 'speed', reeks: reeksNum, onderdeel: row[1] || 'Speed', slots });
+
+            if (slots.length > 0) {
+                batch.set(heatRef, { 
+                    type: 'speed', 
+                    reeks: reeksNum, 
+                    onderdeel: row[1] || 'Speed', 
+                    slots: slots 
+                });
+                count++;
+            }
         } else {
-          const sid = `fs_${row[4]}_${row[3]}`.replace(/[^a-zA-Z0-9]/g, '_');
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam: row[4], club: row[3] });
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', `fs_${reeksNum}`), { type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', slots: [{ veld: row[2], skipperId: sid }] });
+            // Logica voor FS_deelnemers.csv: reeks, uur, veld, club, skipper
+            const reeksIdx = headers.indexOf('reeks');
+            const clubIdx = headers.indexOf('club');
+            const nameIdx = headers.indexOf('skipper');
+            const veldIdx = headers.indexOf('veld');
+
+            const reeksNum = parseInt(row[reeksIdx]);
+            if (isNaN(reeksNum)) continue;
+
+            const club = row[clubIdx];
+            const naam = row[nameIdx];
+            const veld = row[veldIdx] || "Veld A";
+
+            if (naam && club) {
+                const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
+                const skipperRef = doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid);
+                batch.set(skipperRef, { id: sid, naam, club });
+
+                const heatId = `fs_${reeksNum}`;
+                const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId);
+                batch.set(heatRef, { 
+                    type: 'freestyle', 
+                    reeks: reeksNum, 
+                    onderdeel: 'Freestyle', 
+                    slots: [{ veld, skipperId: sid }] 
+                });
+                count++;
+            }
         }
       }
+
       await batch.commit();
-      setStatusMsg("Import geslaagd!");
+      setStatus({ type: 'success', msg: `Import geslaagd! ${count} reeksen verwerkt.` });
       setCsvInput('');
-    } catch (e) { setStatusMsg("Fout bij import."); }
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: `Fout: ${e.message}. Controleer je Database Rules!` });
+    }
     setIsProcessing(false);
   };
 
@@ -166,7 +242,7 @@ const App = () => {
             <button onClick={() => setView('display')} style={styles.navBtn(view === 'display')}>Scherm</button>
           </div>
         </div>
-        <div style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 900, background: '#f0fdf4', padding: '0.5rem 1rem', borderRadius: '1rem' }}>CLOUD SYNC</div>
+        <div style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 900, background: '#f0fdf4', padding: '0.5rem 1rem', borderRadius: '1rem' }}>SYNC OK</div>
       </header>
 
       <main style={styles.main}>
@@ -179,7 +255,7 @@ const App = () => {
 
             <div style={styles.card}>
               <div style={{ color: '#999', fontWeight: 900, fontSize: '0.8rem' }}>HUIDIGE REEKS</div>
-              <h2 style={{ fontSize: '2rem', fontWeight: 900, margin: '0.5rem 0' }}>{currentHeat?.onderdeel || "Geen reeks gevonden"}</h2>
+              <h2 style={{ fontSize: '2rem', fontWeight: 900, margin: '0.5rem 0' }}>{currentHeat?.onderdeel || (activeTab === 'speed' ? "Speed" : "Freestyle")}</h2>
               
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3rem' }}>
                 <button onClick={() => updateHeat(-1)} style={{ border: 'none', background: '#f0f0f0', width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft/></button>
@@ -190,19 +266,13 @@ const App = () => {
               <div style={styles.grid}>
                 {currentHeat?.slots?.map((s, i) => (
                   <div key={i} style={styles.slot}>
-                    <div style={{ fontSize: '0.6rem', fontWeight: 900, color: '#aaa' }}>VELD {s.veld}</div>
+                    <div style={{ fontSize: '0.6rem', fontWeight: 900, color: '#aaa' }}>{String(s.veld).toUpperCase()}</div>
                     <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{skippers[s.skipperId]?.naam || "---"}</div>
                     <div style={{ fontSize: '0.7rem', color: '#888' }}>{skippers[s.skipperId]?.club || "---"}</div>
                   </div>
                 ))}
               </div>
-
-              <button 
-                onClick={() => updateHeat(1)} 
-                style={styles.btnPrimary(activeTab === 'speed' ? '#2563eb' : '#7c3aed')}
-              >
-                VOLGENDE REEKS
-              </button>
+              {(!currentHeat || !currentHeat.slots) && <div style={{marginTop: '2rem', color: '#666'}}>Geen deelnemers gevonden voor deze reeks.</div>}
             </div>
           </div>
         )}
@@ -210,20 +280,46 @@ const App = () => {
         {view === 'management' && (
           <div style={{ maxWidth: '800px', margin: '0 auto' }}>
             <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '2rem' }}>Data Import</h2>
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-              <button onClick={() => setImportType('speed')} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: importType === 'speed' ? '#000' : '#eee', color: importType === 'speed' ? '#fff' : '#000' }}>Speed</button>
-              <button onClick={() => setImportType('freestyle')} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: importType === 'freestyle' ? '#000' : '#eee', color: importType === 'freestyle' ? '#fff' : '#000' }}>Freestyle</button>
+            
+            <div style={{ background: '#fefce8', border: '1px solid #fef08a', padding: '1rem', borderRadius: '1rem', marginBottom: '2rem', fontSize: '0.9rem' }}>
+                <strong>Tip:</strong><br/>
+                - <strong>Speed:</strong> Kopieer de rijen uit <code>SP_deelnemers.csv</code> (vanaf reeks 1).<br/>
+                - <strong>Freestyle:</strong> Gebruik headers: <code>reeks, uur, veld, club, skipper</code>.
             </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <button onClick={() => setImportType('speed')} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: importType === 'speed' ? '#2563eb' : '#eee', color: importType === 'speed' ? '#fff' : '#000' }}>Speed</button>
+              <button onClick={() => setImportType('freestyle')} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: importType === 'freestyle' ? '#7c3aed' : '#eee', color: importType === 'freestyle' ? '#fff' : '#000' }}>Freestyle</button>
+            </div>
+
             <textarea 
               value={csvInput} 
               onChange={e => setCsvInput(e.target.value)} 
-              placeholder="Plak CSV rijen hier..." 
+              placeholder={importType === 'speed' ? "Plak hier je Speed CSV rijen..." : "reeks,veld,club,skipper\n1,Veld A,ANTWERP ROPES,Jona Dieltiens"} 
               style={{ width: '100%', height: '300px', borderRadius: '1rem', border: '1px solid #ddd', padding: '1rem', fontFamily: 'monospace' }}
             />
-            <button onClick={handleImport} disabled={isProcessing} style={{ ...styles.btnPrimary('#000'), marginTop: '1rem' }}>
+
+            <button onClick={handleImport} disabled={isProcessing} style={{ ...styles.btnPrimary('#000'), marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              {isProcessing ? <Activity style={{ animation: 'spin 1s linear infinite' }} size={20} /> : <Upload size={20} />}
               {isProcessing ? "Verwerken..." : "IMPORTEER GEGEVENS"}
             </button>
-            {statusMsg && <div style={{ marginTop: '1rem', fontWeight: 'bold', color: '#2563eb' }}>{statusMsg}</div>}
+
+            {status.msg && (
+              <div style={{ 
+                marginTop: '1.5rem', 
+                padding: '1rem', 
+                borderRadius: '1rem', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem',
+                backgroundColor: status.type === 'error' ? '#fef2f2' : (status.type === 'success' ? '#f0fdf4' : '#eff6ff'),
+                color: status.type === 'error' ? '#991b1b' : (status.type === 'success' ? '#166534' : '#1e40af'),
+                border: `1px solid ${status.type === 'error' ? '#fecaca' : (status.type === 'success' ? '#bbf7d0' : '#bfdbfe')}`
+              }}>
+                {status.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
+                {status.msg}
+              </div>
+            )}
           </div>
         )}
 
@@ -236,19 +332,18 @@ const App = () => {
                 <div style={{ fontSize: '12vw', fontWeight: 900, lineHeight: 1 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
               </div>
             </div>
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1.5rem', marginTop: '3rem' }}>
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginTop: '3rem' }}>
               {currentHeat?.slots?.map((s, i) => (
                 <div key={i} style={{ border: '3px solid #f0f0f0', borderRadius: '3rem', padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div style={{ fontSize: '3rem', fontWeight: 900, color: activeTab === 'speed' ? '#2563eb' : '#7c3aed' }}>{s.veld}</div>
                   <div>
                     <div style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.1 }}>{skippers[s.skipperId]?.naam || "---"}</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#aaa', marginTop: '0.5rem' }}>{skippers[s.skipperId]?.club || "---"}</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#aaa', marginTop: '0.5rem' }}>{skippers[s.skipperId]?.club || "---"}</div>
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: '2rem', background: '#000', color: '#fff', padding: '2rem', borderRadius: '3rem', fontSize: '2.5rem', fontWeight: 900, textAlign: 'center' }}>{settings.announcement}</div>
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '1rem', right: '1rem', border: 'none', background: '#eee', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}>Sluiten</button>
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '1rem', right: '1rem', border: 'none', background: '#eee', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}>X</button>
           </div>
         )}
       </main>
