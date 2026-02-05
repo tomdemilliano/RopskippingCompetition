@@ -107,18 +107,15 @@ const App = () => {
     return list.find(h => h.reeks === num) || null;
   }, [heats, activeTab, settings]);
 
-  const nextHeat = useMemo(() => {
-    const list = heats.filter(h => h.type === activeTab);
-    const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
-    return list.find(h => h.reeks === num + 1) || null;
-  }, [heats, activeTab, settings]);
-
-  // Berekening van het tijdsverschil in minuten
   const timeDifferenceInfo = useMemo(() => {
     if (!currentHeat?.uur || !currentHeat.uur.includes(':')) return null;
 
     try {
-      const [h, m] = currentHeat.uur.split(':').map(Number);
+      const parts = currentHeat.uur.split(':');
+      const h = parseInt(parts[0]);
+      const m = parseInt(parts[1]);
+      if (isNaN(h) || isNaN(m)) return null;
+
       const plannedTime = new Date(currentTime);
       plannedTime.setHours(h, m, 0, 0);
 
@@ -209,163 +206,132 @@ const App = () => {
 
   const styles = {
     container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', color: '#000', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' },
-    header: { display: 'flex', justifyContent: 'space-between', padding: '0.75rem 2rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
-    main: { flex: 1, padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
-    card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', width: '100%', maxWidth: '800px', backgroundColor: '#fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
+    header: { display: 'flex', justifyContent: 'space-between', padding: '0.5rem 1.5rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
+    main: { flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+    card: { border: '1px solid #eee', borderRadius: '1rem', padding: '1rem', width: '100%', maxWidth: '700px', backgroundColor: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' },
     displayOverlay: { 
       position: 'fixed', 
       inset: 0, 
       backgroundColor: '#fff', 
       zIndex: 1000, 
-      padding: '1.5rem', 
+      padding: '0.75rem 1.25rem', 
       display: 'flex', 
       flexDirection: 'column', 
       overflow: 'hidden',
       boxSizing: 'border-box'
-    },
-    diffBadge: (info) => ({
-      padding: '0.2rem 0.6rem',
-      borderRadius: '0.5rem',
-      fontWeight: '900',
-      fontSize: '1rem',
-      backgroundColor: info.isBehind ? '#fee2e2' : '#dcfce7',
-      color: info.isBehind ? '#dc2626' : '#16a34a',
-      display: 'inline-flex',
-      alignItems: 'center',
-      marginLeft: '0.5rem'
-    })
+    }
   };
 
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          <span style={{ fontWeight: 900, fontSize: '1.2rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></span>
-          <nav style={{ display: 'flex', gap: '0.5rem', background: '#f5f5f5', padding: '0.25rem', borderRadius: '0.5rem' }}>
-            <button onClick={() => setView('live')} style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, backgroundColor: view === 'live' ? '#fff' : 'transparent' }}>Live</button>
-            <button onClick={() => setView('management')} style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, backgroundColor: view === 'management' ? '#fff' : 'transparent' }}>Beheer</button>
-            <button onClick={() => setView('display')} style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, backgroundColor: view === 'display' ? '#fff' : 'transparent' }}>Scherm</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontWeight: 900, fontSize: '1rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></span>
+          <nav style={{ display: 'flex', gap: '0.25rem', background: '#f5f5f5', padding: '0.2rem', borderRadius: '0.5rem' }}>
+            <button onClick={() => setView('live')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'live' ? '#fff' : 'transparent' }}>Live</button>
+            <button onClick={() => setView('management')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'management' ? '#fff' : 'transparent' }}>Beheer</button>
+            <button onClick={() => setView('display')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'display' ? '#fff' : 'transparent' }}>Scherm</button>
           </nav>
         </div>
-        <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+        <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>{currentTime.toLocaleTimeString('nl-BE')}</div>
       </header>
 
       <main style={styles.main}>
         {view === 'live' && (
           <div style={styles.card}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
-              <button onClick={() => setActiveTab('speed')} style={{ padding: '0.75rem 2rem', borderRadius: '0.75rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#f5f5f5', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
-              <button onClick={() => setActiveTab('freestyle')} style={{ padding: '0.75rem 2rem', borderRadius: '0.75rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#7c3aed' : '#f5f5f5', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button onClick={() => setActiveTab('speed')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#f5f5f5', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#7c3aed' : '#f5f5f5', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
             </div>
 
-            <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999' }}>HUIDIGE REEKS</div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2rem' }}>
-                <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', padding: '1rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft /></button>
-                <span style={{ fontSize: '4rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
-                <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '1rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight /></button>
+            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#999' }}>REEKS</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
+                <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
+                <span style={{ fontSize: '3rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+                <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight size={20}/></button>
               </div>
-              {currentHeat?.uur && <div style={{ fontWeight: 800, color: '#666' }}>Gepland: {currentHeat.uur} u.</div>}
+              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#666' }}>Gepland: {currentHeat?.uur || "--:--"}</div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {speedSlots.map((s, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', padding: '0.75rem 1.5rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '1rem', border: s.empty ? '1px dashed #eee' : '1px solid #eee' }}>
-                  <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.8rem' }}>{s.veld}</span>
-                  <span style={{ fontWeight: 800 }}>{skippers[s.skipperId]?.naam || (s.empty ? "" : "...")}</span>
-                  <span style={{ textAlign: 'right', color: '#999', fontSize: '0.8rem' }}>{skippers[s.skipperId]?.club || ""}</span>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr', padding: '0.5rem 1rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '0.6rem', border: s.empty ? '1px dashed #eee' : '1px solid #eee' }}>
+                  <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.7rem' }}>{s.veld}</span>
+                  <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{skippers[s.skipperId]?.naam || (s.empty ? "" : "...")}</span>
+                  <span style={{ textAlign: 'right', color: '#999', fontSize: '0.75rem' }}>{skippers[s.skipperId]?.club || ""}</span>
                 </div>
               ))}
             </div>
 
-            {currentHeat?.status !== 'finished' && (
-              <button onClick={finishHeat} style={{ width: '100%', marginTop: '2rem', padding: '1.25rem', borderRadius: '1rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900, fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                <CheckCircle2 /> REEKS VOLTOOID
-              </button>
-            )}
+            <button onClick={finishHeat} style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', borderRadius: '0.75rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <CheckCircle2 size={18}/> VOLTOOID
+            </button>
           </div>
         )}
 
         {view === 'management' && (
           <div style={styles.card}>
-            <h2 style={{ fontWeight: 900, marginBottom: '1rem' }}>Importeer Data (CSV)</h2>
-            <textarea value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder="Reeks, Onderdeel, Uur, Club1, Skipper1..." style={{ width: '100%', height: '200px', borderRadius: '1rem', border: '1px solid #eee', padding: '1rem', marginBottom: '1rem' }} />
-            <button onClick={handleImport} style={{ width: '100%', padding: '1rem', borderRadius: '0.75rem', border: 'none', background: '#000', color: '#fff', fontWeight: 800 }}>START IMPORT</button>
-            {status.msg && <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.5rem', background: status.type === 'success' ? '#f0fdf4' : '#fef2f2', color: status.type === 'success' ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{status.msg}</div>}
+            <h2 style={{ fontWeight: 900, marginBottom: '0.5rem' }}>Import</h2>
+            <textarea value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder="CSV data..." style={{ width: '100%', height: '150px', borderRadius: '0.5rem', border: '1px solid #eee', padding: '0.5rem' }} />
+            <button onClick={handleImport} style={{ width: '100%', marginTop: '0.5rem', padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: '#000', color: '#fff', fontWeight: 800 }}>IMPORT</button>
           </div>
         )}
 
         {view === 'display' && (
           <div style={styles.displayOverlay}>
-            {/* Header Sectie - Geoptimaliseerd voor ruimte */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
               <div>
-                <h1 style={{ fontSize: '2.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
-                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1rem' }}>ROPESKIPPING COMPETITION</div>
+                <h1 style={{ fontSize: '1.8rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
+                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '0.8rem' }}>ROPESKIPPING LIVE</div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-                {/* Geplande Tijd Sectie */}
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ color: '#64748b', fontWeight: 800, fontSize: '0.9rem', marginBottom: '2px' }}>GEPLAND TIJDSTIP</div>
-                  <div style={{ fontWeight: 900, color: '#fff', background: '#000', padding: '0.4rem 1rem', borderRadius: '0.6rem', fontSize: '1.5rem', lineHeight: 1 }}>
-                    {currentHeat?.uur || "--:--"} u.
-                  </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                {/* DEBUG EN GEPLAND BLOK */}
+                <div style={{ textAlign: 'right', backgroundColor: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#64748b' }}>DEBUG GEPLAND</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>{currentHeat?.uur || "GEEN DATA"}</div>
                 </div>
 
-                {/* Klok en Vertraging */}
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                     <div style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
-                     {timeDifferenceInfo && (
-                        <div style={styles.diffBadge(timeDifferenceInfo)}>
-                          {timeDifferenceInfo.label}m
-                        </div>
-                     )}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#94a3b8' }}>LIVE TIJD</div>
+                <div style={{ textAlign: 'right', backgroundColor: '#000', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+                  <div style={{ fontSize: '0.6rem', fontWeight: 800, opacity: 0.7 }}>LIVE TIJD</div>
                 </div>
               </div>
             </div>
 
-            {/* Reeks Indicator - Iets compacter */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.5rem 1.5rem', borderRadius: '1rem', marginBottom: '1rem', border: '2px solid #e2e8f0' }}>
-               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#64748b' }}>HUIDIGE REEKS</span>
-               <span style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.4rem 1rem', borderRadius: '0.6rem', marginBottom: '0.5rem', border: '1px solid #e2e8f0' }}>
+               <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#64748b' }}>REEKS</span>
+               <span style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+               {timeDifferenceInfo && (
+                  <div style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 900, backgroundColor: timeDifferenceInfo.isBehind ? '#fee2e2' : '#dcfce7', color: timeDifferenceInfo.isBehind ? '#dc2626' : '#16a34a' }}>
+                    {timeDifferenceInfo.label}m vertraging
+                  </div>
+               )}
             </div>
 
-            {/* De Deelnemerslijst - Schaling verbeterd om op scherm te passen */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem', minHeight: 0 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem', overflow: 'hidden' }}>
               {speedSlots.map((s, i) => (
                 <div key={i} style={{ 
                   flex: 1, 
                   display: 'grid', 
-                  gridTemplateColumns: '120px 1fr 1fr', 
+                  gridTemplateColumns: '80px 1.5fr 1fr', 
                   alignItems: 'center', 
-                  padding: '0 1.5rem', 
-                  borderRadius: '0.75rem', 
+                  padding: '0 1rem', 
+                  borderRadius: '0.5rem', 
                   border: '1px solid #f1f5f9',
-                  backgroundColor: s.empty ? 'transparent' : '#fff',
-                  opacity: s.empty ? 0.1 : 1,
-                  minHeight: 0,
-                  boxShadow: s.empty ? 'none' : '0 1px 2px rgba(0,0,0,0.05)'
+                  backgroundColor: s.empty ? 'rgba(0,0,0,0.02)' : '#fff',
+                  opacity: s.empty ? 0.3 : 1,
+                  boxShadow: s.empty ? 'none' : '0 1px 2px rgba(0,0,0,0.02)'
                 }}>
-                  <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
-                  <span style={{ fontSize: '1.7rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.naam || ""}</span>
-                  <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right' }}>{skippers[s.skipperId]?.club || ""}</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.naam || ""}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.club || ""}</span>
                 </div>
               ))}
             </div>
 
-            {currentHeat?.status === 'finished' && (
-              <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(16, 185, 129, 0.98)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 100, borderRadius: 'inherit' }}>
-                <Trophy size={80} />
-                <h2 style={{ fontSize: '3rem', fontWeight: 900, margin: 0 }}>REEKS VOLTOOID</h2>
-                <p style={{ fontSize: '1.2rem', fontWeight: 700, opacity: 0.8 }}>Even geduld voor de volgende reeks...</p>
-              </div>
-            )}
-
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, opacity: 0.3 }}>X</button>
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.25rem', left: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.6rem', border: 'none', background: '#f1f5f9', cursor: 'pointer', opacity: 0.2 }}>TERUG</button>
           </div>
         )}
       </main>
