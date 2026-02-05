@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import './index.css'
+//import './index.css'
 
 // Mock globals voor lokale ontwikkeling als ze niet bestaan
 if (typeof window.__firebase_config === 'undefined') {
