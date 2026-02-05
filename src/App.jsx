@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, collection, doc, onSnapshot, updateDoc, 
-  writeBatch, getDocs, signInAnonymously 
+  writeBatch, getDocs 
 } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { 
+  getAuth, signInAnonymously, onAuthStateChanged 
+} from 'firebase/auth';
 import { 
   Trophy, ChevronRight, ChevronLeft, CheckCircle2, 
-  Megaphone, Activity, Zap, Star, UploadCloud, 
-  Loader2, Database, Monitor, Download, Info 
+  Megaphone, Activity, Zap, Star, Database, Monitor, Download, Info 
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -23,7 +24,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-v5-final';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-v6-fixed';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -43,7 +44,7 @@ const App = () => {
   const [statusMsg, setStatusMsg] = useState(null);
 
   useEffect(() => {
-    signInAnonymously(auth).catch(console.error);
+    signInAnonymously(auth).catch(err => console.error("Auth error:", err));
     return onAuthStateChanged(auth, setUser);
   }, []);
 
@@ -67,13 +68,13 @@ const App = () => {
 
   const downloadTemplate = (type) => {
     const content = type === 'speed' 
-      ? "reeks,onderdeel,uur,club1,skipper1,club2,skipper2,club3,skipper3,club4,skipper4,club5,skipper5,club6,skipper6,club7,skipper7,club8,skipper8,club9,skipper9,club10,skipper10\n1,Speed 30s,14:00,Club A,Naam 1,Club B,Naam 2,Club C,Naam 3,,,,,,,,,,,,,,,"
-      : "reeks,uur,veld,club,skipper\n1,15:00,Veld A,Club X,Naam Springer\n2,15:02,Veld B,Club Y,Naam Springer";
+      ? "reeks,onderdeel,uur,club1,skipper1,club2,skipper2,club3,skipper3,club4,skipper4,club5,skipper5,club6,skipper6,club7,skipper7,club8,skipper8,club9,skipper9,club10,skipper10\n1,Speed 30s,14:05,JOLLY JUMPERS,BOLLUE Estelline,SKIPPIES,GOVAERS Nona,ANTWERP ROPES,STUER Vincent,SKIPOUDENBURG,VERMEERSCH Zita,ROPE SKIPPING OOSTENDE,STAPPERS Lies,ROM SKIPPERS MECHELEN,WIJCKMANS Anton,ROM SKIPPERS MECHELEN,NAHIMANA Eva,ZERO SKIP,VANDENBOSCH Aurelia,SKIP UP,OTTO Fenn,JUMP UP,PEETERS Lorytz"
+      : "reeks,uur,veld,club,skipper\n1,15:40,Veld A,ROM SKIPPERS MECHELEN,DONS Oona\n2,15:42,Veld B,GYM WESTERLO,JANSSENS Lies";
     const blob = new Blob([content], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `voorbeeld_${type}.csv`;
+    a.download = `ropescore_sjabloon_${type}.csv`;
     a.click();
   };
 
@@ -82,7 +83,7 @@ const App = () => {
     setIsProcessing(true);
     setStatusMsg({ type: 'info', text: 'Data verwerken...' });
     try {
-      const rows = csvInput.split('\n').map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      const rows = csvInput.split('\n').filter(r => r.trim()).map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
       const batch = writeBatch(db);
       let count = 0;
 
@@ -93,8 +94,8 @@ const App = () => {
           const slots = [];
           for (let i = 0; i < 10; i++) {
             const club = row[3 + (i * 2)], naam = row[4 + (i * 2)];
-            if (naam) {
-              const sid = `s_${naam}_${club}`.replace(/\s+/g, '_');
+            if (naam && naam !== "") {
+              const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
               batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam, club });
               slots.push({ veld: i + 1, skipperId: sid });
             }
@@ -107,7 +108,7 @@ const App = () => {
       } else {
         rows.forEach(row => {
           if (!row[0] || isNaN(row[0])) return;
-          const sid = `fs_${row[4]}_${row[3]}`.replace(/\s+/g, '_');
+          const sid = `fs_${row[4]}_${row[3]}`.replace(/[^a-zA-Z0-9]/g, '_');
           const heatId = `fs_${row[0]}`;
           batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam: row[4], club: row[3] });
           batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId), {
@@ -117,18 +118,13 @@ const App = () => {
         });
       }
       await batch.commit();
-      setStatusMsg({ type: 'success', text: `${count} reeksen geladen.` });
+      setStatusMsg({ type: 'success', text: `${count} reeksen succesvol geladen.` });
       setCsvInput('');
     } catch (e) {
-      setStatusMsg({ type: 'error', text: 'Fout bij import.' });
+      console.error(e);
+      setStatusMsg({ type: 'error', text: 'Fout bij import. Controleer je CSV.' });
     } finally { setIsProcessing(false); }
   };
-
-  const currentHeat = useMemo(() => {
-    const list = activeTab === 'speed' ? heats.filter(h => h.type === 'speed') : heats.filter(h => h.type === 'freestyle');
-    const num = activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat;
-    return list.find(h => h.reeks === num) || null;
-  }, [heats, activeTab, settings]);
 
   const updateHeat = async (delta) => {
     const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
@@ -137,173 +133,126 @@ const App = () => {
     });
   };
 
-  const styles = {
-    container: { display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b' },
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem', backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' },
-    nav: { display: 'flex', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.25rem', borderRadius: '0.75rem' },
-    navButton: (active) => ({
-      padding: '0.5rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', textTransform: 'uppercase', 
-      backgroundColor: active ? '#ffffff' : 'transparent', color: active ? '#2563eb' : '#64748b', boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-    }),
-    main: { flex: 1, padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%' },
-    card: { backgroundColor: '#ffffff', borderRadius: '1.5rem', border: '1px solid #e2e8f0', padding: '2rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginTop: '2rem' },
-    slot: { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '1.25rem', borderRadius: '1rem', textAlign: 'left' },
-    heatDisplay: { fontSize: '10rem', fontWeight: '900', lineHeight: '1', margin: '1rem 0' },
-    buttonPrimary: (color) => ({
-      width: '100%', padding: '1.5rem', borderRadius: '1rem', border: 'none', cursor: 'pointer', backgroundColor: color, color: '#ffffff', fontWeight: '900', fontSize: '1.25rem', textTransform: 'uppercase', marginTop: '2rem', transition: 'opacity 0.2s'
-    })
+  const currentHeat = useMemo(() => {
+    const list = activeTab === 'speed' ? heats.filter(h => h.type === 'speed') : heats.filter(h => h.type === 'freestyle');
+    const num = activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat;
+    return list.find(h => h.reeks === num) || null;
+  }, [heats, activeTab, settings]);
+
+  const mainStyles = {
+    fontFamily: '"Inter", system-ui, sans-serif',
+    backgroundColor: '#ffffff',
+    color: '#000000',
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column'
   };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-0.05em' }}>RopeScore <span style={{ color: '#2563eb' }}>Pro</span></h1>
-          <nav style={styles.nav}>
-            <button style={styles.navButton(view === 'live')} onClick={() => setView('live')}>Wedstrijd</button>
-            <button style={styles.navButton(view === 'management')} onClick={() => setView('management')}>Wedstrijdbeheer</button>
-            <button style={styles.navButton(view === 'display')} onClick={() => setView('display')}>Display</button>
-          </nav>
+    <div style={mainStyles}>
+      {/* HEADER */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 30px', borderBottom: '2px solid #eee', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
+          <h2 style={{ margin: 0, fontWeight: 900, fontSize: '1.2rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></h2>
+          <div style={{ display: 'flex', gap: '5px', background: '#f0f0f0', padding: '5px', borderRadius: '10px' }}>
+            <button onClick={() => setView('live')} style={{ padding: '8px 20px', border: 'none', borderRadius: '7px', cursor: 'pointer', fontWeight: 700, background: view === 'live' ? '#fff' : 'transparent', color: view === 'live' ? '#2563eb' : '#666' }}>Wedstrijd</button>
+            <button onClick={() => setView('management')} style={{ padding: '8px 20px', border: 'none', borderRadius: '7px', cursor: 'pointer', fontWeight: 700, background: view === 'management' ? '#fff' : 'transparent', color: view === 'management' ? '#2563eb' : '#666' }}>Beheer</button>
+            <button onClick={() => setView('display')} style={{ padding: '8px 20px', border: 'none', borderRadius: '7px', cursor: 'pointer', fontWeight: 700, background: view === 'display' ? '#fff' : 'transparent', color: view === 'display' ? '#2563eb' : '#666' }}>Groot Scherm</button>
+          </div>
         </div>
-        <div style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase' }}>● Verbonden met Cloud</div>
-      </header>
+        <div style={{ color: '#10b981', fontWeight: 800, fontSize: '0.8rem' }}>LIVE CLOUD SYNC</div>
+      </div>
 
-      <main style={styles.main}>
+      <div style={{ flex: 1, padding: '40px' }}>
         {view === 'live' && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ marginBottom: '2rem' }}>
-              <button 
-                onClick={() => setActiveTab('speed')}
-                style={{ padding: '1rem 2rem', borderRadius: '1rem 0 0 1rem', border: '1px solid #e2e8f0', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#fff', color: activeTab === 'speed' ? '#fff' : '#64748b', fontWeight: '800' }}>
-                SPEED
-              </button>
-              <button 
-                onClick={() => setActiveTab('freestyle')}
-                style={{ padding: '1rem 2rem', borderRadius: '0 1rem 1rem 0', border: '1px solid #e2e8f0', backgroundColor: activeTab === 'freestyle' ? '#7c3aed' : '#fff', color: activeTab === 'freestyle' ? '#fff' : '#64748b', fontWeight: '800' }}>
-                FREESTYLE
-              </button>
+          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '30px' }}>
+              <button onClick={() => setActiveTab('speed')} style={{ width: '200px', padding: '15px', border: '1px solid #ddd', borderRadius: '15px 0 0 15px', fontWeight: 900, cursor: 'pointer', background: activeTab === 'speed' ? '#2563eb' : '#fff', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} style={{ width: '200px', padding: '15px', border: '1px solid #ddd', borderRadius: '0 15px 15px 0', fontWeight: 900, cursor: 'pointer', background: activeTab === 'freestyle' ? '#7c3aed' : '#fff', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
             </div>
 
-            <div style={styles.card}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: '900', color: '#1e293b' }}>{currentHeat?.onderdeel || "GEEN DATA"}</h2>
+            <div style={{ border: '2px solid #eee', borderRadius: '30px', padding: '40px', textAlign: 'center' }}>
+              <h3 style={{ margin: 0, color: '#666', fontSize: '1rem', textTransform: 'uppercase' }}>Huidige Reeks</h3>
+              <h1 style={{ margin: '10px 0', fontSize: '2.5rem', fontWeight: 900 }}>{currentHeat?.onderdeel || "Einde Programma"}</h1>
               
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3rem' }}>
-                <button onClick={() => updateHeat(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1' }}><ChevronLeft size={64} /></button>
-                <div style={styles.heatDisplay}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
-                <button onClick={() => updateHeat(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1' }}><ChevronRight size={64} /></button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '50px', margin: '40px 0' }}>
+                <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: '80px', height: '80px', cursor: 'pointer' }}><ChevronLeft size={40}/></button>
+                <div style={{ fontSize: '12rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
+                <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: '80px', height: '80px', cursor: 'pointer' }}><ChevronRight size={40}/></button>
               </div>
 
-              <div style={styles.grid}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '15px' }}>
                 {currentHeat?.slots?.map((slot, i) => {
                   const s = skippers[slot.skipperId] || { naam: "---", club: "---" };
                   return (
-                    <div key={i} style={styles.slot}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', marginBottom: '0.5rem' }}>VELD {slot.veld}</div>
-                      <div style={{ fontWeight: '900', color: '#000', fontSize: '1rem', textTransform: 'uppercase' }}>{s.naam}</div>
-                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#64748b' }}>{s.club}</div>
+                    <div key={i} style={{ padding: '20px', border: '1px solid #eee', borderRadius: '15px', background: '#fafafa', textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#bbb', marginBottom: '5px' }}>VELD {slot.veld}</div>
+                      <div style={{ fontWeight: 900, color: '#000', fontSize: '0.9rem' }}>{s.naam}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#888', fontWeight: 700 }}>{s.club}</div>
                     </div>
                   );
                 })}
               </div>
 
-              <button 
-                onClick={() => updateHeat(1)}
-                style={styles.buttonPrimary(activeTab === 'speed' ? '#2563eb' : '#7c3aed')}>
-                Volgende Reeks
-              </button>
+              <button onClick={() => updateHeat(1)} style={{ width: '100%', marginTop: '40px', padding: '25px', borderRadius: '20px', border: 'none', background: activeTab === 'speed' ? '#2563eb' : '#7c3aed', color: '#fff', fontSize: '1.5rem', fontWeight: 900, cursor: 'pointer', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' }}>VOLGENDE REEKS</button>
             </div>
           </div>
         )}
 
         {view === 'management' && (
-          <div style={styles.card}>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '900', marginBottom: '1.5rem' }}>DATA MANAGEMENT</h2>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' }}>
-              <div style={{ borderRight: '1px solid #e2e8f0', paddingRight: '2rem' }}>
-                <h3 style={{ fontSize: '0.75rem', fontWeight: '900', color: '#94a3b8', marginBottom: '1rem' }}>STAP 1: DOWNLOAD SJABLOON</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <button onClick={() => downloadTemplate('speed')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '1rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontWeight: '700' }}>
-                    <Download size={16} /> Speed Template (.csv)
-                  </button>
-                  <button onClick={() => downloadTemplate('freestyle')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '1rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontWeight: '700' }}>
-                    <Download size={16} /> Freestyle Template (.csv)
-                  </button>
-                </div>
-
-                <div style={{ marginTop: '2rem', backgroundColor: '#eff6ff', padding: '1rem', borderRadius: '1rem' }}>
-                  <p style={{ fontSize: '0.75rem', color: '#1e40af', lineHeight: '1.5', fontWeight: '600' }}>
-                    Kopieer de rijen uit je Excel en plak ze hiernaast. Gebruik de templates hierboven voor de juiste volgorde van de kolommen.
-                  </p>
+          <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+            <h2 style={{ fontWeight: 900, fontSize: '2rem' }}>WEDSTRIJDBEHEER</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '40px', marginTop: '30px' }}>
+              <div>
+                <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999' }}>1. DOWNLOAD SJABLOON</h4>
+                <button onClick={() => downloadTemplate('speed')} style={{ width: '100%', padding: '15px', border: '1px solid #ddd', borderRadius: '10px', background: '#fff', cursor: 'pointer', fontWeight: 700, marginBottom: '10px' }}>Speed Sjabloon (.csv)</button>
+                <button onClick={() => downloadTemplate('freestyle')} style={{ width: '100%', padding: '15px', border: '1px solid #ddd', borderRadius: '10px', background: '#fff', cursor: 'pointer', fontWeight: 700 }}>Freestyle Sjabloon (.csv)</button>
+                <div style={{ marginTop: '20px', padding: '15px', background: '#eef2ff', borderRadius: '15px', fontSize: '0.8rem', lineHeight: '1.5', color: '#3730a3' }}>
+                  <strong>Instructie:</strong> Open het sjabloon in Excel. Kopieer je data in de juiste kolommen. Sla op of kopieer de rijen en plak ze hiernaast.
                 </div>
               </div>
-
               <div>
-                <h3 style={{ fontSize: '0.75rem', fontWeight: '900', color: '#94a3b8', marginBottom: '1rem' }}>STAP 2: PLAK DATA & IMPORT</h3>
-                <div style={{ marginBottom: '1rem' }}>
-                  <span style={{ marginRight: '1rem', fontSize: '0.8rem', fontWeight: '800' }}>Type:</span>
+                <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999' }}>2. PLAK DATA</h4>
+                <div style={{ marginBottom: '10px' }}>
                   <label><input type="radio" checked={importType === 'speed'} onChange={() => setImportType('speed')} /> Speed</label>
-                  <label style={{ marginLeft: '1rem' }}><input type="radio" checked={importType === 'freestyle'} onChange={() => setImportType('freestyle')} /> Freestyle</label>
+                  <label style={{ marginLeft: '20px' }}><input type="radio" checked={importType === 'freestyle'} onChange={() => setImportType('freestyle')} /> Freestyle</label>
                 </div>
-                <textarea 
-                  value={csvInput}
-                  onChange={(e) => setCsvInput(e.target.value)}
-                  placeholder="reeks, onderdeel, uur, club, springer..."
-                  style={{ width: '100%', height: '300px', padding: '1rem', borderRadius: '1rem', border: '1px solid #e2e8f0', fontFamily: 'monospace', fontSize: '0.75rem', backgroundColor: '#f8fafc' }}
-                />
-                <button 
-                  onClick={handleImport}
-                  disabled={isProcessing}
-                  style={{ width: '100%', marginTop: '1rem', padding: '1rem', borderRadius: '1rem', border: 'none', backgroundColor: '#2563eb', color: '#fff', fontWeight: '800', cursor: 'pointer' }}>
-                  {isProcessing ? "Verwerken..." : "Data Uploaden naar Cloud"}
-                </button>
-                {statusMsg && <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.5rem', backgroundColor: statusMsg.type === 'success' ? '#dcfce7' : '#dbeafe', color: statusMsg.type === 'success' ? '#166534' : '#1e40af', fontWeight: '700', textAlign: 'center' }}>{statusMsg.text}</div>}
+                <textarea value={csvInput} onChange={(e) => setCsvInput(e.target.value)} placeholder="reeks, onderdeel, uur, club, skipper..." style={{ width: '100%', height: '300px', borderRadius: '15px', border: '1px solid #ddd', padding: '15px', fontFamily: 'monospace', fontSize: '0.8rem' }} />
+                <button onClick={handleImport} disabled={isProcessing} style={{ width: '100%', marginTop: '10px', padding: '20px', borderRadius: '15px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>{isProcessing ? "Laden..." : "UPLOAD NAAR CLOUD"}</button>
+                {statusMsg && <div style={{ marginTop: '15px', padding: '15px', borderRadius: '10px', background: statusMsg.type === 'success' ? '#dcfce7' : '#dbeafe', color: statusMsg.type === 'success' ? '#166534' : '#1e40af', fontWeight: 700, textAlign: 'center' }}>{statusMsg.text}</div>}
               </div>
             </div>
           </div>
         )}
 
         {view === 'display' && (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: '#fff', padding: '3rem', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3rem' }}>
-              <div>
-                <h1 style={{ fontSize: '10rem', fontWeight: '900', textTransform: 'uppercase', lineHeight: '0.8', margin: 0 }}>
-                  {activeTab === 'speed' ? 'SPEED' : 'FREESTYLE'}
-                </h1>
-                <p style={{ fontSize: '2rem', fontWeight: '800', color: '#64748b' }}>ARENA OVERZICHT</p>
-              </div>
-              <div style={{ backgroundColor: '#f1f5f9', padding: '2rem 4rem', borderRadius: '2rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#94a3b8' }}>REEKS</div>
-                <div style={{ fontSize: '12rem', fontWeight: '900', color: '#000' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
-              </div>
+          <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 1000, padding: '50px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '50px' }}>
+               <h1 style={{ fontSize: '10rem', fontWeight: 900, lineHeight: 0.8, margin: 0 }}>{activeTab === 'speed' ? 'SPEED' : 'FREESTYLE'}</h1>
+               <div style={{ background: '#f5f5f5', padding: '30px 60px', borderRadius: '30px', textAlign: 'center' }}>
+                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#ccc' }}>REEKS</div>
+                 <div style={{ fontSize: '12rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
+               </div>
             </div>
-            
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1.5rem' }}>
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }}>
               {currentHeat?.slots?.map((slot, i) => {
                 const s = skippers[slot.skipperId] || { naam: "---", club: "---" };
                 return (
-                  <div key={i} style={{ border: '4px solid #f1f5f9', borderRadius: '2rem', padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: '900', color: '#cbd5e1' }}>VELD</span>
-                      <span style={{ fontSize: '3rem', fontWeight: '900', color: activeTab === 'speed' ? '#2563eb' : '#7c3aed' }}>{slot.veld}</span>
-                    </div>
+                  <div key={i} style={{ border: '4px solid #f5f5f5', borderRadius: '30px', padding: '30px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: '4rem', fontWeight: 900, color: activeTab === 'speed' ? '#2563eb' : '#7c3aed' }}>{slot.veld}</div>
                     <div>
-                      <div style={{ fontSize: '3.5rem', fontWeight: '900', lineHeight: '1', marginBottom: '0.5rem', textTransform: 'uppercase' }}>{s.naam}</div>
-                      <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#64748b' }}>{s.club}</div>
+                      <div style={{ fontSize: '3rem', fontWeight: 900, lineHeight: 1, textTransform: 'uppercase' }}>{s.naam}</div>
+                      <div style={{ fontSize: '1.2rem', color: '#888', fontWeight: 700 }}>{s.club}</div>
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            <div style={{ marginTop: '3rem', backgroundColor: '#000', color: '#fff', padding: '2rem', borderRadius: '2rem', fontSize: '2.5rem', fontWeight: '900', textTransform: 'uppercase', textAlign: 'center' }}>
-              {settings.announcement}
-            </div>
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1' }}>Sluiten</button>
+            <div style={{ marginTop: '40px', background: '#000', color: '#fff', padding: '30px', borderRadius: '30px', fontSize: '3rem', fontWeight: 900, textAlign: 'center' }}>{settings.announcement}</div>
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '20px', right: '20px', border: 'none', background: 'none', fontSize: '1rem', color: '#ccc', cursor: 'pointer' }}>Sluiten</button>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 };
