@@ -34,7 +34,7 @@ const App = () => {
   const [settings, setSettings] = useState({
     currentSpeedHeat: 1,
     currentFreestyleHeat: 1,
-    announcement: "Welkom bij de wedstrijd!",
+    announcement: "Welkom!",
   });
 
   const [importType, setImportType] = useState('speed');
@@ -101,126 +101,6 @@ const App = () => {
     return () => { unsubS(); unsubSk(); unsubH(); };
   }, [isAuthReady, user]);
 
-  const updateHeat = async (delta) => {
-    if (!db || !user) return;
-    const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
-    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
-    
-    try {
-      const docSnap = await getDoc(ref);
-      if (!docSnap.exists()) {
-        await setDoc(ref, { ...settings, [key]: Math.max(1, (settings[key] || 1) + delta) });
-      } else {
-        await updateDoc(ref, { [key]: Math.max(1, (settings[key] || 1) + delta) });
-      }
-    } catch (e) {
-      console.error("Update failed.", e);
-      setStatus({ type: 'error', msg: "Update mislukt." });
-    }
-  };
-
-  const finishHeat = async () => {
-    if (!currentHeat || !db || !user) return;
-    
-    try {
-      const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', currentHeat.id);
-      await updateDoc(heatRef, { status: 'finished' });
-      
-      await updateHeat(1);
-      setStatus({ type: 'success', msg: `Reeks ${currentHeat.reeks} voltooid!` });
-      setTimeout(() => setStatus({ type: null, msg: null }), 3000);
-    } catch (e) {
-      console.error("Finish heat failed", e);
-    }
-  };
-
-  const handleImport = async () => {
-    if (!csvInput.trim() || !db || !user) {
-        setStatus({ type: 'error', msg: "Geen data of niet ingelogd." });
-        return;
-    }
-    setIsProcessing(true);
-    setStatus({ type: 'info', msg: "Bezig met verwerken..." });
-
-    try {
-      const lines = csvInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-
-      const batch = writeBatch(db);
-      let count = 0;
-
-      for (const row of rows) {
-        if (importType === 'speed') {
-            const reeksNum = parseInt(row[0]);
-            if (isNaN(reeksNum)) continue;
-
-            const heatId = `speed_${reeksNum}`;
-            const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId);
-            const slots = [];
-
-            for (let v = 1; v <= 10; v++) {
-                const clubCol = 3 + (v - 1) * 2;
-                const nameCol = 4 + (v - 1) * 2;
-                const club = row[clubCol];
-                const naam = row[nameCol];
-
-                if (naam && naam.trim() !== "" && club) {
-                    const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
-                    const skipperRef = doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid);
-                    batch.set(skipperRef, { id: sid, naam, club });
-                    slots.push({ veld: `Veld ${v}`, skipperId: sid, veldNr: v });
-                }
-            }
-
-            if (slots.length > 0) {
-                batch.set(heatRef, { 
-                    type: 'speed', 
-                    reeks: reeksNum, 
-                    onderdeel: row[1] || 'Speed',
-                    uur: row[2] || '00:00',
-                    slots: slots,
-                    status: 'pending'
-                });
-                count++;
-            }
-        } else {
-            const reeksNum = parseInt(row[0]);
-            if (isNaN(reeksNum)) continue;
-
-            const club = row[1];
-            const naam = row[2];
-            const veld = row[3] || "Veld A";
-
-            if (naam && club) {
-                const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
-                const skipperRef = doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid);
-                batch.set(skipperRef, { id: sid, naam, club });
-
-                const heatId = `fs_${reeksNum}`;
-                const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId);
-                batch.set(heatRef, { 
-                    type: 'freestyle', 
-                    reeks: reeksNum, 
-                    onderdeel: 'Freestyle', 
-                    uur: '00:00',
-                    slots: [{ veld, skipperId: sid }],
-                    status: 'pending'
-                });
-                count++;
-            }
-        }
-      }
-
-      await batch.commit();
-      setStatus({ type: 'success', msg: `Import geslaagd! ${count} reeksen verwerkt.` });
-      setCsvInput('');
-    } catch (e) {
-      console.error(e);
-      setStatus({ type: 'error', msg: `Fout: ${e.message}` });
-    }
-    setIsProcessing(false);
-  };
-
   const currentHeat = useMemo(() => {
     const list = heats.filter(h => h.type === activeTab);
     const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
@@ -233,6 +113,30 @@ const App = () => {
     return list.find(h => h.reeks === num + 1) || null;
   }, [heats, activeTab, settings]);
 
+  // Berekening van het tijdsverschil in minuten
+  const timeDifferenceInfo = useMemo(() => {
+    if (!currentHeat?.uur || !currentHeat.uur.includes(':')) return null;
+
+    try {
+      const [h, m] = currentHeat.uur.split(':').map(Number);
+      const plannedTime = new Date(currentTime);
+      plannedTime.setHours(h, m, 0, 0);
+
+      // Verschil in minuten
+      const diffInMs = currentTime.getTime() - plannedTime.getTime();
+      const diffInMins = Math.floor(diffInMs / 60000);
+
+      return {
+        minutes: diffInMins,
+        isBehind: diffInMins > 0, // Positief = Achterstand (+)
+        isAhead: diffInMins < 0,  // Negatief = Voorsprong (-)
+        label: diffInMins > 0 ? `+${diffInMins}` : `${diffInMins}`
+      };
+    } catch (e) {
+      return null;
+    }
+  }, [currentHeat, currentTime]);
+
   const speedSlots = useMemo(() => {
     if (activeTab !== 'speed') return currentHeat?.slots || [];
     const fullList = [];
@@ -243,228 +147,207 @@ const App = () => {
     return fullList;
   }, [currentHeat, activeTab]);
 
-  // Berekening tijdsverschil
-  const timeDiff = useMemo(() => {
-    if (!currentHeat?.uur) return null;
-    const [h, m] = currentHeat.uur.split(':').map(Number);
-    const planned = new Date();
-    planned.setHours(h, m, 0, 0);
-    
-    const diffMs = currentTime - planned;
-    const diffMins = Math.floor(diffMs / 60000);
-    return diffMins;
-  }, [currentHeat, currentTime]);
+  const updateHeat = async (delta) => {
+    if (!db || !user) return;
+    const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    try {
+      const currentVal = settings[key] || 1;
+      await updateDoc(ref, { [key]: Math.max(1, currentVal + delta) });
+    } catch (e) { console.error(e); }
+  };
 
-  if (!isAuthReady) return (
-    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
-      <Activity style={{ animation: 'spin 1s linear infinite' }} />
-    </div>
-  );
+  const finishHeat = async () => {
+    if (!currentHeat || !db || !user) return;
+    try {
+      const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', currentHeat.id);
+      await updateDoc(heatRef, { status: 'finished' });
+      await updateHeat(1);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleImport = async () => {
+    if (!csvInput.trim() || !db || !user) return;
+    setIsProcessing(true);
+    try {
+      const lines = csvInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      const batch = writeBatch(db);
+
+      for (const row of rows) {
+        const reeksNum = parseInt(row[0]);
+        if (isNaN(reeksNum)) continue;
+
+        if (importType === 'speed') {
+          const heatId = `speed_${reeksNum}`;
+          const slots = [];
+          for (let v = 1; v <= 10; v++) {
+            const club = row[3 + (v - 1) * 2];
+            const naam = row[4 + (v - 1) * 2];
+            if (naam && naam !== "") {
+              const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
+              batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam, club });
+              slots.push({ veld: `Veld ${v}`, skipperId: sid, veldNr: v });
+            }
+          }
+          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId), { 
+            type: 'speed', reeks: reeksNum, onderdeel: row[1], uur: row[2], slots, status: 'pending' 
+          });
+        } else {
+          const sid = `s_${row[2]}_${row[1]}`.replace(/[^a-zA-Z0-9]/g, '_');
+          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam: row[2], club: row[1] });
+          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', `fs_${reeksNum}`), { 
+            type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', uur: '00:00', slots: [{ veld: row[3] || 'Veld A', skipperId: sid }], status: 'pending' 
+          });
+        }
+      }
+      await batch.commit();
+      setStatus({ type: 'success', msg: "Import succesvol!" });
+      setCsvInput('');
+    } catch (e) { setStatus({ type: 'error', msg: e.message }); }
+    setIsProcessing(false);
+  };
 
   const styles = {
-    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', color: '#000', fontFamily: 'system-ui, -apple-system, sans-serif', overflow: 'hidden', boxSizing: 'border-box' },
-    header: { display: 'flex', justifyContent: 'space-between', padding: '0.75rem 2rem', borderBottom: '1px solid #eee', background: '#fff', flexShrink: 0, boxSizing: 'border-box' },
-    nav: { display: 'flex', gap: '0.5rem', background: '#f5f5f5', padding: '0.2rem', borderRadius: '0.5rem' },
-    navBtn: (active) => ({ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', backgroundColor: active ? '#fff' : 'transparent', color: active ? '#2563eb' : '#666', boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }),
-    main: { flex: 1, padding: '1rem', width: '100%', boxSizing: 'border-box', overflowY: 'auto', display: 'flex', flexDirection: 'column' },
-    contentWrapper: { maxWidth: '1200px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', flex: 1 },
-    card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%', boxSizing: 'border-box', backgroundColor: '#fff' },
-    heatNav: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem' },
-    heatNum: { fontSize: '2.5rem', fontWeight: 900, lineHeight: 1 },
-    list: { display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' },
-    listItem: { display: 'grid', gridTemplateColumns: '70px 1fr 120px', alignItems: 'center', padding: '0.6rem 1rem', background: '#f9f9f9', borderRadius: '0.75rem', border: '1px solid #f0f0f0', width: '100%', boxSizing: 'border-box', overflow: 'hidden' },
-    textTruncate: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-    btnPrimary: (color) => ({ width: '100%', padding: '1rem', borderRadius: '1rem', border: 'none', backgroundColor: color, color: '#fff', fontSize: '1rem', fontWeight: 900, cursor: 'pointer' }),
-    finishBtn: { width: '100%', backgroundColor: '#10b981', color: 'white', padding: '1.2rem', borderRadius: '1rem', border: 'none', fontWeight: 900, cursor: 'pointer', fontSize: '1.2rem', marginTop: '1rem', boxShadow: '0 4px 14px 0 rgba(16, 185, 129, 0.39)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }
+    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', color: '#000', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' },
+    header: { display: 'flex', justifyContent: 'space-between', padding: '0.75rem 2rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
+    main: { flex: 1, padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+    card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', width: '100%', maxWidth: '800px', backgroundColor: '#fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
+    displayOverlay: { position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 1000, padding: '3rem', display: 'flex', flexDirection: 'column' },
+    diffBadge: (info) => ({
+      padding: '0.4rem 1rem',
+      borderRadius: '0.75rem',
+      fontWeight: '900',
+      fontSize: '1.4rem',
+      backgroundColor: info.isBehind ? '#fee2e2' : '#dcfce7',
+      color: info.isBehind ? '#dc2626' : '#16a34a',
+      display: 'inline-flex',
+      alignItems: 'center',
+      marginLeft: '1rem'
+    })
   };
 
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <span style={{ fontWeight: 900, fontSize: '1.1rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></span>
-          <div style={styles.nav}>
-            <button onClick={() => setView('live')} style={styles.navBtn(view === 'live')}>Live</button>
-            <button onClick={() => setView('management')} style={styles.navBtn(view === 'management')}>Beheer</button>
-            <button onClick={() => setView('display')} style={styles.navBtn(view === 'display')}>Scherm</button>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <span style={{ fontWeight: 900, fontSize: '1.2rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></span>
+          <nav style={{ display: 'flex', gap: '0.5rem', background: '#f5f5f5', padding: '0.25rem', borderRadius: '0.5rem' }}>
+            <button onClick={() => setView('live')} style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, backgroundColor: view === 'live' ? '#fff' : 'transparent' }}>Live</button>
+            <button onClick={() => setView('management')} style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, backgroundColor: view === 'management' ? '#fff' : 'transparent' }}>Beheer</button>
+            <button onClick={() => setView('display')} style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 700, backgroundColor: view === 'display' ? '#fff' : 'transparent' }}>Scherm</button>
+          </nav>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-           <div style={{ fontWeight: 800, color: '#666', fontSize: '0.9rem' }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
-           <div style={{ color: '#10b981', fontSize: '0.6rem', fontWeight: 900, background: '#f0fdf4', padding: '0.4rem 0.8rem', borderRadius: '1rem' }}>SYNC OK</div>
-        </div>
+        <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
       </header>
 
       <main style={styles.main}>
-        <div style={styles.contentWrapper}>
-          {view === 'live' && (
-            <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
-                <button onClick={() => setActiveTab('speed')} style={{ flex: 1, maxWidth: '150px', padding: '0.6rem', borderRadius: '0.75rem', border: 'none', fontWeight: 900, fontSize: '0.8rem', cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#eee', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
-                <button onClick={() => setActiveTab('freestyle')} style={{ flex: 1, maxWidth: '150px', padding: '0.6rem', borderRadius: '0.75rem', border: 'none', fontWeight: 900, fontSize: '0.8rem', cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#7c3aed' : '#eee', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
+        {view === 'live' && (
+          <div style={styles.card}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
+              <button onClick={() => setActiveTab('speed')} style={{ padding: '0.75rem 2rem', borderRadius: '0.75rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#f5f5f5', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} style={{ padding: '0.75rem 2rem', borderRadius: '0.75rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#7c3aed' : '#f5f5f5', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
+            </div>
+
+            <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999' }}>HUIDIGE REEKS</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2rem' }}>
+                <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', padding: '1rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft /></button>
+                <span style={{ fontSize: '4rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+                <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '1rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight /></button>
+              </div>
+              {currentHeat?.uur && <div style={{ fontWeight: 800, color: '#666' }}>Gepland: {currentHeat.uur} u.</div>}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {speedSlots.map((s, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', padding: '0.75rem 1.5rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '1rem', border: s.empty ? '1px dashed #eee' : '1px solid #eee' }}>
+                  <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.8rem' }}>{s.veld}</span>
+                  <span style={{ fontWeight: 800 }}>{skippers[s.skipperId]?.naam || (s.empty ? "" : "...")}</span>
+                  <span style={{ textAlign: 'right', color: '#999', fontSize: '0.8rem' }}>{skippers[s.skipperId]?.club || ""}</span>
+                </div>
+              ))}
+            </div>
+
+            {currentHeat?.status !== 'finished' && (
+              <button onClick={finishHeat} style={{ width: '100%', marginTop: '2rem', padding: '1.25rem', borderRadius: '1rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900, fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                <CheckCircle2 /> REEKS VOLTOOID
+              </button>
+            )}
+          </div>
+        )}
+
+        {view === 'management' && (
+          <div style={styles.card}>
+            <h2 style={{ fontWeight: 900, marginBottom: '1rem' }}>Importeer Data (CSV)</h2>
+            <textarea value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder="Reeks, Onderdeel, Uur, Club1, Skipper1..." style={{ width: '100%', height: '200px', borderRadius: '1rem', border: '1px solid #eee', padding: '1rem', marginBottom: '1rem' }} />
+            <button onClick={handleImport} style={{ width: '100%', padding: '1rem', borderRadius: '0.75rem', border: 'none', background: '#000', color: '#fff', fontWeight: 800 }}>START IMPORT</button>
+            {status.msg && <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.5rem', background: status.type === 'success' ? '#f0fdf4' : '#fef2f2', color: status.type === 'success' ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{status.msg}</div>}
+          </div>
+        )}
+
+        {view === 'display' && (
+          <div style={styles.displayOverlay}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+              <div>
+                <h1 style={{ fontSize: '4.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
+                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1.5rem' }}>ROPESKIPPING COMPETITION</div>
               </div>
 
-              <div style={styles.card}>
-                {currentHeat?.status === 'finished' && (
-                  <div style={{ backgroundColor: '#f0fdf4', color: '#10b981', padding: '0.5rem', borderRadius: '0.5rem', textAlign: 'center', fontWeight: 800, marginBottom: '1rem', border: '1px solid #10b981' }}>
-                    ✓ DEZE REEKS IS REEDS VOLTOOID
-                  </div>
-                )}
-                
-                <div style={styles.heatNav}>
-                  <button onClick={() => updateHeat(-1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={20}/></button>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ color: '#999', fontWeight: 900, fontSize: '0.7rem' }}>REEKS</div>
-                    <div style={styles.heatNum}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
-                    {currentHeat?.uur && <div style={{ fontWeight: 900, fontSize: '0.8rem', color: '#666' }}>{currentHeat.uur} u.</div>}
-                  </div>
-                  <button onClick={() => updateHeat(1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={20}/></button>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                   <div style={{ fontSize: '3.5rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+                   {timeDifferenceInfo && (
+                      <div style={styles.diffBadge(timeDifferenceInfo)}>
+                        {timeDifferenceInfo.label} min.
+                      </div>
+                   )}
                 </div>
-
-                {currentHeat && (
-                  <div style={{ textAlign: 'center', marginBottom: '1rem', backgroundColor: activeTab === 'speed' ? '#eff6ff' : '#f5f3ff', padding: '0.5rem', borderRadius: '1rem', color: activeTab === 'speed' ? '#2563eb' : '#7c3aed', fontWeight: 900 }}>
-                    {currentHeat.onderdeel.toUpperCase()}
+                {currentHeat?.uur && (
+                  <div style={{ fontWeight: 800, color: '#999', fontSize: '1.2rem', marginTop: '0.5rem' }}>
+                    GEPLAND: {currentHeat.uur} u.
                   </div>
-                )}
-
-                <div style={styles.list}>
-                  {speedSlots.map((s, i) => (
-                    <div key={i} style={{ ...styles.listItem, opacity: s.empty ? 0.4 : 1, backgroundColor: s.empty ? 'transparent' : '#f9f9f9', borderStyle: s.empty ? 'dashed' : 'solid' }}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#999', ...styles.textTruncate }}>{s.veld}</div>
-                      <div style={{ fontWeight: 800, fontSize: '0.9rem', ...styles.textTruncate }}>{skippers[s.skipperId]?.naam || (s.empty ? "---" : "Laden...")}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#666', textAlign: 'right', ...styles.textTruncate }}>{skippers[s.skipperId]?.club || ""}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {activeTab === 'speed' && currentHeat?.status !== 'finished' && (
-                  <button onClick={finishHeat} style={styles.finishBtn}>
-                    <CheckCircle2 size={24} /> REEKS VOLTOOID
-                  </button>
                 )}
               </div>
             </div>
-          )}
 
-          {view === 'management' && (
-            <div style={{ width: '100%' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 900, marginBottom: '1rem' }}>Data Import</h2>
-              <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>Verwacht formaat: Reeks, Onderdeel, <b>Uur (HH:MM)</b>, Club 1, Skipper 1, Club 2, Skipper 2...</p>
-              <textarea 
-                value={csvInput} 
-                onChange={e => setCsvInput(e.target.value)} 
-                placeholder="Plak CSV data..." 
-                style={{ width: '100%', height: '200px', borderRadius: '1rem', border: '1px solid #ddd', padding: '1rem', fontFamily: 'monospace', fontSize: '0.8rem', boxSizing: 'border-box' }}
-              />
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                  <select value={importType} onChange={e => setImportType(e.target.value)} style={{ padding: '0.5rem', borderRadius: '0.5rem' }}>
-                      <option value="speed">Speed Import</option>
-                      <option value="freestyle">Freestyle Import</option>
-                  </select>
-                  <button onClick={handleImport} disabled={isProcessing} style={{ ...styles.btnPrimary('#000'), flex: 1 }}>
-                  {isProcessing ? "Verwerken..." : "IMPORTEER GEGEVENS"}
-                  </button>
-              </div>
-              {status.msg && <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.5rem', backgroundColor: status.type === 'error' ? '#fef2f2' : '#f0fdf4', color: status.type === 'error' ? '#ef4444' : '#10b981', fontSize: '0.85rem', fontWeight: 700 }}>{status.msg}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', backgroundColor: '#f8fafc', padding: '1.5rem 3rem', borderRadius: '2rem', marginBottom: '2rem', border: '2px solid #e2e8f0' }}>
+               <span style={{ fontSize: '1.5rem', fontWeight: 900, color: '#64748b' }}>HUIDIGE REEKS</span>
+               <span style={{ fontSize: '5rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
             </div>
-          )}
 
-          {view === 'display' && (
-            <div style={{ position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 100, padding: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
-                <div>
-                    <h1 style={{ fontSize: '3.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel.toUpperCase() || activeTab.toUpperCase()}</h1>
-                    <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1.2rem', marginTop: '0.2rem' }}>{activeTab === 'speed' ? 'SPEED COMPETITION' : 'FREESTYLE'}</div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {speedSlots.map((s, i) => (
+                <div key={i} style={{ 
+                  flex: 1, 
+                  display: 'grid', 
+                  gridTemplateColumns: '200px 1fr 1fr', 
+                  alignItems: 'center', 
+                  padding: '0 3rem', 
+                  borderRadius: '1.5rem', 
+                  border: '3px solid #f1f5f9',
+                  backgroundColor: s.empty ? 'transparent' : '#fff',
+                  opacity: s.empty ? 0.2 : 1
+                }}>
+                  <span style={{ fontSize: '1.8rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
+                  <span style={{ fontSize: '3rem', fontWeight: 900 }}>{skippers[s.skipperId]?.naam || ""}</span>
+                  <span style={{ fontSize: '1.8rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right' }}>{skippers[s.skipperId]?.club || ""}</span>
                 </div>
-
-                <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'stretch' }}>
-                  {/* Tijd & Schema Informatie */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: '0.25rem' }}>
-                     <div style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
-                     {currentHeat?.uur && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                           <span style={{ fontWeight: 800, color: '#999', fontSize: '1rem' }}>SCHEMA: {currentHeat.uur}</span>
-                           {timeDiff !== null && (
-                              <span style={{ 
-                                fontWeight: 900, 
-                                padding: '0.2rem 0.6rem', 
-                                borderRadius: '0.5rem',
-                                fontSize: '1.1rem',
-                                backgroundColor: timeDiff > 0 ? '#fef2f2' : '#f0fdf4',
-                                color: timeDiff > 0 ? '#ef4444' : '#10b981'
-                              }}>
-                                {timeDiff > 0 ? `+${timeDiff} min.` : `${timeDiff} min.`}
-                              </span>
-                           )}
-                        </div>
-                     )}
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f5f5f5', padding: '0.5rem 2rem', borderRadius: '1.5rem' }}>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#bbb' }}>REEKS</span>
-                    <span style={{ fontSize: '4rem', fontWeight: 900, lineHeight: 1 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Melding volgend onderdeel type */}
-              {nextHeat && currentHeat && nextHeat.onderdeel !== currentHeat.onderdeel && (
-                <div style={{ backgroundColor: '#fff7ed', border: '2px solid #fb923c', padding: '1rem 2rem', borderRadius: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
-                    <div style={{ backgroundColor: '#fb923c', color: '#fff', padding: '0.6rem', borderRadius: '50%' }}><Info size={36} /></div>
-                    <div>
-                        <div style={{ color: '#c2410c', fontWeight: 900, fontSize: '1.2rem' }}>OPGELET: VOLGENDE REEKS IS EEN ANDER TYPE</div>
-                        <div style={{ color: '#ea580c', fontWeight: 700, fontSize: '1rem' }}>Vanaf reeks {nextHeat.reeks} om {nextHeat.uur}u: <span style={{ textDecoration: 'underline' }}>{nextHeat.onderdeel}</span></div>
-                    </div>
-                </div>
-              )}
-              
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem', position: 'relative', width: '100%', boxSizing: 'border-box' }}>
-                {speedSlots.map((s, i) => (
-                  <div key={i} style={{ 
-                    flex: 1, 
-                    display: 'grid', 
-                    gridTemplateColumns: '150px 1fr 1fr', 
-                    alignItems: 'center', 
-                    padding: '0 2.5rem', 
-                    borderRadius: '1.2rem', 
-                    border: '2px solid #f0f0f0',
-                    backgroundColor: s.empty ? 'transparent' : '#fff',
-                    opacity: s.empty ? 0.3 : 1,
-                    overflow: 'hidden'
-                  }}>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: activeTab === 'speed' ? '#2563eb' : '#7c3aed', ...styles.textTruncate }}>{s.veld}</div>
-                    <div style={{ fontSize: '2.5rem', fontWeight: 900, ...styles.textTruncate }}>{skippers[s.skipperId]?.naam || ""}</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#aaa', textAlign: 'right', ...styles.textTruncate }}>{skippers[s.skipperId]?.club || ""}</div>
-                  </div>
-                ))}
-
-                {currentHeat?.status === 'finished' && (
-                  <div style={{ 
-                      position: 'absolute', 
-                      inset: 0, 
-                      backgroundColor: 'rgba(16, 185, 129, 0.95)', 
-                      borderRadius: '1.5rem', 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      color: 'white',
-                      zIndex: 10,
-                      textAlign: 'center',
-                      padding: '2rem'
-                  }}>
-                    <Trophy size={120} />
-                    <div style={{ fontSize: 'clamp(3rem, 10vw, 6rem)', fontWeight: 900, lineHeight: 1.1 }}>REEKS VOLTOOID</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, opacity: 0.9, marginTop: '1rem' }}>Wachten op de volgende reeks...</div>
-                  </div>
-                )}
-              </div>
-              <button onClick={() => setView('live')} style={{ position: 'absolute', bottom: '1rem', right: '1rem', border: 'none', background: '#eee', padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer', opacity: 0.3 }}>Sluiten</button>
+              ))}
             </div>
-          )}
-        </div>
+
+            {currentHeat?.status === 'finished' && (
+              <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(16, 185, 129, 0.98)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 100, borderRadius: 'inherit' }}>
+                <Trophy size={160} />
+                <h2 style={{ fontSize: '6rem', fontWeight: 900, margin: 0 }}>REEKS VOLTOOID</h2>
+                <p style={{ fontSize: '2rem', fontWeight: 700, opacity: 0.8 }}>Even geduld voor de volgende reeks...</p>
+              </div>
+            )}
+
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '1rem', right: '1rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700 }}>X SLUITEN</button>
+          </div>
+        )}
       </main>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 };
