@@ -1,26 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
+// Firestore imports
 import { 
   getFirestore, 
   collection, 
   doc, 
   onSnapshot, 
   updateDoc, 
-  setDoc,
-  query,
-  orderBy,
-  signInAnonymously,
-  getAuth,
-  onAuthStateChanged,
   serverTimestamp
 } from 'firebase/firestore';
+// Auth imports (Hier zat de fout: deze moeten uit firebase/auth komen)
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+
 import { 
   Trophy, 
   Timer, 
   Users, 
   ChevronRight, 
   ChevronLeft, 
-  Play, 
   CheckCircle2, 
   Megaphone,
   LayoutDashboard,
@@ -28,6 +29,7 @@ import {
   Clock
 } from 'lucide-react';
 
+// Firebase configuratie
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -50,10 +52,11 @@ const App = () => {
 
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+      try {
+        // Gebruik de anonieme login voor publieke toegang
         await signInAnonymously(auth);
-      } else {
-        await signInAnonymously(auth);
+      } catch (error) {
+        console.error("Auth error:", error);
       }
     };
     initAuth();
@@ -69,18 +72,18 @@ const App = () => {
 
     const unsubSettings = onSnapshot(settingsRef, (doc) => {
       if (doc.exists()) setSettings(doc.data());
-    }, (err) => console.error(err));
+    }, (err) => console.error("Settings listener error:", err));
 
     const unsubSkippers = onSnapshot(skippersRef, (snapshot) => {
       const dict = {};
       snapshot.forEach(doc => { dict[doc.id] = doc.data(); });
       setSkippers(dict);
-    });
+    }, (err) => console.error("Skippers listener error:", err));
 
     const unsubHeats = onSnapshot(heatsRef, (snapshot) => {
       const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setHeats(data.sort((a, b) => a.reeks - b.reeks));
-    });
+    }, (err) => console.error("Heats listener error:", err));
 
     return () => {
       unsubSettings();
@@ -100,7 +103,7 @@ const App = () => {
   }, [activeTab, speedHeats, fsHeats, settings]);
 
   const finishHeat = async () => {
-    if (!currentHeat) return;
+    if (!currentHeat || !user) return;
     
     // Markeer huidige heat als klaar
     const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', currentHeat.id);
@@ -117,7 +120,14 @@ const App = () => {
 
   const getSkipperInfo = (id) => skippers[id] || { naam: "Laden...", club: "..." };
 
-  if (!user) return <div className="h-screen flex items-center justify-center">Laden...</div>;
+  if (!user) return (
+    <div className="h-screen flex items-center justify-center bg-slate-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-slate-500 font-medium">Verbinden met database...</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
@@ -142,13 +152,13 @@ const App = () => {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto p-6">
+      <main className="max-w-6xl mx-auto p-6 pb-20">
         
         {view === 'control' && (
           <div className="space-y-6">
             <div className="flex gap-4">
-              <button onClick={() => setActiveTab('speed')} className={`flex-1 p-4 rounded-xl font-bold border-2 ${activeTab === 'speed' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'bg-white border-slate-100 text-slate-400'}`}>SPEED</button>
-              <button onClick={() => setActiveTab('freestyle')} className={`flex-1 p-4 rounded-xl font-bold border-2 ${activeTab === 'freestyle' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'bg-white border-slate-100 text-slate-400'}`}>FREESTYLE</button>
+              <button onClick={() => setActiveTab('speed')} className={`flex-1 p-4 rounded-xl font-bold border-2 transition ${activeTab === 'speed' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'bg-white border-slate-100 text-slate-400'}`}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} className={`flex-1 p-4 rounded-xl font-bold border-2 transition ${activeTab === 'freestyle' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'bg-white border-slate-100 text-slate-400'}`}>FREESTYLE</button>
             </div>
 
             <div className="bg-white rounded-3xl shadow-xl border p-8 text-center">
@@ -165,7 +175,7 @@ const App = () => {
                   const s = getSkipperInfo(slot.skipperId);
                   return (
                     <div key={i} className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border text-left">
-                      <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs">
+                      <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
                         {slot.veld}
                       </div>
                       <div className="overflow-hidden">
@@ -189,7 +199,7 @@ const App = () => {
                 </button>
                 <button 
                   onClick={finishHeat}
-                  className="flex-1 max-w-sm bg-green-600 hover:bg-green-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-200 flex items-center justify-center gap-2 text-xl"
+                  className="flex-1 max-w-sm bg-green-600 hover:bg-green-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-200 flex items-center justify-center gap-2 text-xl transition active:scale-95"
                 >
                   <CheckCircle2 /> REEKS KLAAR
                 </button>
@@ -199,7 +209,7 @@ const App = () => {
         )}
 
         {view === 'display' && (
-          <div className="fixed inset-0 bg-slate-950 text-white z-50 p-12 flex flex-col">
+          <div className="fixed inset-0 bg-slate-950 text-white z-50 p-12 flex flex-col overflow-hidden">
             <div className="flex justify-between items-start mb-12">
               <div>
                 <p className="text-blue-500 font-black tracking-widest text-xl mb-2">LIVE COMPETITION</p>
@@ -213,12 +223,12 @@ const App = () => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-hidden">
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex-1 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {currentHeat?.slots?.map((slot, i) => {
                   const s = getSkipperInfo(slot.skipperId);
                   return (
-                    <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex items-center gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex items-center gap-6">
                       <div className="text-5xl font-black text-blue-500 opacity-50">{slot.veld}</div>
                       <div>
                         <p className="text-3xl font-bold tracking-tight mb-1">{s.naam}</p>
@@ -230,13 +240,13 @@ const App = () => {
               </div>
             </div>
 
-            <div className="mt-auto pt-8 border-t border-white/10 flex justify-between items-center">
+            <div className="mt-auto pt-8 border-t border-white/10 flex justify-between items-center bg-slate-950">
               <div className="flex items-center gap-4 text-2xl italic font-medium text-blue-400">
                 <Megaphone /> {settings.announcement}
               </div>
               <div className="flex gap-4">
-                <button onClick={() => setActiveTab('speed')} className={`px-6 py-2 rounded-full font-bold ${activeTab === 'speed' ? 'bg-white text-black' : 'bg-white/10 text-white'}`}>SPEED</button>
-                <button onClick={() => setActiveTab('freestyle')} className={`px-6 py-2 rounded-full font-bold ${activeTab === 'freestyle' ? 'bg-white text-black' : 'bg-white/10 text-white'}`}>FREESTYLE</button>
+                <button onClick={() => setActiveTab('speed')} className={`px-6 py-2 rounded-full font-bold transition ${activeTab === 'speed' ? 'bg-white text-black' : 'bg-white/10 text-white'}`}>SPEED</button>
+                <button onClick={() => setActiveTab('freestyle')} className={`px-6 py-2 rounded-full font-bold transition ${activeTab === 'freestyle' ? 'bg-white text-black' : 'bg-white/10 text-white'}`}>FREESTYLE</button>
               </div>
             </div>
           </div>
@@ -249,8 +259,8 @@ const App = () => {
                  <Timer /> <h2 className="font-black text-xl uppercase">Speed Status</h2>
                </div>
                <div className="space-y-4">
-                 {speedHeats.slice(settings.currentSpeedHeat - 1, settings.currentSpeedHeat + 2).map((h, i) => (
-                   <div key={h.id} className={`p-4 rounded-2xl border ${i === 0 ? 'bg-orange-50 border-orange-100' : 'opacity-40'}`}>
+                 {speedHeats.slice(Math.max(0, settings.currentSpeedHeat - 1), settings.currentSpeedHeat + 2).map((h, i) => (
+                   <div key={h.id} className={`p-4 rounded-2xl border transition ${h.reeks === settings.currentSpeedHeat ? 'bg-orange-50 border-orange-100' : 'opacity-40'}`}>
                       <div className="flex justify-between items-center">
                         <span className="font-bold">Reeks {h.reeks}</span>
                         {h.status === 'finished' ? <CheckCircle2 size={16} className="text-green-500"/> : <Clock size={16}/>}
@@ -266,8 +276,8 @@ const App = () => {
                  <Users /> <h2 className="font-black text-xl uppercase">Freestyle Status</h2>
                </div>
                <div className="space-y-4">
-                 {fsHeats.slice(settings.currentFreestyleHeat - 1, settings.currentFreestyleHeat + 2).map((h, i) => (
-                   <div key={h.id} className={`p-4 rounded-2xl border ${i === 0 ? 'bg-purple-50 border-purple-100' : 'opacity-40'}`}>
+                 {fsHeats.slice(Math.max(0, settings.currentFreestyleHeat - 1), settings.currentFreestyleHeat + 2).map((h, i) => (
+                   <div key={h.id} className={`p-4 rounded-2xl border transition ${h.reeks === settings.currentFreestyleHeat ? 'bg-purple-50 border-purple-100' : 'opacity-40'}`}>
                       <div className="flex justify-between items-center">
                         <span className="font-bold">Reeks {h.reeks}</span>
                         {h.status === 'finished' ? <CheckCircle2 size={16} className="text-green-500"/> : <Clock size={16}/>}
@@ -280,6 +290,11 @@ const App = () => {
           </div>
         )}
       </main>
+
+      <footer className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t px-6 py-2 text-[10px] text-gray-400 flex justify-between uppercase tracking-widest font-bold z-30">
+        <span>RopeScore v2.1</span>
+        <span>Connected as: {user?.uid || 'anonymous'}</span>
+      </footer>
     </div>
   );
 };
