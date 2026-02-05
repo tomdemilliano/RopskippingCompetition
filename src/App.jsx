@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info
+  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATIE ---
@@ -30,6 +30,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('speed');
   const [skippers, setSkippers] = useState({});
   const [heats, setHeats] = useState([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [settings, setSettings] = useState({
     currentSpeedHeat: 1,
     currentFreestyleHeat: 1,
@@ -40,6 +41,12 @@ const App = () => {
   const [csvInput, setCsvInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState({ type: null, msg: null });
+
+  // Update klok elke seconde
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -169,7 +176,8 @@ const App = () => {
                 batch.set(heatRef, { 
                     type: 'speed', 
                     reeks: reeksNum, 
-                    onderdeel: row[1] || 'Speed', 
+                    onderdeel: row[1] || 'Speed',
+                    uur: row[2] || '00:00',
                     slots: slots,
                     status: 'pending'
                 });
@@ -194,6 +202,7 @@ const App = () => {
                     type: 'freestyle', 
                     reeks: reeksNum, 
                     onderdeel: 'Freestyle', 
+                    uur: '00:00',
                     slots: [{ veld, skipperId: sid }],
                     status: 'pending'
                 });
@@ -234,6 +243,18 @@ const App = () => {
     return fullList;
   }, [currentHeat, activeTab]);
 
+  // Berekening tijdsverschil
+  const timeDiff = useMemo(() => {
+    if (!currentHeat?.uur) return null;
+    const [h, m] = currentHeat.uur.split(':').map(Number);
+    const planned = new Date();
+    planned.setHours(h, m, 0, 0);
+    
+    const diffMs = currentTime - planned;
+    const diffMins = Math.floor(diffMs / 60000);
+    return diffMins;
+  }, [currentHeat, currentTime]);
+
   if (!isAuthReady) return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
       <Activity style={{ animation: 'spin 1s linear infinite' }} />
@@ -268,7 +289,10 @@ const App = () => {
             <button onClick={() => setView('display')} style={styles.navBtn(view === 'display')}>Scherm</button>
           </div>
         </div>
-        <div style={{ color: '#10b981', fontSize: '0.6rem', fontWeight: 900, background: '#f0fdf4', padding: '0.4rem 0.8rem', borderRadius: '1rem', alignSelf: 'center' }}>SYNC OK</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+           <div style={{ fontWeight: 800, color: '#666', fontSize: '0.9rem' }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+           <div style={{ color: '#10b981', fontSize: '0.6rem', fontWeight: 900, background: '#f0fdf4', padding: '0.4rem 0.8rem', borderRadius: '1rem' }}>SYNC OK</div>
+        </div>
       </header>
 
       <main style={styles.main}>
@@ -292,6 +316,7 @@ const App = () => {
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ color: '#999', fontWeight: 900, fontSize: '0.7rem' }}>REEKS</div>
                     <div style={styles.heatNum}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
+                    {currentHeat?.uur && <div style={{ fontWeight: 900, fontSize: '0.8rem', color: '#666' }}>{currentHeat.uur} u.</div>}
                   </div>
                   <button onClick={() => updateHeat(1)} style={{ border: 'none', background: '#f0f0f0', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={20}/></button>
                 </div>
@@ -324,6 +349,7 @@ const App = () => {
           {view === 'management' && (
             <div style={{ width: '100%' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 900, marginBottom: '1rem' }}>Data Import</h2>
+              <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>Verwacht formaat: Reeks, Onderdeel, <b>Uur (HH:MM)</b>, Club 1, Skipper 1, Club 2, Skipper 2...</p>
               <textarea 
                 value={csvInput} 
                 onChange={e => setCsvInput(e.target.value)} 
@@ -345,29 +371,54 @@ const App = () => {
 
           {view === 'display' && (
             <div style={{ position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 100, padding: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
                 <div>
                     <h1 style={{ fontSize: '3.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel.toUpperCase() || activeTab.toUpperCase()}</h1>
                     <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1.2rem', marginTop: '0.2rem' }}>{activeTab === 'speed' ? 'SPEED COMPETITION' : 'FREESTYLE'}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f5f5f5', padding: '0.5rem 2.5rem', borderRadius: '1.5rem' }}>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 900, color: '#bbb' }}>REEKS</span>
-                  <span style={{ fontSize: '4rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+
+                <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'stretch' }}>
+                  {/* Tijd & Schema Informatie */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: '0.25rem' }}>
+                     <div style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+                     {currentHeat?.uur && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                           <span style={{ fontWeight: 800, color: '#999', fontSize: '1rem' }}>SCHEMA: {currentHeat.uur}</span>
+                           {timeDiff !== null && (
+                              <span style={{ 
+                                fontWeight: 900, 
+                                padding: '0.2rem 0.6rem', 
+                                borderRadius: '0.5rem',
+                                fontSize: '1.1rem',
+                                backgroundColor: timeDiff > 0 ? '#fef2f2' : '#f0fdf4',
+                                color: timeDiff > 0 ? '#ef4444' : '#10b981'
+                              }}>
+                                {timeDiff > 0 ? `+${timeDiff} min.` : `${timeDiff} min.`}
+                              </span>
+                           )}
+                        </div>
+                     )}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f5f5f5', padding: '0.5rem 2rem', borderRadius: '1.5rem' }}>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#bbb' }}>REEKS</span>
+                    <span style={{ fontSize: '4rem', fontWeight: 900, lineHeight: 1 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+                  </div>
                 </div>
               </div>
 
               {/* Melding volgend onderdeel type */}
               {nextHeat && currentHeat && nextHeat.onderdeel !== currentHeat.onderdeel && (
-                <div style={{ backgroundColor: '#fff7ed', border: '2px solid #fb923c', padding: '1rem 2rem', borderRadius: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ backgroundColor: '#fb923c', color: '#fff', padding: '0.5rem', borderRadius: '50%' }}><Info size={32} /></div>
+                <div style={{ backgroundColor: '#fff7ed', border: '2px solid #fb923c', padding: '1rem 2rem', borderRadius: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+                    <div style={{ backgroundColor: '#fb923c', color: '#fff', padding: '0.6rem', borderRadius: '50%' }}><Info size={36} /></div>
                     <div>
-                        <div style={{ color: '#c2410c', fontWeight: 900, fontSize: '1.1rem' }}>OPGELET: VOLGENDE REEKS IS EEN ANDER TYPE</div>
-                        <div style={{ color: '#ea580c', fontWeight: 700 }}>Vanaf reeks {nextHeat.reeks}: <span style={{ textDecoration: 'underline' }}>{nextHeat.onderdeel}</span></div>
+                        <div style={{ color: '#c2410c', fontWeight: 900, fontSize: '1.2rem' }}>OPGELET: VOLGENDE REEKS IS EEN ANDER TYPE</div>
+                        <div style={{ color: '#ea580c', fontWeight: 700, fontSize: '1rem' }}>Vanaf reeks {nextHeat.reeks} om {nextHeat.uur}u: <span style={{ textDecoration: 'underline' }}>{nextHeat.onderdeel}</span></div>
                     </div>
                 </div>
               )}
               
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative', width: '100%', boxSizing: 'border-box' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem', position: 'relative', width: '100%', boxSizing: 'border-box' }}>
                 {speedSlots.map((s, i) => (
                   <div key={i} style={{ 
                     flex: 1, 
