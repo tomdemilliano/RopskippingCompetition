@@ -9,7 +9,7 @@ import {
   updateDoc, 
   serverTimestamp
 } from 'firebase/firestore';
-// Auth imports (Hier zat de fout: deze moeten uit firebase/auth komen)
+// Auth imports
 import { 
   getAuth, 
   signInAnonymously, 
@@ -29,11 +29,36 @@ import {
   Clock
 } from 'lucide-react';
 
-// Firebase configuratie
-const firebaseConfig = JSON.parse(__firebase_config);
+/**
+ * FIREBASE CONFIGURATIE HULP:
+ * In Vercel moet je deze gegevens handmatig invullen of via Environment Variables inladen.
+ * De onderstaande logica voorkomt de "ReferenceError" door te checken of de globale variabelen bestaan.
+ */
+const getFirebaseConfig = () => {
+  // Check of we in de Canvas omgeving zitten
+  if (typeof __firebase_config !== 'undefined') {
+    return JSON.parse(__firebase_config);
+  }
+  
+  // FALLBACK: Vul hier je eigen Firebase gegevens in voor Vercel/Github
+  // Je kunt deze gegevens vinden in de Firebase Console (Project Settings)
+  return {
+    apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+    authDomain: "ropeskippingcontest.firebaseapp.com",
+    projectId: "ropeskippingcontest",
+    storageBucket: "ropeskippingcontest.firebasestorage.app",
+    messagingSenderId: "430066523717",
+    appId: "1:430066523717:web:eea53ced41773af66a4d2c",
+    measurementId: "G-0MG01YNV0F"
+  };
+};
+
+const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// App ID bepaling
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropeskipping-db-v2';
 
 const App = () => {
@@ -53,7 +78,6 @@ const App = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Gebruik de anonieme login voor publieke toegang
         await signInAnonymously(auth);
       } catch (error) {
         console.error("Auth error:", error);
@@ -105,14 +129,12 @@ const App = () => {
   const finishHeat = async () => {
     if (!currentHeat || !user) return;
     
-    // Markeer huidige heat als klaar
     const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', currentHeat.id);
     await updateDoc(heatRef, { 
       status: 'finished',
       endTime: serverTimestamp()
     });
 
-    // Ga naar volgende reeks
     const settingsRef = doc(db, 'artifacts', appId, 'public', 'settings', 'competition');
     const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
     await updateDoc(settingsRef, { [key]: settings[key] + 1 });
@@ -131,7 +153,6 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Navigatie */}
       <nav className="bg-white border-b px-6 py-4 flex justify-between items-center sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600 p-2 rounded-lg text-white">
@@ -153,7 +174,6 @@ const App = () => {
       </nav>
 
       <main className="max-w-6xl mx-auto p-6 pb-20">
-        
         {view === 'control' && (
           <div className="space-y-6">
             <div className="flex gap-4">
