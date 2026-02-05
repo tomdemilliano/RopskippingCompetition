@@ -1,469 +1,498 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp, getApps } from 'firebase/app';
-import { 
-  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc, addDoc, deleteDoc, query 
-} from 'firebase/firestore';
-import { 
-  getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
-} from 'firebase/auth';
-import { 
-  ChevronRight, ChevronLeft, CheckCircle2, Plus, Trophy, Settings, Calendar, MapPin, List, Play, Archive, Trash2
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RopeScore Pro - Wedstrijdbeheer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide-react/0.263.1/umd/lucide-react.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@700&display=swap');
 
-// --- FIREBASE CONFIGURATIE ---
-const firebaseConfig = {
-  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
-  authDomain: "ropeskippingcontest.firebaseapp.com",
-  projectId: "ropeskippingcontest",
-  storageBucket: "ropeskippingcontest.firebasestorage.app",
-  messagingSenderId: "430066523717",
-  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
-};
-
-let app, auth, db;
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
-
-const App = () => {
-  const [user, setUser] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [view, setView] = useState('management'); // Start in management voor wedstrijdkeuze
-  const [activeTab, setActiveTab] = useState('speed');
-  
-  // Wedstrijd-gerelateerde state
-  const [competitions, setCompetitions] = useState([]);
-  const [activeCompId, setActiveCompId] = useState(null);
-  
-  // Data voor de actieve wedstrijd
-  const [skippers, setSkippers] = useState({});
-  const [heats, setHeats] = useState([]);
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [compSettings, setCompSettings] = useState({
-    currentSpeedHeat: 1,
-    currentFreestyleHeat: 1,
-  });
-
-  // UI state
-  const [csvInput, setCsvInput] = useState('');
-  const [importType, setImportType] = useState('speed');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [status, setStatus] = useState({ type: null, msg: null });
-  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', status: 'gepland' });
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const init = async () => {
-      try {
-        app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-        auth = getAuth(app);
-        db = getFirestore(app);
-
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #7c3aed;
+            --bg-main: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent-green: #10b981;
         }
 
-        onAuthStateChanged(auth, (u) => {
-          if (u) {
-            setUser(u);
-            setIsAuthReady(true);
-          }
-        });
-      } catch (e) { console.error("Firebase Init Error", e); }
-    };
-    init();
-  }, []);
-
-  // Luister naar alle wedstrijden
-  useEffect(() => {
-    if (!isAuthReady || !user || !db) return;
-    const compsRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions');
-    return onSnapshot(compsRef, (s) => {
-      const list = s.docs.map(d => ({ id: d.id, ...d.data() }));
-      setCompetitions(list);
-      // Als er nog geen actieve is geselecteerd, pak de eerste 'actieve'
-      if (!activeCompId && list.length > 0) {
-        const activeOne = list.find(c => c.status === 'actief') || list[0];
-        setActiveCompId(activeOne.id);
-      }
-    });
-  }, [isAuthReady, user]);
-
-  // Luister naar data van de SPECIFIEKE geselecteerde wedstrijd
-  useEffect(() => {
-    if (!activeCompId || !db || !user) return;
-
-    const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
-    const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'skippers');
-    const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'heats');
-
-    const unsubS = onSnapshot(compRef, (d) => {
-      if (d.exists()) {
-        const data = d.data();
-        setCompSettings({
-          currentSpeedHeat: data.currentSpeedHeat || 1,
-          currentFreestyleHeat: data.currentFreestyleHeat || 1
-        });
-      }
-    });
-
-    const unsubSk = onSnapshot(skRef, s => {
-      const d = {}; s.forEach(doc => d[doc.id] = doc.data());
-      setSkippers(d);
-    });
-
-    const unsubH = onSnapshot(hRef, s => {
-      setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
-    });
-
-    return () => { unsubS(); unsubSk(); unsubH(); };
-  }, [activeCompId, user]);
-
-  const currentHeat = useMemo(() => {
-    const list = heats.filter(h => h.type === activeTab);
-    const num = activeTab === 'speed' ? compSettings.currentSpeedHeat : compSettings.currentFreestyleHeat;
-    return list.find(h => h.reeks === num) || null;
-  }, [heats, activeTab, compSettings]);
-
-  const stats = useMemo(() => {
-    return {
-      speed: heats.filter(h => h.type === 'speed').length,
-      freestyle: heats.filter(h => h.type === 'freestyle').length
-    };
-  }, [heats]);
-
-  const handleCreateCompetition = async (e) => {
-    e.preventDefault();
-    if (!newComp.name || !db) return;
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), {
-        ...newComp,
-        currentSpeedHeat: 1,
-        currentFreestyleHeat: 1,
-        createdAt: new Date().toISOString()
-      });
-      setNewComp({ name: '', date: '', location: '', status: 'gepland' });
-    } catch (e) { console.error(e); }
-  };
-
-  const updateCompStatus = async (id, status) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', id), { status });
-  };
-
-  const deleteCompetition = async (id) => {
-    if (!window.confirm("Weet je zeker dat je deze wedstrijd en alle bijbehorende data wilt verwijderen?")) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', id));
-    if (activeCompId === id) setActiveCompId(null);
-  };
-
-  const handleImport = async () => {
-    if (!csvInput.trim() || !activeCompId || !db || !user) return;
-    setIsProcessing(true);
-    try {
-      const lines = csvInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-      const batch = writeBatch(db);
-
-      for (const row of rows) {
-        const reeksNum = parseInt(row[0]);
-        if (isNaN(reeksNum)) continue;
-
-        const baseRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
-
-        if (importType === 'speed') {
-          const slots = [];
-          for (let v = 1; v <= 10; v++) {
-            const club = row[3 + (v - 1) * 2];
-            const naam = row[4 + (v - 1) * 2];
-            if (naam && naam !== "") {
-              const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
-              batch.set(doc(baseRef, 'skippers', sid), { id: sid, naam, club });
-              slots.push({ veld: `Veld ${v}`, skipperId: sid, veldNr: v });
-            }
-          }
-          batch.set(doc(baseRef, 'heats', `speed_${reeksNum}`), { 
-            type: 'speed', reeks: reeksNum, onderdeel: row[1], uur: row[2], slots, status: 'pending' 
-          });
-        } else {
-          const sid = `s_${row[2]}_${row[1]}`.replace(/[^a-zA-Z0-9]/g, '_');
-          batch.set(doc(baseRef, 'skippers', sid), { id: sid, naam: row[2], club: row[1] });
-          batch.set(doc(baseRef, 'heats', `fs_${reeksNum}`), { 
-            type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', uur: row[4] || '00:00', slots: [{ veld: row[3] || 'Veld A', skipperId: sid }], status: 'pending' 
-          });
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            margin: 0;
+            overflow: hidden;
         }
-      }
-      await batch.commit();
-      setStatus({ type: 'success', msg: `Import voltooid! ${rows.length} rijen verwerkt.` });
-      setCsvInput('');
-    } catch (e) { setStatus({ type: 'error', msg: e.message }); }
-    setIsProcessing(false);
-  };
 
-  const updateHeatIndex = async (delta) => {
-    if (!activeCompId || !db) return;
-    const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
-    const val = Math.max(1, (compSettings[key] || 1) + delta);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), { [key]: val });
-  };
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
 
-  // Helper voor status kleuren
-  const getStatusColor = (s) => {
-    switch(s) {
-      case 'actief': return '#16a34a';
-      case 'afgesloten': return '#64748b';
-      default: return '#2563eb';
-    }
-  };
+        .neo-card {
+            background: var(--card-bg);
+            border-radius: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-  const selectedComp = competitions.find(c => c.id === activeCompId);
+        .neo-card:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+            transform: translateY(-2px);
+        }
 
-  return (
-    <div className="flex flex-col h-screen bg-slate-50 font-sans overflow-hidden">
-      {/* Top Navbar */}
-      <header className="bg-white border-b px-6 py-3 flex justify-between items-center shrink-0 shadow-sm z-10">
-        <div className="flex items-center gap-6">
-          <h1 className="font-black text-xl tracking-tight">ROPESCORE <span className="text-blue-600">PRO</span></h1>
-          <nav className="flex bg-slate-100 p-1 rounded-lg">
-            <button onClick={() => setView('live')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${view === 'live' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Live</button>
-            <button onClick={() => setView('management')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${view === 'management' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Beheer</button>
-            <button onClick={() => setView('display')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${view === 'display' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Scherm</button>
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          {selectedComp && (
-             <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-black uppercase">
-               <Activity size={14}/> {selectedComp.name}
-             </div>
-          )}
-          <span className="font-mono font-bold text-slate-600">{currentTime.toLocaleTimeString('nl-BE')}</span>
-        </div>
-      </header>
+        .sidebar-item {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 4px solid transparent;
+        }
 
-      <main className="flex-1 overflow-hidden p-4">
-        {view === 'management' && (
-          <div className="max-w-6xl mx-auto h-full flex gap-6 overflow-hidden">
-            {/* Linker kolom: Lijst van wedstrijden */}
-            <div className="w-1/3 flex flex-col gap-4 overflow-hidden">
-              <section className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 shrink-0">
-                <h2 className="text-lg font-black mb-4 flex items-center gap-2"><Plus size={20} className="text-blue-600"/> NIEUWE WEDSTRIJD</h2>
-                <form onSubmit={handleCreateCompetition} className="space-y-3">
-                  <input required placeholder="Naam wedstrijd" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 ring-blue-500 outline-none" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="date" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                    <input placeholder="Locatie" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                  </div>
-                  <button type="submit" className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-black text-sm hover:bg-blue-700 transition">WEDSTRIJD AANMAKEN</button>
-                </form>
-              </section>
+        .sidebar-item.active {
+            background: #eff6ff;
+            border-left-color: var(--primary);
+        }
 
-              <section className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden">
-                <h2 className="text-lg font-black mb-4 flex items-center gap-2"><Trophy size={20} className="text-amber-500"/> WEDSTRIJDEN</h2>
-                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                  {competitions.length === 0 && <p className="text-slate-400 text-sm italic">Nog geen wedstrijden.</p>}
-                  {competitions.map(c => (
-                    <div key={c.id} 
-                      onClick={() => setActiveCompId(c.id)}
-                      className={`p-4 rounded-xl border-2 transition cursor-pointer relative group ${activeCompId === c.id ? 'border-blue-500 bg-blue-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <h3 className="font-black text-slate-900 leading-tight pr-8">{c.name}</h3>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                           <button onClick={(e) => { e.stopPropagation(); deleteCompetition(c.id); }} className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-planned { background: #dbeafe; color: #1e40af; }
+        .status-active { background: #dcfce7; color: #166534; animation: pulse 2s infinite; }
+        .status-closed { background: #f1f5f9; color: #475569; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 800;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+        }
+
+        .input-field {
+            background: #f1f5f9;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        .input-field:focus {
+            background: white;
+            border-color: var(--primary);
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .big-number {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 6rem;
+            line-height: 1;
+            letter-spacing: -0.05em;
+        }
+
+        .tab-btn {
+            position: relative;
+            padding: 12px 24px;
+            font-weight: 800;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 4px;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+        .import-area {
+            min-height: 200px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.2.0';
+        import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js';
+        import { 
+            getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, addDoc, deleteDoc, query 
+        } from 'https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js';
+        import { 
+            getAuth, signInAnonymously, onAuthStateChanged 
+        } from 'https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+            authDomain: "ropeskippingcontest.firebaseapp.com",
+            projectId: "ropeskippingcontest",
+            storageBucket: "ropeskippingcontest.firebasestorage.app",
+            messagingSenderId: "430066523717",
+            appId: "1:430066523717:web:eea53ced41773af66a4d2c",
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const appId = 'ropescore-pro-ultimate';
+
+        const App = () => {
+            const [view, setView] = useState('management');
+            const [activeTab, setActiveTab] = useState('speed');
+            const [competitions, setCompetitions] = useState([]);
+            const [activeCompId, setActiveCompId] = useState(null);
+            const [skippers, setSkippers] = useState({});
+            const [heats, setHeats] = useState([]);
+            const [compSettings, setCompSettings] = useState({ currentSpeedHeat: 1, currentFreestyleHeat: 1 });
+            const [csvInput, setCsvInput] = useState('');
+            const [importType, setImportType] = useState('speed');
+            const [newComp, setNewComp] = useState({ name: '', date: '', location: '', status: 'gepland' });
+            const [user, setUser] = useState(null);
+
+            useEffect(() => {
+                signInAnonymously(auth);
+                onAuthStateChanged(auth, setUser);
+            }, []);
+
+            // Luister naar wedstrijden
+            useEffect(() => {
+                if (!user) return;
+                const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'));
+                return onSnapshot(q, (snapshot) => {
+                    const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    setCompetitions(list);
+                    if (!activeCompId && list.length > 0) {
+                        const active = list.find(c => c.status === 'actief') || list[0];
+                        setActiveCompId(active.id);
+                    }
+                });
+            }, [user]);
+
+            // Luister naar data van actieve wedstrijd
+            useEffect(() => {
+                if (!activeCompId || !user) return;
+                const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
+                const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'skippers');
+                const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'heats');
+
+                const unsubS = onSnapshot(compRef, d => d.exists() && setCompSettings(d.data()));
+                const unsubSk = onSnapshot(skRef, s => {
+                    const d = {}; s.forEach(doc => d[doc.id] = doc.data());
+                    setSkippers(d);
+                });
+                const unsubH = onSnapshot(hRef, s => setHeats(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+                return () => { unsubS(); unsubSk(); unsubH(); };
+            }, [activeCompId, user]);
+
+            const selectedComp = competitions.find(c => c.id === activeCompId);
+            const stats = useMemo(() => ({
+                speed: heats.filter(h => h.type === 'speed').length,
+                freestyle: heats.filter(h => h.type === 'freestyle').length
+            }), [heats]);
+
+            const currentHeat = useMemo(() => {
+                const num = activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1);
+                return heats.find(h => h.type === activeTab && h.reeks === num);
+            }, [heats, activeTab, compSettings]);
+
+            const handleCreateComp = async (e) => {
+                e.preventDefault();
+                const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), {
+                    ...newComp, currentSpeedHeat: 1, currentFreestyleHeat: 1
+                });
+                setNewComp({ name: '', date: '', location: '', status: 'gepland' });
+                setActiveCompId(docRef.id);
+            };
+
+            const handleImport = async () => {
+                if (!csvInput || !activeCompId) return;
+                const batch = writeBatch(db);
+                const lines = csvInput.split('\n').filter(l => l.trim());
+                const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+
+                rows.forEach(row => {
+                    const reeksNum = parseInt(row[0]);
+                    const baseRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
+                    if (importType === 'speed') {
+                        const slots = [];
+                        for (let v = 1; v <= 10; v++) {
+                            const club = row[3 + (v - 1) * 2], naam = row[4 + (v - 1) * 2];
+                            if (naam) {
+                                const sid = `s_${naam}_${club}`.replace(/\s/g, '_');
+                                batch.set(doc(baseRef, 'skippers', sid), { id: sid, naam, club });
+                                slots.push({ veldNr: v, skipperId: sid });
+                            }
+                        }
+                        batch.set(doc(baseRef, 'heats', `s_${reeksNum}`), { type: 'speed', reeks: reeksNum, onderdeel: row[1], uur: row[2], slots });
+                    } else {
+                        const sid = `s_${row[2]}_${row[1]}`.replace(/\s/g, '_');
+                        batch.set(doc(baseRef, 'skippers', sid), { id: sid, naam: row[2], club: row[1] });
+                        batch.set(doc(baseRef, 'heats', `f_${reeksNum}`), { type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', uur: row[4], slots: [{ veld: row[3], skipperId: sid }] });
+                    }
+                });
+                await batch.commit();
+                setCsvInput('');
+                alert('Import voltooid!');
+            };
+
+            const updateHeat = async (delta) => {
+                const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), {
+                    [key]: Math.max(1, (compSettings[key] || 1) + delta)
+                });
+            };
+
+            return (
+                <div className="flex flex-col h-screen">
+                    {/* Header */}
+                    <header className="glass-panel sticky top-0 z-50 px-8 py-4 flex justify-between items-center border-b">
+                        <div className="flex items-center gap-10">
+                            <div className="text-2xl font-black tracking-tighter">ROPESCORE <span className="text-blue-600">PRO</span></div>
+                            <nav className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+                                {['management', 'live', 'display'].map(v => (
+                                    <button key={v} onClick={() => setView(v)} className={`px-5 py-2 rounded-lg text-sm font-bold transition ${view === v ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}>
+                                        {v.toUpperCase()}
+                                    </button>
+                                ))}
+                            </nav>
                         </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2 items-center">
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md text-white" style={{ backgroundColor: getStatusColor(c.status) }}>{c.status.toUpperCase()}</span>
-                        <div className="flex items-center gap-1 text-slate-400 text-[10px] font-bold">
-                           <Calendar size={12}/> {c.date || 'TBD'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                        {selectedComp && (
+                            <div className="flex items-center gap-3">
+                                <div className={`status-badge status-${selectedComp.status}`}>{selectedComp.status}</div>
+                                <div className="font-bold text-slate-800">{selectedComp.name}</div>
+                            </div>
+                        )}
+                    </header>
+
+                    <main className="flex-1 overflow-hidden p-8">
+                        {view === 'management' && (
+                            <div className="max-w-7xl mx-auto h-full grid grid-cols-12 gap-8">
+                                {/* Sidebar: Wedstrijdlijst */}
+                                <div className="col-span-4 flex flex-col gap-6 overflow-hidden">
+                                    <div className="neo-card p-6 shrink-0">
+                                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Nieuwe Wedstrijd</h3>
+                                        <form onSubmit={handleCreateComp} className="space-y-3">
+                                            <input required placeholder="Wedstrijdnaam" className="input-field w-full" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} />
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <input placeholder="Locatie" className="input-field" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} />
+                                                <input type="date" className="input-field text-xs" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} />
+                                            </div>
+                                            <button className="btn-primary w-full justify-center">AANMAKEN</button>
+                                        </form>
+                                    </div>
+                                    <div className="neo-card p-0 flex-1 flex flex-col overflow-hidden">
+                                        <div className="p-6 border-b"><h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Alle Wedstrijden</h3></div>
+                                        <div className="flex-1 overflow-y-auto">
+                                            {competitions.map(c => (
+                                                <div key={c.id} onClick={() => setActiveCompId(c.id)} className={`sidebar-item p-6 border-b last:border-0 ${activeCompId === c.id ? 'active' : 'hover:bg-slate-50'}`}>
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <span className="font-bold text-lg">{c.name}</span>
+                                                        <span className={`status-badge status-${c.status}`}>{c.status}</span>
+                                                    </div>
+                                                    <div className="text-xs text-slate-400 font-bold">{c.location} • {c.date}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Main Management Area */}
+                                <div className="col-span-8 flex flex-col gap-8 overflow-hidden">
+                                    {selectedComp ? (
+                                        <>
+                                            <div className="grid grid-cols-3 gap-6">
+                                                <div className="neo-card p-6 bg-blue-600 text-white border-0">
+                                                    <div className="text-xs font-black opacity-60 uppercase mb-1">Status Wijzigen</div>
+                                                    <div className="flex gap-2 mt-2">
+                                                        {['gepland', 'actief', 'afgesloten'].map(s => (
+                                                            <button key={s} onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), {status: s})} 
+                                                                className={`px-2 py-1 rounded text-[10px] font-black uppercase border transition ${selectedComp.status === s ? 'bg-white text-blue-600' : 'border-white/20 hover:bg-white/10'}`}>
+                                                                {s}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div className="neo-card p-6">
+                                                    <div className="text-xs font-black text-slate-400 uppercase mb-1">Speed Reeksen</div>
+                                                    <div className="text-4xl font-black text-blue-600 tabular-nums">{stats.speed}</div>
+                                                </div>
+                                                <div className="neo-card p-6">
+                                                    <div className="text-xs font-black text-slate-400 uppercase mb-1">Freestyle Reeksen</div>
+                                                    <div className="text-4xl font-black text-purple-600 tabular-nums">{stats.freestyle}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="neo-card p-8 flex-1 flex flex-col overflow-hidden">
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <h2 className="text-xl font-black">Data Import</h2>
+                                                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                                                        <button onClick={() => setImportType('speed')} className={`px-4 py-2 rounded-lg text-xs font-black transition ${importType === 'speed' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>SPEED</button>
+                                                        <button onClick={() => setImportType('freestyle')} className={`px-4 py-2 rounded-lg text-xs font-black transition ${importType === 'freestyle' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400'}`}>FREESTYLE</button>
+                                                    </div>
+                                                </div>
+                                                <textarea value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder={`Plak ${importType} CSV data hier... (incl. header)`} className="flex-1 input-field import-area focus:bg-slate-50 mb-4" />
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-xs text-slate-400 font-medium">De eerste regel wordt als header beschouwd en overgeslagen.</p>
+                                                    <button onClick={handleImport} className="btn-primary">GEGEVENS IMPORTEREN</button>
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex-1 flex flex-col items-center justify-center neo-card border-dashed">
+                                            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center text-slate-300 mb-4 text-4xl">?</div>
+                                            <p className="font-black text-slate-400">Selecteer een wedstrijd om te beheren</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'live' && selectedComp && (
+                            <div className="max-w-4xl mx-auto h-full flex flex-col gap-8">
+                                <div className="flex justify-center border-b">
+                                    <button onClick={() => setActiveTab('speed')} className={`tab-btn ${activeTab === 'speed' ? 'active' : ''}`}>SPEED</button>
+                                    <button onClick={() => setActiveTab('freestyle')} className={`tab-btn ${activeTab === 'freestyle' ? 'active' : ''}`}>FREESTYLE</button>
+                                </div>
+
+                                <div className="neo-card p-10 text-center flex flex-col items-center">
+                                    <span className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Huidige Reeks</span>
+                                    <div className="flex items-center gap-12">
+                                        <button onClick={() => updateHeat(-1)} className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition text-2xl">←</button>
+                                        <span className="big-number text-blue-600">{activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1)}</span>
+                                        <button onClick={() => updateHeat(1)} className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition text-2xl">→</button>
+                                    </div>
+                                    <div className="mt-8">
+                                        <div className="text-2xl font-black">{currentHeat?.onderdeel || 'Geen reeks gevonden'}</div>
+                                        <div className="text-slate-400 font-bold mt-1">{currentHeat?.uur || '--:--'}</div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 overflow-y-auto pb-10">
+                                    {activeTab === 'speed' ? (
+                                        Array.from({length: 10}).map((_, i) => {
+                                            const vNum = i + 1;
+                                            const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
+                                            const sk = slot ? skippers[slot.skipperId] : null;
+                                            return (
+                                                <div key={vNum} className={`neo-card p-5 flex items-center gap-6 ${!sk ? 'opacity-30 border-dashed' : ''}`}>
+                                                    <div className="w-20 font-black text-blue-600 text-sm">VELD {vNum}</div>
+                                                    <div className="flex-1 font-extrabold text-xl">{sk?.naam || '-'}</div>
+                                                    <div className="text-slate-400 font-black text-xs uppercase">{sk?.club || ''}</div>
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        currentHeat?.slots?.map((slot, i) => (
+                                            <div key={i} className="neo-card p-8 flex items-center gap-8">
+                                                <div className="w-24 font-black text-purple-600 text-lg">{slot.veld}</div>
+                                                <div className="flex-1 font-black text-3xl">{skippers[slot.skipperId]?.naam}</div>
+                                                <div className="text-slate-400 font-black text-lg uppercase">{skippers[slot.skipperId]?.club}</div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'display' && (
+                            <div className="fixed inset-0 bg-white z-[100] flex flex-col p-12 overflow-hidden">
+                                <div className="flex justify-between items-start mb-10">
+                                    <div>
+                                        <h1 className="text-7xl font-black tracking-tighter leading-none mb-4">{currentHeat?.onderdeel?.toUpperCase() || 'WACHTEN...'}</h1>
+                                        <div className="text-blue-600 font-black text-2xl">LIVE WEDSTRIJD OVERZICHT • {selectedComp?.name}</div>
+                                    </div>
+                                    <div className="flex gap-6">
+                                        <div className="neo-card p-6 bg-slate-50 border-0 text-right">
+                                            <div className="text-sm font-black text-slate-400 uppercase mb-1">Gepland</div>
+                                            <div className="text-4xl font-black">{currentHeat?.uur || '--:--'}</div>
+                                        </div>
+                                        <div className="neo-card p-6 bg-black text-white border-0 text-right">
+                                            <div className="text-sm font-black opacity-40 uppercase mb-1">Reeks</div>
+                                            <div className="text-4xl font-black tabular-nums">{activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 grid grid-cols-1 gap-2 overflow-hidden">
+                                    {activeTab === 'speed' ? (
+                                        Array.from({length: 10}).map((_, i) => {
+                                            const vNum = i + 1;
+                                            const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
+                                            const sk = slot ? skippers[slot.skipperId] : null;
+                                            return (
+                                                <div key={vNum} className={`flex-1 flex items-center px-12 border-2 rounded-[2rem] ${sk ? 'bg-white border-slate-100' : 'bg-slate-50/50 border-transparent opacity-10'}`}>
+                                                    <span className="w-32 text-xl font-black text-blue-600 italic">VELD {vNum}</span>
+                                                    <span className="flex-1 text-4xl font-black">{sk?.naam || ''}</span>
+                                                    <span className="text-2xl font-bold text-slate-300 uppercase">{sk?.club || ''}</span>
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        currentHeat?.slots?.map((slot, i) => (
+                                            <div key={i} className="flex-1 flex items-center px-16 bg-white border-4 border-slate-100 rounded-[3rem]">
+                                                <span className="w-40 text-3xl font-black text-purple-600">{slot.veld}</span>
+                                                <span className="flex-1 text-7xl font-black">{skippers[slot.skipperId]?.naam}</span>
+                                                <span className="text-4xl font-bold text-slate-300 uppercase">{skippers[slot.skipperId]?.club}</span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                <button onClick={() => setView('live')} className="absolute bottom-4 left-4 opacity-5 hover:opacity-100 text-[10px] font-black uppercase tracking-widest">Terug naar beheer</button>
+                            </div>
+                        )}
+                    </main>
                 </div>
-              </section>
-            </div>
+            );
+        };
 
-            {/* Rechter kolom: Details & Import */}
-            <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-              {activeCompId ? (
-                <>
-                  <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 shrink-0">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h2 className="text-2xl font-black text-slate-900">{selectedComp?.name}</h2>
-                        <div className="flex gap-4 mt-2">
-                          <div className="flex items-center gap-1.5 text-slate-500 text-sm font-bold"><MapPin size={16}/> {selectedComp?.location || 'Geen locatie'}</div>
-                          <div className="flex items-center gap-1.5 text-slate-500 text-sm font-bold"><Calendar size={16}/> {selectedComp?.date || 'Geen datum'}</div>
-                        </div>
-                      </div>
-                      <div className="flex bg-slate-100 p-1 rounded-xl">
-                        {['gepland', 'actief', 'afgesloten'].map(s => (
-                          <button key={s} onClick={() => updateCompStatus(activeCompId, s)} className={`px-3 py-1.5 rounded-lg text-xs font-black transition capitalize ${selectedComp?.status === s ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>{s}</button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 mt-6">
-                      <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
-                        <div className="text-blue-600 font-black text-xs uppercase tracking-wider">Speed Reeksen</div>
-                        <div className="text-3xl font-black text-blue-900 mt-1">{stats.speed}</div>
-                      </div>
-                      <div className="bg-purple-50 rounded-2xl p-4 border border-purple-100">
-                        <div className="text-purple-600 font-black text-xs uppercase tracking-wider">Freestyle Reeksen</div>
-                        <div className="text-3xl font-black text-purple-900 mt-1">{stats.freestyle}</div>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden">
-                    <h2 className="text-lg font-black mb-4 flex items-center gap-2"><List size={20} className="text-indigo-500"/> DATA IMPORT</h2>
-                    <div className="flex gap-2 mb-4">
-                      <button onClick={() => setImportType('speed')} className={`flex-1 py-2 rounded-xl text-sm font-black transition border-2 ${importType === 'speed' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-100 text-slate-400 hover:border-slate-200'}`}>SPEED CSV</button>
-                      <button onClick={() => setImportType('freestyle')} className={`flex-1 py-2 rounded-xl text-sm font-black transition border-2 ${importType === 'freestyle' ? 'border-purple-600 bg-purple-600 text-white' : 'border-slate-100 text-slate-400 hover:border-slate-200'}`}>FREESTYLE CSV</button>
-                    </div>
-                    <textarea 
-                      value={csvInput} 
-                      onChange={e => setCsvInput(e.target.value)}
-                      placeholder={`Plak hier de ${importType} CSV data...`}
-                      className="flex-1 w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono focus:ring-2 ring-blue-500 outline-none resize-none"
-                    />
-                    <div className="mt-4 flex items-center justify-between">
-                      <div className="text-xs text-slate-400 font-bold">
-                        {importType === 'speed' ? 'Formaat: Reeks, Onderdeel, Uur, Club1, Skipper1, ...' : 'Formaat: Reeks, Club, Skipper, Veld, Uur'}
-                      </div>
-                      <button 
-                        onClick={handleImport}
-                        disabled={isProcessing || !csvInput}
-                        className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black text-sm hover:bg-slate-800 transition disabled:opacity-50"
-                      >
-                        {isProcessing ? 'VERWERKEN...' : 'IMPORT STARTEN'}
-                      </button>
-                    </div>
-                    {status.msg && <div className={`mt-4 p-3 rounded-xl text-sm font-bold ${status.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{status.msg}</div>}
-                  </section>
-                </>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
-                  <Trophy size={64} strokeWidth={1}/>
-                  <p className="mt-4 font-black text-xl">SELECTEER EEN WEDSTRIJD</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {view === 'live' && selectedComp && (
-           <div className="max-w-4xl mx-auto h-full flex flex-col gap-4">
-              <div className="flex gap-2 justify-center shrink-0">
-                <button onClick={() => setActiveTab('speed')} className={`px-8 py-3 rounded-xl font-black transition ${activeTab === 'speed' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-200'}`}>SPEED</button>
-                <button onClick={() => setActiveTab('freestyle')} className={`px-8 py-3 rounded-xl font-black transition ${activeTab === 'freestyle' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-200'}`}>FREESTYLE</button>
-              </div>
-
-              <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 text-center shrink-0">
-                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">HUIDIGE REEKS</span>
-                <div className="flex items-center justify-center gap-12 mt-2">
-                  <button onClick={() => updateHeatIndex(-1)} className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition"><ChevronLeft size={32}/></button>
-                  <span className="text-8xl font-black tabular-nums">{activeTab === 'speed' ? compSettings.currentSpeedHeat : compSettings.currentFreestyleHeat}</span>
-                  <button onClick={() => updateHeatIndex(1)} className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition"><ChevronRight size={32}/></button>
-                </div>
-                <div className="mt-6 flex flex-col items-center gap-1">
-                  <div className="text-xl font-black text-slate-800">{currentHeat?.onderdeel || 'Geen onderdeel'}</div>
-                  <div className="px-4 py-1 bg-slate-100 rounded-full text-sm font-black text-slate-500">GEPLAND: {currentHeat?.uur || '--:--'}</div>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto pr-2">
-                 <div className="grid grid-cols-1 gap-2">
-                    {activeTab === 'speed' ? (
-                      // Toon alle 10 velden voor speed
-                      Array.from({length: 10}, (_, i) => i + 1).map(vNum => {
-                        const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
-                        const skipper = slot ? skippers[slot.skipperId] : null;
-                        return (
-                          <div key={vNum} className={`flex items-center gap-4 p-4 rounded-2xl border transition ${skipper ? 'bg-white border-slate-200' : 'bg-slate-50/50 border-dashed border-slate-200 opacity-40'}`}>
-                            <div className="w-16 font-black text-blue-600 text-sm italic">VELD {vNum}</div>
-                            <div className="flex-1 font-black text-lg">{skipper?.naam || '-'}</div>
-                            <div className="text-slate-400 font-bold text-sm uppercase">{skipper?.club || ''}</div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      // Toon slots voor freestyle (meestal 1 of 2)
-                      currentHeat?.slots?.map((slot, idx) => (
-                        <div key={idx} className="flex items-center gap-4 p-6 bg-white border border-slate-200 rounded-2xl">
-                           <div className="w-20 font-black text-purple-600">{slot.veld}</div>
-                           <div className="flex-1 font-black text-2xl">{skippers[slot.skipperId]?.naam}</div>
-                           <div className="text-slate-400 font-bold uppercase">{skippers[slot.skipperId]?.club}</div>
-                        </div>
-                      ))
-                    )}
-                 </div>
-              </div>
-           </div>
-        )}
-
-        {view === 'display' && (
-          <div className="fixed inset-0 bg-white z-[100] p-8 flex flex-col overflow-hidden">
-             <div className="flex justify-between items-start mb-6">
-                <div>
-                   <h1 className="text-5xl font-black leading-none">{currentHeat?.onderdeel?.toUpperCase() || 'GEEN DATA'}</h1>
-                   <div className="text-blue-600 font-black text-xl mt-2">ROPESKIPPING LIVE - {selectedComp?.name?.toUpperCase()}</div>
-                </div>
-                <div className="flex gap-4">
-                   <div className="bg-slate-100 px-6 py-3 rounded-2xl text-right">
-                      <div className="text-xs font-black text-slate-500 uppercase">Gepland</div>
-                      <div className="text-3xl font-black">{currentHeat?.uur || '--:--'}</div>
-                   </div>
-                   <div className="bg-black text-white px-6 py-3 rounded-2xl text-right">
-                      <div className="text-xs font-black opacity-60 uppercase">Live Tijd</div>
-                      <div className="text-3xl font-black tabular-nums">{currentTime.toLocaleTimeString('nl-BE', {hour:'2-digit', minute:'2-digit'})}</div>
-                   </div>
-                </div>
-             </div>
-
-             <div className="bg-slate-50 border border-slate-200 rounded-3xl p-4 flex items-center gap-6 mb-6">
-                <span className="text-2xl font-black text-slate-400">REEKS</span>
-                <span className="text-7xl font-black text-blue-600 leading-none">{activeTab === 'speed' ? compSettings.currentSpeedHeat : compSettings.currentFreestyleHeat}</span>
-                <div className="ml-auto flex items-center gap-3">
-                   <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse"></div>
-                   <span className="text-xl font-black">LIVE</span>
-                </div>
-             </div>
-
-             <div className="flex-1 grid grid-cols-1 gap-2 overflow-hidden">
-                {activeTab === 'speed' ? (
-                  Array.from({length: 10}, (_, i) => i + 1).map(vNum => {
-                    const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
-                    const skipper = slot ? skippers[slot.skipperId] : null;
-                    return (
-                      <div key={vNum} className={`flex-1 flex items-center px-8 border rounded-2xl ${skipper ? 'bg-white border-slate-200' : 'bg-slate-50/50 border-transparent opacity-20'}`}>
-                         <span className="w-24 text-lg font-black text-blue-600 italic">VELD {vNum}</span>
-                         <span className="flex-1 text-3xl font-black truncate">{skipper?.naam || ''}</span>
-                         <span className="text-xl font-bold text-slate-400 uppercase">{skipper?.club || ''}</span>
-                      </div>
-                    );
-                  })
-                ) : (
-                  currentHeat?.slots?.map((slot, idx) => (
-                    <div key={idx} className="flex-1 flex items-center px-12 bg-white border border-slate-200 rounded-3xl">
-                       <span className="w-32 text-2xl font-black text-purple-600">{slot.veld}</span>
-                       <span className="flex-1 text-6xl font-black">{skippers[slot.skipperId]?.naam}</span>
-                       <span className="text-3xl font-bold text-slate-400 uppercase">{skippers[slot.skipperId]?.club}</span>
-                    </div>
-                  ))
-                )}
-             </div>
-
-             <button onClick={() => setView('live')} className="absolute top-2 left-2 opacity-10 hover:opacity-100 transition px-4 py-2 bg-slate-100 rounded font-black text-[10px]">SLUITEN</button>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-};
-
-export default App;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
