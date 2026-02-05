@@ -212,17 +212,27 @@ const App = () => {
     header: { display: 'flex', justifyContent: 'space-between', padding: '0.75rem 2rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
     main: { flex: 1, padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
     card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', width: '100%', maxWidth: '800px', backgroundColor: '#fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
-    displayOverlay: { position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 1000, padding: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+    displayOverlay: { 
+      position: 'fixed', 
+      inset: 0, 
+      backgroundColor: '#fff', 
+      zIndex: 1000, 
+      padding: '1.5rem', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      overflow: 'hidden',
+      boxSizing: 'border-box'
+    },
     diffBadge: (info) => ({
-      padding: '0.3rem 0.8rem',
-      borderRadius: '0.6rem',
+      padding: '0.2rem 0.6rem',
+      borderRadius: '0.5rem',
       fontWeight: '900',
-      fontSize: '1.2rem',
+      fontSize: '1rem',
       backgroundColor: info.isBehind ? '#fee2e2' : '#dcfce7',
       color: info.isBehind ? '#dc2626' : '#16a34a',
       display: 'inline-flex',
       alignItems: 'center',
-      marginLeft: '0.75rem'
+      marginLeft: '0.5rem'
     })
   };
 
@@ -287,60 +297,71 @@ const App = () => {
 
         {view === 'display' && (
           <div style={styles.displayOverlay}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+            {/* Header Sectie - Geoptimaliseerd voor ruimte */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div>
-                <h1 style={{ fontSize: '3.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
-                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1.2rem' }}>ROPESKIPPING COMPETITION</div>
+                <h1 style={{ fontSize: '2.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
+                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1rem' }}>ROPESKIPPING COMPETITION</div>
               </div>
 
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                   <div style={{ fontSize: '2.8rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
-                   {timeDifferenceInfo && (
-                      <div style={styles.diffBadge(timeDifferenceInfo)}>
-                        {timeDifferenceInfo.label} min.
-                      </div>
-                   )}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
-                  <div style={{ fontWeight: 900, color: '#fff', background: '#000', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '1rem' }}>
-                    GEPLAND: {currentHeat?.uur || "--:--"} u.
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                {/* Geplande Tijd Sectie */}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: '#64748b', fontWeight: 800, fontSize: '0.9rem', marginBottom: '2px' }}>GEPLAND TIJDSTIP</div>
+                  <div style={{ fontWeight: 900, color: '#fff', background: '#000', padding: '0.4rem 1rem', borderRadius: '0.6rem', fontSize: '1.5rem', lineHeight: 1 }}>
+                    {currentHeat?.uur || "--:--"} u.
                   </div>
                 </div>
+
+                {/* Klok en Vertraging */}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                     <div style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+                     {timeDifferenceInfo && (
+                        <div style={styles.diffBadge(timeDifferenceInfo)}>
+                          {timeDifferenceInfo.label}m
+                        </div>
+                     )}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#94a3b8' }}>LIVE TIJD</div>
+                </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.75rem 2rem', borderRadius: '1.2rem', marginBottom: '1rem', border: '2px solid #e2e8f0' }}>
-               <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#64748b' }}>HUIDIGE REEKS</span>
-               <span style={{ fontSize: '3.5rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+            {/* Reeks Indicator - Iets compacter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.5rem 1.5rem', borderRadius: '1rem', marginBottom: '1rem', border: '2px solid #e2e8f0' }}>
+               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#64748b' }}>HUIDIGE REEKS</span>
+               <span style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
             </div>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem', minHeight: 0 }}>
+            {/* De Deelnemerslijst - Schaling verbeterd om op scherm te passen */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem', minHeight: 0 }}>
               {speedSlots.map((s, i) => (
                 <div key={i} style={{ 
                   flex: 1, 
                   display: 'grid', 
-                  gridTemplateColumns: '150px 1fr 1fr', 
+                  gridTemplateColumns: '120px 1fr 1fr', 
                   alignItems: 'center', 
-                  padding: '0 2rem', 
-                  borderRadius: '1rem', 
-                  border: '2px solid #f1f5f9',
+                  padding: '0 1.5rem', 
+                  borderRadius: '0.75rem', 
+                  border: '1px solid #f1f5f9',
                   backgroundColor: s.empty ? 'transparent' : '#fff',
-                  opacity: s.empty ? 0.15 : 1,
-                  minHeight: 0
+                  opacity: s.empty ? 0.1 : 1,
+                  minHeight: 0,
+                  boxShadow: s.empty ? 'none' : '0 1px 2px rgba(0,0,0,0.05)'
                 }}>
-                  <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
-                  <span style={{ fontSize: '2.2rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.naam || ""}</span>
-                  <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right' }}>{skippers[s.skipperId]?.club || ""}</span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
+                  <span style={{ fontSize: '1.7rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.naam || ""}</span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right' }}>{skippers[s.skipperId]?.club || ""}</span>
                 </div>
               ))}
             </div>
 
             {currentHeat?.status === 'finished' && (
               <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(16, 185, 129, 0.98)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 100, borderRadius: 'inherit' }}>
-                <Trophy size={120} />
-                <h2 style={{ fontSize: '4.5rem', fontWeight: 900, margin: 0 }}>REEKS VOLTOOID</h2>
-                <p style={{ fontSize: '1.5rem', fontWeight: 700, opacity: 0.8 }}>Even geduld voor de volgende reeks...</p>
+                <Trophy size={80} />
+                <h2 style={{ fontSize: '3rem', fontWeight: 900, margin: 0 }}>REEKS VOLTOOID</h2>
+                <p style={{ fontSize: '1.2rem', fontWeight: 700, opacity: 0.8 }}>Even geduld voor de volgende reeks...</p>
               </div>
             )}
 
