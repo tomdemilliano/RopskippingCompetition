@@ -1,24 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-    getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, addDoc, query 
+    getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, addDoc, query 
 } from 'firebase/firestore';
 import { 
     getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
-import { 
-    Layout, Users, Play, Monitor, Plus, Calendar, MapPin, ChevronLeft, ChevronRight, 
-    Upload, Trash2, Edit3, X, Search, Trophy, Settings, ArrowLeft, UserMinus, 
-    SkipForward, SkipBack, RefreshCw, Volume2, CheckCircle2, Circle, Save, MoreVertical,
-    Activity, Clock, Layers, Star, Zap, Shield
-} from 'lucide-react';
+import { Layout, Users, Play, Monitor, Plus, Calendar, MapPin, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
 
-// ==========================================
-// 1. CONFIGURATIE
-// ==========================================
-
+// Firebase configuratie
 const firebaseConfig = {
-    apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY", 
+    apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY", // Wordt door omgeving ingevuld
     authDomain: "ropeskippingcontest.firebaseapp.com",
     projectId: "ropeskippingcontest",
     storageBucket: "ropeskippingcontest.firebasestorage.app",
@@ -26,105 +18,36 @@ const firebaseConfig = {
     appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
 
+// Initialisatie
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-ultimate-wide';
-
-// ==========================================
-// 2. INLINE STYLES OBJECTS (Gegarandeerde weergave)
-// ==========================================
-
-const styles = {
-    body: {
-        backgroundColor: '#f8fafc',
-        minHeight: '100vh',
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-        color: '#0f172a',
-        margin: 0
-    },
-    nav: {
-        height: '80px',
-        backgroundColor: 'white',
-        borderBottom: '1px solid #e2e8f0',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 40px',
-        position: 'sticky',
-        top: 0,
-        zIndex: 1000,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-    },
-    container: {
-        maxWidth: '1600px',
-        margin: '0 auto',
-        padding: '40px'
-    },
-    card: {
-        backgroundColor: 'white',
-        borderRadius: '24px',
-        border: '1px solid #e2e8f0',
-        padding: '32px',
-        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
-    },
-    btnPrimary: {
-        background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
-        color: 'white',
-        padding: '12px 24px',
-        borderRadius: '16px',
-        fontWeight: '800',
-        border: 'none',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-        boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.3)'
-    },
-    displayScreen: {
-        backgroundColor: '#020617',
-        color: 'white',
-        minHeight: '100vh',
-        padding: '60px',
-        position: 'fixed',
-        inset: 0,
-        zIndex: 2000,
-        overflow: 'hidden'
-    },
-    veldCard: {
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '40px',
-        padding: '24px 48px',
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '16px'
-    }
-};
-
-// ==========================================
-// 3. HOOFD COMPONENT
-// ==========================================
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-ultimate';
 
 export default function App() {
-    const [view, setView] = useState('management'); 
-    const [mgmtTab, setMgmtTab] = useState('overview'); 
+    const [view, setView] = useState('management');
     const [activeTab, setActiveTab] = useState('speed');
-    const [user, setUser] = useState(null);
     const [competitions, setCompetitions] = useState([]);
     const [activeCompId, setActiveCompId] = useState(null);
     const [skippers, setSkippers] = useState({});
     const [heats, setHeats] = useState([]);
-    const [compSettings, setCompSettings] = useState({});
+    const [compSettings, setCompSettings] = useState({ currentSpeedHeat: 1, currentFreestyleHeat: 1 });
+    const [csvInput, setCsvInput] = useState('');
+    const [importType, setImportType] = useState('speed');
+    const [newComp, setNewComp] = useState({ name: '', date: '', location: '', status: 'gepland' });
+    const [user, setUser] = useState(null);
 
+    // Auth Logic (Rule 3)
     useEffect(() => {
         const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth error:", error);
             }
         };
         initAuth();
@@ -132,181 +55,339 @@ export default function App() {
         return () => unsubscribe();
     }, []);
 
+    // Listen to all competitions
     useEffect(() => {
         if (!user) return;
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'));
-        return onSnapshot(q, (s) => setCompetitions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            setCompetitions(list);
+            if (!activeCompId && list.length > 0) {
+                const active = list.find(c => c.status === 'actief') || list[0];
+                setActiveCompId(active.id);
+            }
+        }, (err) => console.error(err));
+        return () => unsubscribe();
     }, [user]);
 
+    // Listen to active competition data
     useEffect(() => {
         if (!activeCompId || !user) return;
-        const base = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
-        const unsubS = onSnapshot(base, d => d.exists() && setCompSettings(d.data()));
-        const unsubSk = onSnapshot(collection(base, 'skippers'), s => {
+        const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
+        const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'skippers');
+        const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'heats');
+
+        const unsubS = onSnapshot(compRef, d => d.exists() && setCompSettings(d.data()), e => console.error(e));
+        const unsubSk = onSnapshot(skRef, s => {
             const d = {}; s.forEach(doc => d[doc.id] = doc.data());
             setSkippers(d);
-        });
-        const unsubH = onSnapshot(collection(base, 'heats'), s => setHeats(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+        }, e => console.error(e));
+        const unsubH = onSnapshot(hRef, s => setHeats(s.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error(e));
+
         return () => { unsubS(); unsubSk(); unsubH(); };
     }, [activeCompId, user]);
 
-    const currentHeatData = useMemo(() => {
-        const heatList = heats.filter(h => h.type === activeTab).sort((a,b) => a.reeks - b.reeks);
-        const currentNr = activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1);
-        return heatList.find(h => h.reeks === currentNr);
+    const selectedComp = competitions.find(c => c.id === activeCompId);
+    
+    const stats = useMemo(() => ({
+        speed: heats.filter(h => h.type === 'speed').length,
+        freestyle: heats.filter(h => h.type === 'freestyle').length
+    }), [heats]);
+
+    const currentHeat = useMemo(() => {
+        const num = activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1);
+        return heats.find(h => h.type === activeTab && h.reeks === num);
     }, [heats, activeTab, compSettings]);
 
-    // ==========================================
-    // 4. SUB-VIEWS
-    // ==========================================
+    const handleCreateComp = async (e) => {
+        e.preventDefault();
+        if (!user) return;
+        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), {
+            ...newComp, currentSpeedHeat: 1, currentFreestyleHeat: 1
+        });
+        setNewComp({ name: '', date: '', location: '', status: 'gepland' });
+        setActiveCompId(docRef.id);
+    };
 
-    const Management = () => (
-        <div style={styles.container}>
-            {!activeCompId ? (
-                <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
-                        <div>
-                            <h1 style={{ fontSize: '48px', fontWeight: '900', margin: 0, letterSpacing: '-0.02em' }}>Events</h1>
-                            <p style={{ color: '#64748b', fontSize: '18px', margin: '8px 0 0 0' }}>Selecteer een wedstrijd om te beheren.</p>
-                        </div>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-                        {competitions.map(c => (
-                            <div key={c.id} onClick={() => setActiveCompId(c.id)} style={{...styles.card, cursor: 'pointer', borderBottom: '6px solid #4f46e5' }}>
-                                <div style={{ color: '#4f46e5', marginBottom: '16px' }}><Calendar size={32} /></div>
-                                <h3 style={{ fontSize: '24px', fontWeight: '800', margin: '0 0 8px 0' }}>{c.name}</h3>
-                                <p style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px' }}><MapPin size={14}/> {c.location}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            ) : (
-                <div>
-                    <button onClick={() => setActiveCompId(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', fontWeight: '700' }}>
-                        <ArrowLeft size={20}/> TERUG NAAR OVERZICHT
-                    </button>
-                    <div style={{...styles.card, background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', color: 'white', padding: '60px', position: 'relative', overflow: 'hidden' }}>
-                        <Zap style={{ position: 'absolute', right: '-20px', bottom: '-20px', width: '200px', height: '200px', color: 'rgba(255,255,255,0.03)' }} />
-                        <h2 style={{ fontSize: '56px', fontWeight: '900', margin: 0 }}>{competitions.find(c => c.id === activeCompId)?.name}</h2>
-                        <p style={{ fontSize: '20px', opacity: 0.6, marginBottom: '40px' }}>Klaar om de wedstrijd te starten?</p>
-                        <button onClick={() => setView('live')} style={{...styles.btnPrimary, padding: '20px 40px', fontSize: '18px' }}>START LIVE MODUS <ChevronRight/></button>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+    const handleImport = async () => {
+        if (!csvInput || !activeCompId || !user) return;
+        const batch = writeBatch(db);
+        const lines = csvInput.split('\n').filter(l => l.trim());
+        const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
 
-    const Live = () => (
-        <div style={styles.container}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '40px' }}>
-                <div style={styles.card}>
-                    <div style={{ display: 'flex', gap: '12px', marginBottom: '40px' }}>
-                        <button onClick={() => setActiveTab('speed')} style={{...styles.btnPrimary, background: activeTab === 'speed' ? '#4f46e5' : '#f1f5f9', color: activeTab === 'speed' ? 'white' : '#64748b', boxShadow: 'none' }}>SPEED</button>
-                        <button onClick={() => setActiveTab('freestyle')} style={{...styles.btnPrimary, background: activeTab === 'freestyle' ? '#c026d3' : '#f1f5f9', color: activeTab === 'freestyle' ? 'white' : '#64748b', boxShadow: 'none' }}>FREESTYLE</button>
-                    </div>
+        rows.forEach(row => {
+            const reeksNum = parseInt(row[0]);
+            const baseRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId);
+            if (importType === 'speed') {
+                const slots = [];
+                for (let v = 1; v <= 10; v++) {
+                    const club = row[3 + (v - 1) * 2], naam = row[4 + (v - 1) * 2];
+                    if (naam) {
+                        const sid = `s_${naam}_${club}`.replace(/\s/g, '_');
+                        batch.set(doc(collection(baseRef, 'skippers'), sid), { id: sid, naam, club });
+                        slots.push({ veldNr: v, skipperId: sid });
+                    }
+                }
+                batch.set(doc(collection(baseRef, 'heats'), `s_${reeksNum}`), { type: 'speed', reeks: reeksNum, onderdeel: row[1], uur: row[2], slots });
+            } else {
+                const sid = `s_${row[2]}_${row[1]}`.replace(/\s/g, '_');
+                batch.set(doc(collection(baseRef, 'skippers'), sid), { id: sid, naam: row[2], club: row[1] });
+                batch.set(doc(collection(baseRef, 'heats'), `f_${reeksNum}`), { type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', uur: row[4], slots: [{ veld: row[3], skipperId: sid }] });
+            }
+        });
+        await batch.commit();
+        setCsvInput('');
+    };
 
-                    <div style={{ marginBottom: '60px' }}>
-                        <span style={{ color: '#4f46e5', fontWeight: '900', fontSize: '12px', letterSpacing: '2px' }}>REEKS {(activeTab === 'speed' ? compSettings.currentSpeedHeat : compSettings.currentFreestyleHeat) || 1}</span>
-                        <h2 style={{ fontSize: '72px', fontWeight: '900', margin: 0, letterSpacing: '-2px' }}>{currentHeatData?.onderdeel || 'Geen Reeks'}</h2>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
-                        {[1, 2, 3, 4, 5].map(v => {
-                            const slot = currentHeatData?.slots?.find(s => Number(s.veld) === v);
-                            const sk = skippers[slot?.skipperId];
-                            return (
-                                <div key={v} style={{ padding: '24px', backgroundColor: '#f8fafc', borderRadius: '24px', textAlign: 'center', border: '2px solid #f1f5f9' }}>
-                                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#cbd5e1', marginBottom: '16px' }}>VELD {v}</div>
-                                    <div style={{ width: '60px', height: '60px', backgroundColor: 'white', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: '900', color: '#4f46e5', fontSize: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                                        {sk ? sk.naam[0] : '-'}
-                                    </div>
-                                    <div style={{ fontWeight: '800', fontSize: '14px' }}>{sk?.naam || 'Leeg'}</div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <div style={{ ...styles.card, height: 'fit-content' }}>
-                    <h3 style={{ fontWeight: '900', marginBottom: '24px' }}>Schema</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {heats.filter(h => h.type === activeTab).map(h => (
-                            <div key={h.id} style={{ padding: '16px', borderRadius: '16px', backgroundColor: h.reeks === (activeTab === 'speed' ? compSettings.currentSpeedHeat : compSettings.currentFreestyleHeat) ? '#eef2ff' : 'transparent', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#4f46e5', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '12px' }}>{h.reeks}</div>
-                                <div style={{ fontWeight: '700' }}>{h.onderdeel}</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    const Display = () => (
-        <div style={styles.displayScreen}>
-            <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-                <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid rgba(255,255,255,0.1)', paddingBottom: '40px', marginBottom: '60px' }}>
-                    <div>
-                        <div style={{ color: '#4f46e5', fontWeight: '900', fontSize: '24px', letterSpacing: '8px', marginBottom: '16px' }}>PK ROPE SKIPPING</div>
-                        <h1 style={{ fontSize: '120px', fontWeight: '900', margin: 0, lineHeight: 0.9, fontStyle: 'italic' }}>{currentHeatData?.onderdeel || 'PAUZE'}</h1>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                        <div style={{ color: '#4f46e5', fontWeight: '900', fontSize: '32px' }}>REEKS</div>
-                        <div style={{ fontSize: '180px', fontWeight: '900', lineHeight: 1 }}>{currentHeatData?.reeks || '0'}</div>
-                    </div>
-                </header>
-
-                <div>
-                    {[1, 2, 3, 4, 5].map(v => {
-                        const slot = currentHeatData?.slots?.find(s => Number(s.veld) === v);
-                        const sk = skippers[slot?.skipperId];
-                        return (
-                            <div key={v} style={styles.veldCard}>
-                                <div style={{ width: '200px', fontSize: '48px', fontWeight: '900', color: '#4f46e5', fontStyle: 'italic' }}>Veld {v}</div>
-                                <div style={{ flex: 1, fontSize: '80px', fontWeight: '900', textTransform: 'uppercase' }}>{sk?.naam || ''}</div>
-                                <div style={{ fontSize: '32px', opacity: 0.3, fontWeight: '700' }}>{sk?.club || ''}</div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '40px', right: '40px', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'white', padding: '12px', borderRadius: '12px', cursor: 'pointer' }}>
-                <X size={32}/>
-            </button>
-        </div>
-    );
+    const updateHeat = async (delta) => {
+        if (!user || !activeCompId) return;
+        const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), {
+            [key]: Math.max(1, (compSettings[key] || 1) + delta)
+        });
+    };
 
     return (
-        <div style={styles.body}>
-            <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-                * { box-sizing: border-box; }
-                button { transition: all 0.2s; }
-                button:hover { transform: translateY(-1px); opacity: 0.9; }
-                button:active { transform: translateY(0); }
-            `}</style>
-
-            {view !== 'display' && (
-                <nav style={styles.nav}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ width: '48px', height: '48px', backgroundColor: '#4f46e5', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                            <Zap fill="white" />
+        <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+            {/* Header */}
+            <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 px-8 py-4 flex justify-between items-center border-b border-slate-200">
+                <div className="flex items-center gap-10">
+                    <div className="text-2xl font-black tracking-tighter flex items-center gap-2">
+                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-xs italic">RS</div>
+                        ROPESCORE <span className="text-blue-600">PRO</span>
+                    </div>
+                    <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                        {[
+                            {id: 'management', label: 'Beheer', icon: Layout},
+                            {id: 'live', label: 'Live', icon: Play},
+                            {id: 'display', label: 'Scherm', icon: Monitor}
+                        ].map(v => (
+                            <button 
+                                key={v.id} 
+                                onClick={() => setView(v.id)} 
+                                className={`px-4 py-2 rounded-lg text-xs font-black flex items-center gap-2 transition ${view === v.id ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                                <v.icon size={14} />
+                                {v.label.toUpperCase()}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+                {selectedComp && (
+                    <div className="flex items-center gap-4">
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            selectedComp.status === 'actief' ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                            {selectedComp.status}
                         </div>
-                        <div style={{ fontWeight: '900', fontSize: '24px', letterSpacing: '-1px' }}>ROPESCORE <span style={{ color: '#4f46e5' }}>PRO</span></div>
+                        <div className="font-bold text-slate-700">{selectedComp.name}</div>
                     </div>
+                )}
+            </header>
 
-                    <div style={{ display: 'flex', gap: '8px', backgroundColor: '#f1f5f9', padding: '6px', borderRadius: '20px' }}>
-                        <button onClick={() => setView('management')} style={{ padding: '10px 24px', border: 'none', background: view === 'management' ? 'white' : 'transparent', borderRadius: '14px', fontWeight: '800', cursor: 'pointer', color: view === 'management' ? '#4f46e5' : '#64748b', boxShadow: view === 'management' ? '0 4px 6px rgba(0,0,0,0.05)' : 'none' }}>DASHBOARD</button>
-                        <button onClick={() => setView('live')} disabled={!activeCompId} style={{ padding: '10px 24px', border: 'none', background: view === 'live' ? 'white' : 'transparent', borderRadius: '14px', fontWeight: '800', cursor: 'pointer', color: view === 'live' ? '#4f46e5' : '#64748b', opacity: activeCompId ? 1 : 0.3 }}>LIVE CONTROLLER</button>
-                        <button onClick={() => setView('display')} disabled={!activeCompId} style={{ ...styles.btnPrimary, padding: '10px 24px', opacity: activeCompId ? 1 : 0.3 }}>ZAAL DISPLAY</button>
+            <main className="flex-1 overflow-hidden p-8">
+                {view === 'management' && (
+                    <div className="max-w-7xl mx-auto h-full grid grid-cols-12 gap-8">
+                        {/* Sidebar */}
+                        <div className="col-span-4 flex flex-col gap-6 overflow-hidden">
+                            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 shrink-0">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <Plus size={12} /> Nieuwe Wedstrijd
+                                </h3>
+                                <form onSubmit={handleCreateComp} className="space-y-3">
+                                    <input required placeholder="Wedstrijdnaam" className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white outline-none rounded-xl p-3 text-sm transition" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input placeholder="Locatie" className="bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white outline-none rounded-xl p-3 text-sm transition" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} />
+                                        <input type="date" className="bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white outline-none rounded-xl p-3 text-xs transition" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} />
+                                    </div>
+                                    <button className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-black text-xs uppercase tracking-widest transition shadow-lg shadow-blue-200">AANMAKEN</button>
+                                </form>
+                            </div>
+
+                            <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden">
+                                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alle Wedstrijden</h3>
+                                    <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-black">{competitions.length}</span>
+                                </div>
+                                <div className="flex-1 overflow-y-auto">
+                                    {competitions.map(c => (
+                                        <div 
+                                            key={c.id} 
+                                            onClick={() => setActiveCompId(c.id)} 
+                                            className={`p-6 border-b border-slate-50 cursor-pointer transition-all ${activeCompId === c.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
+                                        >
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className={`font-black text-lg ${activeCompId === c.id ? 'text-blue-700' : 'text-slate-800'}`}>{c.name}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-tight">
+                                                <span className="flex items-center gap-1"><MapPin size={10}/> {c.location}</span>
+                                                <span className="flex items-center gap-1"><Calendar size={10}/> {c.date}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Content Area */}
+                        <div className="col-span-8 flex flex-col gap-8 overflow-hidden">
+                            {selectedComp ? (
+                                <>
+                                    <div className="grid grid-cols-3 gap-6">
+                                        <div className="bg-blue-600 rounded-[2rem] p-6 text-white shadow-xl shadow-blue-100">
+                                            <div className="text-[10px] font-black opacity-60 uppercase mb-3">Status Beheren</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['gepland', 'actief', 'afgesloten'].map(s => (
+                                                    <button key={s} onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), {status: s})} 
+                                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase border transition ${selectedComp.status === s ? 'bg-white text-blue-600' : 'border-white/20 hover:bg-white/10'}`}>
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="bg-white rounded-[2rem] p-6 border border-slate-200">
+                                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1 flex items-center gap-2"><Play size={10} className="text-blue-600"/> Speed Reeksen</div>
+                                            <div className="text-5xl font-black text-slate-900">{stats.speed}</div>
+                                        </div>
+                                        <div className="bg-white rounded-[2rem] p-6 border border-slate-200">
+                                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1 flex items-center gap-2"><Users size={10} className="text-purple-600"/> Freestyle</div>
+                                            <div className="text-5xl font-black text-slate-900">{stats.freestyle}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-[2rem] p-8 flex-1 flex flex-col overflow-hidden border border-slate-200 shadow-sm">
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h2 className="text-xl font-black flex items-center gap-3">
+                                                <Upload className="text-blue-600" />
+                                                CSV Import
+                                            </h2>
+                                            <div className="flex bg-slate-100 p-1 rounded-xl">
+                                                <button onClick={() => setImportType('speed')} className={`px-4 py-2 rounded-lg text-xs font-black transition ${importType === 'speed' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>SPEED</button>
+                                                <button onClick={() => setImportType('freestyle')} className={`px-4 py-2 rounded-lg text-xs font-black transition ${importType === 'freestyle' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400'}`}>FREESTYLE</button>
+                                            </div>
+                                        </div>
+                                        <textarea 
+                                            value={csvInput} 
+                                            onChange={e => setCsvInput(e.target.value)} 
+                                            placeholder={`Plak ${importType} CSV data hier... (Reeks,Onderdeel,Uur,Club,Naam...)`} 
+                                            className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-mono text-xs focus:bg-white focus:border-blue-600 outline-none transition mb-4 resize-none"
+                                        />
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-xs text-slate-400 font-bold">Zorg dat de kolommen exact overeenkomen met het format.</p>
+                                            <button onClick={handleImport} className="bg-slate-900 hover:bg-black text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition">IMPORTEREN</button>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[3rem] border-4 border-dashed border-slate-100">
+                                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200 mb-4">
+                                        <Layout size={40} />
+                                    </div>
+                                    <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Selecteer een wedstrijd in de lijst</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </nav>
-            )}
+                )}
 
-            <main>
-                {view === 'management' && <Management />}
-                {view === 'live' && <Live />}
-                {view === 'display' && <Display />}
+                {view === 'live' && selectedComp && (
+                    <div className="max-w-4xl mx-auto h-full flex flex-col gap-6">
+                        <div className="flex justify-center border-b border-slate-200">
+                            <button onClick={() => setActiveTab('speed')} className={`px-8 py-4 font-black text-sm tracking-widest border-b-4 transition ${activeTab === 'speed' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>SPEED</button>
+                            <button onClick={() => setActiveTab('freestyle')} className={`px-8 py-4 font-black text-sm tracking-widest border-b-4 transition ${activeTab === 'freestyle' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-400'}`}>FREESTYLE</button>
+                        </div>
+
+                        <div className="bg-white rounded-[3rem] p-10 text-center flex flex-col items-center shadow-xl shadow-slate-200/50 border border-slate-100">
+                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">Huidige Actieve Reeks</span>
+                            <div className="flex items-center gap-12">
+                                <button onClick={() => updateHeat(-1)} className="w-14 h-14 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition text-slate-400"><ChevronLeft size={24}/></button>
+                                <span className="text-8xl font-black text-slate-900 tabular-nums tracking-tighter">{(activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1))}</span>
+                                <button onClick={() => updateHeat(1)} className="w-14 h-14 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition text-slate-400"><ChevronRight size={24}/></button>
+                            </div>
+                            <div className="mt-6">
+                                <div className="text-2xl font-black text-blue-600 uppercase tracking-tight">{currentHeat?.onderdeel || 'Geen reeks'}</div>
+                                <div className="text-slate-400 font-black text-sm mt-1 tracking-widest flex items-center justify-center gap-2">
+                                    <Calendar size={12}/> {currentHeat?.uur || '--:--'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 overflow-y-auto pb-10 pr-2">
+                            {activeTab === 'speed' ? (
+                                Array.from({length: 10}).map((_, i) => {
+                                    const vNum = i + 1;
+                                    const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
+                                    const sk = slot ? skippers[slot.skipperId] : null;
+                                    return (
+                                        <div key={vNum} className={`bg-white p-5 rounded-2xl flex items-center gap-6 border-2 transition ${!sk ? 'opacity-20 border-transparent bg-slate-50' : 'border-slate-100 hover:border-blue-200'}`}>
+                                            <div className="w-20 font-black text-blue-600 text-xs italic">VELD {vNum}</div>
+                                            <div className="flex-1 font-black text-lg">{sk?.naam || 'Leeg'}</div>
+                                            <div className="text-slate-400 font-black text-[10px] uppercase tracking-widest">{sk?.club || ''}</div>
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                currentHeat?.slots?.map((slot, i) => (
+                                    <div key={i} className="bg-white p-8 rounded-[2rem] flex items-center gap-8 border-2 border-purple-50 shadow-sm">
+                                        <div className="w-24 font-black text-purple-600 text-lg uppercase italic">{slot.veld}</div>
+                                        <div className="flex-1 font-black text-3xl">{skippers[slot.skipperId]?.naam}</div>
+                                        <div className="text-slate-400 font-black text-sm uppercase tracking-widest">{skippers[slot.skipperId]?.club}</div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {view === 'display' && (
+                    <div className="fixed inset-0 bg-white z-[100] flex flex-col p-16 overflow-hidden">
+                        <div className="flex justify-between items-end mb-16">
+                            <div>
+                                <h1 className="text-9xl font-black tracking-tighter leading-none mb-6">{currentHeat?.onderdeel?.toUpperCase() || 'OFFLINE'}</h1>
+                                <div className="flex items-center gap-4 text-blue-600 font-black text-3xl">
+                                    <div className="w-3 h-3 bg-blue-600 rounded-full animate-ping" />
+                                    LIVE WEDSTRIJD • {selectedComp?.name?.toUpperCase()}
+                                </div>
+                            </div>
+                            <div className="flex gap-8">
+                                <div className="bg-slate-100 rounded-[3rem] px-12 py-8 text-right">
+                                    <div className="text-lg font-black text-slate-400 uppercase tracking-widest mb-1">Tijd</div>
+                                    <div className="text-6xl font-black tracking-tight">{currentHeat?.uur || '--:--'}</div>
+                                </div>
+                                <div className="bg-black rounded-[3rem] px-12 py-8 text-white text-right">
+                                    <div className="text-lg font-black text-white/40 uppercase tracking-widest mb-1">Reeks</div>
+                                    <div className="text-6xl font-black tracking-tight tabular-nums">{(activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1))}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 grid grid-cols-1 gap-3 overflow-hidden">
+                            {activeTab === 'speed' ? (
+                                Array.from({length: 10}).map((_, i) => {
+                                    const vNum = i + 1;
+                                    const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
+                                    const sk = slot ? skippers[slot.skipperId] : null;
+                                    return (
+                                        <div key={vNum} className={`flex-1 flex items-center px-16 border-4 rounded-[3rem] transition-all duration-500 ${sk ? 'bg-white border-slate-100 translate-x-0 opacity-100' : 'bg-slate-50 border-transparent opacity-5 translate-x-10'}`}>
+                                            <span className="w-48 text-2xl font-black text-blue-600 italic">VELD {vNum}</span>
+                                            <span className="flex-1 text-5xl font-black">{sk?.naam || ''}</span>
+                                            <span className="text-3xl font-black text-slate-200 uppercase tracking-tighter">{sk?.club || ''}</span>
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                currentHeat?.slots?.map((slot, i) => (
+                                    <div key={i} className="flex-1 flex items-center px-24 bg-white border-8 border-slate-50 rounded-[4rem] shadow-sm">
+                                        <span className="w-56 text-5xl font-black text-purple-600 italic uppercase">{slot.veld}</span>
+                                        <span className="flex-1 text-9xl font-black tracking-tighter leading-none">{skippers[slot.skipperId]?.naam}</span>
+                                        <span className="text-5xl font-black text-slate-200 uppercase italic tracking-tighter">{skippers[slot.skipperId]?.club}</span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <button onClick={() => setView('live')} className="absolute bottom-8 left-8 opacity-0 hover:opacity-100 text-[10px] font-black uppercase tracking-widest text-slate-300">Exit Display Mode</button>
+                    </div>
+                )}
             </main>
         </div>
     );
