@@ -18,7 +18,7 @@ import {
 // ==========================================
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBdlKc-a_4Xt9MY_2Tjcf" + "KXT7bqJsDr8yY", 
+    apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY", 
     authDomain: "ropeskippingcontest.firebaseapp.com",
     projectId: "ropeskippingcontest",
     storageBucket: "ropeskippingcontest.firebasestorage.app",
