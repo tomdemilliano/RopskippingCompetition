@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, collection, doc, onSnapshot, updateDoc, 
-  writeBatch, getDocs, query 
+  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch 
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  Trophy, ChevronRight, ChevronLeft, CheckCircle2, 
-  Megaphone, Activity, Zap, Star, Database, Monitor, Download, Info 
+  ChevronRight, ChevronLeft, Activity, Download, Info 
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATIE ---
@@ -22,16 +20,13 @@ const firebaseConfig = {
   appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
 
-// Global services
+// Global vars
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
 
 const App = () => {
   const [user, setUser] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [bootError, setBootError] = useState(null);
-  
-  // UI States
   const [view, setView] = useState('live'); 
   const [activeTab, setActiveTab] = useState('speed');
   const [skippers, setSkippers] = useState({});
@@ -47,254 +42,164 @@ const App = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
 
-  // STAP 1: Initialiseer Firebase & Auth
   useEffect(() => {
-    const startFirebase = async () => {
+    const init = async () => {
       try {
-        // Gebruik bestaande app of initialiseer nieuwe met de hardcoded config
-        if (!getApps().length) {
-          app = initializeApp(firebaseConfig);
-        } else {
-          app = getApps()[0];
-        }
-        
+        app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
         auth = getAuth(app);
         db = getFirestore(app);
 
-        // Authenticatie proces (RULE 3)
-        const performAuth = async () => {
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            return await signInWithCustomToken(auth, __initial_auth_token);
-          } else {
-            return await signInAnonymously(auth);
-          }
-        };
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
 
-        await performAuth();
-
-        const unsubscribe = onAuthStateChanged(auth, (u) => {
+        onAuthStateChanged(auth, (u) => {
           if (u) {
             setUser(u);
             setIsAuthReady(true);
           }
         });
-
-        return unsubscribe;
-      } catch (err) {
-        console.error("Boot error:", err);
-        setBootError(err.message);
+      } catch (e) {
+        console.error("Firebase Init Error", e);
       }
     };
-
-    startFirebase();
+    init();
   }, []);
 
-  // STAP 2: Data listeners (RULE 1 & 3)
   useEffect(() => {
     if (!isAuthReady || !user || !db) return;
 
-    // Paden volgens RULE 1: /artifacts/{appId}/public/data/{collection}
-    const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
-    const skippersRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
-    const heatsRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
+    const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
+    const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
 
-    const unsubSettings = onSnapshot(settingsRef, (d) => {
-      if (d.exists()) setSettings(d.data());
-    }, (err) => console.error("Settings error:", err));
-
-    const unsubSkippers = onSnapshot(skippersRef, (s) => {
-      const d = {}; 
-      s.forEach(doc => d[doc.id] = doc.data());
+    const unsubS = onSnapshot(sRef, d => d.exists() && setSettings(d.data()));
+    const unsubSk = onSnapshot(skRef, s => {
+      const d = {}; s.forEach(doc => d[doc.id] = doc.data());
       setSkippers(d);
-    }, (err) => console.error("Skippers error:", err));
+    });
+    const unsubH = onSnapshot(hRef, s => {
+      setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
+    });
 
-    const unsubHeats = onSnapshot(heatsRef, (s) => {
-      const hList = s.docs.map(d => ({ id: d.id, ...d.data() }));
-      setHeats(hList.sort((a,b) => a.reeks - b.reeks));
-    }, (err) => console.error("Heats error:", err));
-
-    return () => {
-      unsubSettings();
-      unsubSkippers();
-      unsubHeats();
-    };
+    return () => { unsubS(); unsubSk(); unsubH(); };
   }, [isAuthReady, user]);
 
   const updateHeat = async (delta) => {
-    if (!user || !db) return;
+    if (!db) return;
     const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
-    const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
-    
-    const newVal = Math.max(1, (settings[key] || 1) + delta);
-    try {
-      await updateDoc(settingsRef, { [key]: newVal });
-    } catch (err) {
-      console.warn("Update mislukt, doc wordt mogelijk aangemaakt...");
-    }
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    await updateDoc(ref, { [key]: Math.max(1, (settings[key] || 1) + delta) });
   };
 
   const handleImport = async () => {
-    if (!csvInput.trim() || !user || !db) return;
+    if (!csvInput.trim() || !db) return;
     setIsProcessing(true);
-    setStatusMsg({ type: 'info', text: 'Data uploaden naar cloud...' });
-    
     try {
-      const rows = csvInput.split('\n')
-        .filter(r => r.trim())
-        .map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-      
-      // Skip header indien nodig
-      if (rows.length > 0 && isNaN(parseInt(rows[0][0]))) {
-        rows.shift();
-      }
+      const rows = csvInput.split('\n').filter(r => r.trim()).map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      if (rows.length > 0 && isNaN(parseInt(rows[0][0]))) rows.shift();
 
       const batch = writeBatch(db);
-      let count = 0;
-
       for (const row of rows) {
-        if (!row[0] || isNaN(parseInt(row[0]))) continue;
         const reeksNum = parseInt(row[0]);
+        if (isNaN(reeksNum)) continue;
         
         if (importType === 'speed') {
-          const heatId = `speed_${reeksNum}`;
           const slots = [];
           for (let i = 0; i < 10; i++) {
             const club = row[3 + (i * 2)], naam = row[4 + (i * 2)];
-            if (naam && naam !== "") {
+            if (naam) {
               const sid = `s_${naam}_${club}`.replace(/[^a-zA-Z0-9]/g, '_');
               batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam, club });
               slots.push({ veld: i + 1, skipperId: sid });
             }
           }
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId), {
-            type: 'speed', reeks: reeksNum, onderdeel: row[1] || 'Speed', slots
-          });
+          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', `speed_${reeksNum}`), { type: 'speed', reeks: reeksNum, onderdeel: row[1] || 'Speed', slots });
         } else {
           const sid = `fs_${row[4]}_${row[3]}`.replace(/[^a-zA-Z0-9]/g, '_');
-          const heatId = `fs_${reeksNum}`;
           batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam: row[4], club: row[3] });
-          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId), {
-            type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', slots: [{ veld: row[2], skipperId: sid }]
-          });
+          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', `fs_${reeksNum}`), { type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', slots: [{ veld: row[2], skipperId: sid }] });
         }
-        count++;
       }
-      
       await batch.commit();
-      setStatusMsg({ type: 'success', text: `${count} reeksen succesvol geïmporteerd.` });
+      setStatusMsg("Import geslaagd!");
       setCsvInput('');
-    } catch (e) {
-      console.error("Import error:", e);
-      setStatusMsg({ type: 'error', text: `Fout: ${e.message}` });
-    } finally { 
-      setIsProcessing(false); 
-    }
+    } catch (e) { setStatusMsg("Fout bij import."); }
+    setIsProcessing(false);
   };
 
   const currentHeat = useMemo(() => {
-    const list = activeTab === 'speed' ? heats.filter(h => h.type === 'speed') : heats.filter(h => h.type === 'freestyle');
+    const list = heats.filter(h => h.type === activeTab);
     const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
     return list.find(h => h.reeks === num) || null;
   }, [heats, activeTab, settings]);
 
-  if (bootError) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-red-50 p-6 text-center">
-        <div>
-          <Info className="mx-auto text-red-600 mb-4" size={48} />
-          <h2 className="text-xl font-bold text-red-800">Verbindingsfout</h2>
-          <p className="text-red-600 mb-4">{bootError}</p>
-          <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold">Herladen</button>
-        </div>
-      </div>
-    );
-  }
+  if (!isAuthReady) return (
+    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
+      <Activity style={{ animation: 'spin 1s linear infinite' }} />
+    </div>
+  );
 
-  if (!isAuthReady) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <Activity className="animate-spin text-blue-600 mx-auto mb-4" size={48} />
-          <p className="font-bold text-blue-600">Laden van wedstrijdgegevens...</p>
-        </div>
-      </div>
-    );
-  }
+  const styles = {
+    container: { minHeight: '100vh', backgroundColor: '#fff', color: '#000', fontFamily: 'system-ui, -apple-system, sans-serif' },
+    header: { display: 'flex', justifyContent: 'space-between', padding: '1rem 2rem', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff', zIndex: 10 },
+    nav: { display: 'flex', gap: '0.5rem', background: '#f5f5f5', padding: '0.3rem', borderRadius: '0.8rem' },
+    navBtn: (active) => ({ padding: '0.5rem 1rem', border: 'none', borderRadius: '0.6rem', cursor: 'pointer', fontWeight: 'bold', backgroundColor: active ? '#fff' : 'transparent', color: active ? '#2563eb' : '#666', boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }),
+    main: { padding: '2rem', maxWidth: '1200px', margin: '0 auto' },
+    card: { border: '1px solid #eee', borderRadius: '2rem', padding: '3rem', textAlign: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.02)' },
+    hugeText: { fontSize: '10rem', fontWeight: 900, lineHeight: 1, margin: '2rem 0' },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '2rem' },
+    slot: { padding: '1rem', background: '#f9f9f9', borderRadius: '1rem', textAlign: 'left', border: '1px solid #f0f0f0' },
+    btnPrimary: (color) => ({ width: '100%', padding: '1.5rem', borderRadius: '1.5rem', border: 'none', backgroundColor: color, color: '#fff', fontSize: '1.2rem', fontWeight: 900, cursor: 'pointer', marginTop: '2rem' })
+  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white text-black font-sans selection:bg-blue-100">
-      {/* HEADER */}
-      <header className="flex justify-between items-center px-8 py-4 border-b-2 border-gray-100 sticky top-0 bg-white z-50">
-        <div className="flex gap-10 items-center">
-          <h1 className="text-xl font-black tracking-tighter">ROPESCORE <span className="text-blue-600">PRO</span></h1>
-          <nav className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-            {[
-              { id: 'live', label: 'Wedstrijd' },
-              { id: 'management', label: 'Beheer' },
-              { id: 'display', label: 'Groot Scherm' }
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => setView(t.id)}
-                className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === t.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+          <span style={{ fontWeight: 900, fontSize: '1.2rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></span>
+          <div style={styles.nav}>
+            <button onClick={() => setView('live')} style={styles.navBtn(view === 'live')}>Live</button>
+            <button onClick={() => setView('management')} style={styles.navBtn(view === 'management')}>Beheer</button>
+            <button onClick={() => setView('display')} style={styles.navBtn(view === 'display')}>Scherm</button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 bg-green-50 text-green-600 px-4 py-1.5 rounded-full text-xs font-black">
-          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-          CLOUD SYNC ACTIEF
-        </div>
+        <div style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 900, background: '#f0fdf4', padding: '0.5rem 1rem', borderRadius: '1rem' }}>CLOUD SYNC</div>
       </header>
 
-      <main className="flex-1 p-10">
+      <main style={styles.main}>
         {view === 'live' && (
-          <div className="max-w-5xl mx-auto">
-            <div className="flex justify-center gap-4 mb-8">
-              <button 
-                onClick={() => setActiveTab('speed')} 
-                className={`flex-1 max-w-[200px] py-4 rounded-2xl font-black border-2 transition-all ${activeTab === 'speed' ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-black hover:border-gray-300'}`}
-              >
-                SPEED
-              </button>
-              <button 
-                onClick={() => setActiveTab('freestyle')} 
-                className={`flex-1 max-w-[200px] py-4 rounded-2xl font-black border-2 transition-all ${activeTab === 'freestyle' ? 'bg-purple-600 border-purple-600 text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-black hover:border-gray-300'}`}
-              >
-                FREESTYLE
-              </button>
+          <div>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '2rem' }}>
+              <button onClick={() => setActiveTab('speed')} style={{ flex: 1, maxWidth: '200px', padding: '1rem', borderRadius: '1rem', border: 'none', fontWeight: 900, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#eee', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} style={{ flex: 1, maxWidth: '200px', padding: '1rem', borderRadius: '1rem', border: 'none', fontWeight: 900, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#7c3aed' : '#eee', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
             </div>
 
-            <div className="bg-white border border-gray-100 rounded-[40px] p-12 text-center shadow-xl shadow-blue-50/50">
-              <span className="text-gray-400 text-xs font-black uppercase tracking-widest">Huidige Reeks</span>
-              <h2 className="text-4xl font-black mt-2 mb-8">{currentHeat?.onderdeel || "Einde Programma"}</h2>
+            <div style={styles.card}>
+              <div style={{ color: '#999', fontWeight: 900, fontSize: '0.8rem' }}>HUIDIGE REEKS</div>
+              <h2 style={{ fontSize: '2rem', fontWeight: 900, margin: '0.5rem 0' }}>{currentHeat?.onderdeel || "Geen reeks gevonden"}</h2>
               
-              <div className="flex items-center justify-center gap-12 mb-12">
-                <button onClick={() => updateHeat(-1)} className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"><ChevronLeft size={40}/></button>
-                <div className="text-[12rem] font-black leading-none tracking-tighter tabular-nums">
-                  {activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}
-                </div>
-                <button onClick={() => updateHeat(1)} className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"><ChevronRight size={40}/></button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3rem' }}>
+                <button onClick={() => updateHeat(-1)} style={{ border: 'none', background: '#f0f0f0', width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft/></button>
+                <div style={styles.hugeText}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
+                <button onClick={() => updateHeat(1)} style={{ border: 'none', background: '#f0f0f0', width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight/></button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {currentHeat?.slots?.map((slot, i) => {
-                  const s = skippers[slot.skipperId] || { naam: "---", club: "---" };
-                  return (
-                    <div key={i} className="p-5 border border-gray-100 rounded-2xl bg-gray-50/50 text-left">
-                      <div className="text-[10px] font-black text-gray-400 mb-1">VELD {slot.veld}</div>
-                      <div className="font-black text-sm truncate">{s.naam}</div>
-                      <div className="text-[10px] text-gray-500 font-bold truncate">{s.club}</div>
-                    </div>
-                  );
-                })}
+              <div style={styles.grid}>
+                {currentHeat?.slots?.map((s, i) => (
+                  <div key={i} style={styles.slot}>
+                    <div style={{ fontSize: '0.6rem', fontWeight: 900, color: '#aaa' }}>VELD {s.veld}</div>
+                    <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{skippers[s.skipperId]?.naam || "---"}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#888' }}>{skippers[s.skipperId]?.club || "---"}</div>
+                  </div>
+                ))}
               </div>
 
               <button 
                 onClick={() => updateHeat(1)} 
-                className={`w-full mt-12 py-6 rounded-3xl text-white text-2xl font-black shadow-2xl transition-transform active:scale-95 ${activeTab === 'speed' ? 'bg-blue-600 shadow-blue-200' : 'bg-purple-600 shadow-purple-200'}`}
+                style={styles.btnPrimary(activeTab === 'speed' ? '#2563eb' : '#7c3aed')}
               >
                 VOLGENDE REEKS
               </button>
@@ -303,96 +208,51 @@ const App = () => {
         )}
 
         {view === 'management' && (
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-4xl font-black tracking-tight mb-8">Data Beheer</h2>
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="md:col-span-1 space-y-4">
-                <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 text-blue-900">
-                  <h4 className="font-black text-sm mb-2 flex items-center gap-2"><Info size={16}/> Hoe werkt het?</h4>
-                  <p className="text-xs font-medium leading-relaxed">Download het sjabloon, vul je wedstrijddata in en plak de inhoud in het vak hiernaast.</p>
-                </div>
-                <button onClick={() => {/* Sjabloon download logic */}} className="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl font-bold hover:border-blue-600 transition-colors">
-                  <span>Sjabloon Speed</span>
-                  <Download size={18} className="text-blue-600"/>
-                </button>
-                <button onClick={() => {/* Sjabloon download logic */}} className="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl font-bold hover:border-purple-600 transition-colors">
-                  <span>Sjabloon Freestyle</span>
-                  <Download size={18} className="text-purple-600"/>
-                </button>
-              </div>
-              
-              <div className="md:col-span-2">
-                <div className="flex gap-4 mb-4">
-                  <button onClick={() => setImportType('speed')} className={`px-6 py-2 rounded-full font-black text-xs border-2 ${importType === 'speed' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-100'}`}>SPEED</button>
-                  <button onClick={() => setImportType('freestyle')} className={`px-6 py-2 rounded-full font-black text-xs border-2 ${importType === 'freestyle' ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-100'}`}>FREESTYLE</button>
-                </div>
-                <textarea 
-                  value={csvInput} 
-                  onChange={(e) => setCsvInput(e.target.value)}
-                  placeholder="reeks, onderdeel, club, skipper..."
-                  className="w-full h-80 rounded-3xl border border-gray-200 p-6 font-mono text-sm focus:border-blue-600 outline-none transition-all"
-                />
-                <button 
-                  onClick={handleImport}
-                  disabled={isProcessing}
-                  className="w-full mt-4 py-5 bg-black text-white rounded-2xl font-black disabled:opacity-50"
-                >
-                  {isProcessing ? "BEZIG MET VERWERKEN..." : "IMPORTEER DATA NAAR CLOUD"}
-                </button>
-                {statusMsg && (
-                  <div className={`mt-4 p-4 rounded-xl font-bold text-center text-sm ${statusMsg.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-                    {statusMsg.text}
-                  </div>
-                )}
-              </div>
+          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '2rem' }}>Data Import</h2>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <button onClick={() => setImportType('speed')} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: importType === 'speed' ? '#000' : '#eee', color: importType === 'speed' ? '#fff' : '#000' }}>Speed</button>
+              <button onClick={() => setImportType('freestyle')} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: importType === 'freestyle' ? '#000' : '#eee', color: importType === 'freestyle' ? '#fff' : '#000' }}>Freestyle</button>
             </div>
+            <textarea 
+              value={csvInput} 
+              onChange={e => setCsvInput(e.target.value)} 
+              placeholder="Plak CSV rijen hier..." 
+              style={{ width: '100%', height: '300px', borderRadius: '1rem', border: '1px solid #ddd', padding: '1rem', fontFamily: 'monospace' }}
+            />
+            <button onClick={handleImport} disabled={isProcessing} style={{ ...styles.btnPrimary('#000'), marginTop: '1rem' }}>
+              {isProcessing ? "Verwerken..." : "IMPORTEER GEGEVENS"}
+            </button>
+            {statusMsg && <div style={{ marginTop: '1rem', fontWeight: 'bold', color: '#2563eb' }}>{statusMsg}</div>}
           </div>
         )}
 
         {view === 'display' && (
-          <div className="fixed inset-0 bg-white z-[1000] p-12 flex flex-col overflow-hidden">
-            <div className="flex justify-between items-start mb-12">
-               <h1 className="text-[12vw] font-black leading-[0.8] tracking-tighter m-0">
-                 {activeTab === 'speed' ? 'SPEED' : 'FREESTYLE'}
-               </h1>
-               <div className="bg-gray-100 px-12 py-8 rounded-[50px] text-center min-w-[300px]">
-                 <div className="text-2xl font-black text-gray-400 tracking-widest mb-2">REEKS</div>
-                 <div className="text-[15vw] font-black leading-none tabular-nums">
-                   {activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}
-                 </div>
-               </div>
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 100, padding: '4rem', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <h1 style={{ fontSize: '8vw', fontWeight: 900, margin: 0, letterSpacing: '-0.3rem' }}>{activeTab.toUpperCase()}</h1>
+              <div style={{ backgroundColor: '#f5f5f5', padding: '2rem 4rem', borderRadius: '3rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#bbb' }}>REEKS</div>
+                <div style={{ fontSize: '12vw', fontWeight: 900, lineHeight: 1 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
+              </div>
             </div>
-            
-            <div className="flex-1 grid grid-cols-5 gap-6">
-              {currentHeat?.slots?.map((slot, i) => {
-                const s = skippers[slot.skipperId] || { naam: "---", club: "---" };
-                return (
-                  <div key={i} className="border-4 border-gray-100 rounded-[60px] p-10 flex flex-col justify-between">
-                    <div className={`text-8xl font-black ${activeTab === 'speed' ? 'text-blue-600' : 'text-purple-600'}`}>
-                      {slot.veld}
-                    </div>
-                    <div>
-                      <div className="text-5xl font-black leading-tight uppercase break-words">{s.naam}</div>
-                      <div className="text-2xl text-gray-400 font-bold mt-4 uppercase">{s.club}</div>
-                    </div>
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1.5rem', marginTop: '3rem' }}>
+              {currentHeat?.slots?.map((s, i) => (
+                <div key={i} style={{ border: '3px solid #f0f0f0', borderRadius: '3rem', padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '3rem', fontWeight: 900, color: activeTab === 'speed' ? '#2563eb' : '#7c3aed' }}>{s.veld}</div>
+                  <div>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.1 }}>{skippers[s.skipperId]?.naam || "---"}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#aaa', marginTop: '0.5rem' }}>{skippers[s.skipperId]?.club || "---"}</div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
-            
-            <div className="mt-12 bg-black text-white p-10 rounded-[50px] text-5xl font-black text-center">
-              {settings.announcement}
-            </div>
-            
-            <button 
-              onClick={() => setView('live')} 
-              className="absolute top-8 right-8 bg-gray-200 hover:bg-gray-300 p-4 rounded-2xl font-black text-xs transition-colors"
-            >
-              SLUIT GROOT SCHERM
-            </button>
+            <div style={{ marginTop: '2rem', background: '#000', color: '#fff', padding: '2rem', borderRadius: '3rem', fontSize: '2.5rem', fontWeight: 900, textAlign: 'center' }}>{settings.announcement}</div>
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '1rem', right: '1rem', border: 'none', background: '#eee', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}>Sluiten</button>
           </div>
         )}
       </main>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 };
