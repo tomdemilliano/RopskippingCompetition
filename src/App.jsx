@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-    getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, addDoc, query 
+    getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, addDoc, query, deleteDoc 
 } from 'firebase/firestore';
 import { 
     getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
-import { Layout, Users, Play, Monitor, Plus, Calendar, MapPin, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { Layout, Users, Play, Monitor, Plus, Calendar, MapPin, ChevronLeft, ChevronRight, Upload, Trash2 } from 'lucide-react';
 
 // Firebase configuratie
 const firebaseConfig = {
-  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
-  authDomain: "ropeskippingcontest.firebaseapp.com",
-  projectId: "ropeskippingcontest",
-  storageBucket: "ropeskippingcontest.firebasestorage.app",
-  messagingSenderId: "430066523717",
-  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
+    apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+    authDomain: "ropeskippingcontest.firebaseapp.com",
+    projectId: "ropeskippingcontest",
+    storageBucket: "ropeskippingcontest.firebasestorage.app",
+    messagingSenderId: "430066523717",
+    appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
 
 // Initialisatie
@@ -23,6 +23,41 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-ultimate';
+
+// Inline CSS Injectie voor animaties en fonts
+const GlobalStyles = () => (
+    <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@700&display=swap');
+        
+        body { 
+            margin: 0; 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+
+        .pulse-active {
+            animation: pulse-animation 2s infinite;
+        }
+
+        @keyframes pulse-animation {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+    `}</style>
+);
 
 export default function App() {
     const [view, setView] = useState('management');
@@ -37,7 +72,7 @@ export default function App() {
     const [newComp, setNewComp] = useState({ name: '', date: '', location: '', status: 'gepland' });
     const [user, setUser] = useState(null);
 
-    // Auth Logic (Rule 3)
+    // Auth Logic
     useEffect(() => {
         const initAuth = async () => {
             try {
@@ -66,7 +101,7 @@ export default function App() {
                 const active = list.find(c => c.status === 'actief') || list[0];
                 setActiveCompId(active.id);
             }
-        }, (err) => console.error(err));
+        });
         return () => unsubscribe();
     }, [user]);
 
@@ -77,12 +112,12 @@ export default function App() {
         const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'skippers');
         const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId, 'heats');
 
-        const unsubS = onSnapshot(compRef, d => d.exists() && setCompSettings(d.data()), e => console.error(e));
+        const unsubS = onSnapshot(compRef, d => d.exists() && setCompSettings(d.data()));
         const unsubSk = onSnapshot(skRef, s => {
             const d = {}; s.forEach(doc => d[doc.id] = doc.data());
             setSkippers(d);
-        }, e => console.error(e));
-        const unsubH = onSnapshot(hRef, s => setHeats(s.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error(e));
+        });
+        const unsubH = onSnapshot(hRef, s => setHeats(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 
         return () => { unsubS(); unsubSk(); unsubH(); };
     }, [activeCompId, user]);
@@ -107,6 +142,13 @@ export default function App() {
         });
         setNewComp({ name: '', date: '', location: '', status: 'gepland' });
         setActiveCompId(docRef.id);
+    };
+
+    const handleDeleteComp = async (id, e) => {
+        e.stopPropagation();
+        if (!window.confirm("Weet je zeker dat je deze wedstrijd wilt verwijderen?")) return;
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', id));
+        if (activeCompId === id) setActiveCompId(null);
     };
 
     const handleImport = async () => {
@@ -147,143 +189,142 @@ export default function App() {
         });
     };
 
+    // UI Styles
+    const styles = {
+        appContainer: { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' },
+        header: { backgroundColor: 'white', borderBottom: '1px solid #e2e8f0', padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+        nav: { display: 'flex', gap: '4px', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '12px' },
+        navButton: (active) => ({
+            padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 900, border: 'none', cursor: 'pointer',
+            backgroundColor: active ? 'white' : 'transparent', color: active ? '#2563eb' : '#64748b', boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
+        }),
+        main: { flex: 1, padding: '2rem', overflow: 'hidden' },
+        card: { backgroundColor: 'white', borderRadius: '24px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' },
+        input: { width: '100%', padding: '12px', borderRadius: '12px', border: '2px solid #f1f5f9', backgroundColor: '#f8fafc', fontSize: '14px', outline: 'none', boxSizing: 'border-box' },
+        btnPrimary: { backgroundColor: '#2563eb', color: 'white', padding: '12px', borderRadius: '12px', border: 'none', fontWeight: 900, fontSize: '12px', cursor: 'pointer', letterSpacing: '0.05em' },
+        badge: (status) => ({
+            padding: '4px 10px', borderRadius: '20px', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase',
+            backgroundColor: status === 'actief' ? '#dcfce7' : '#f1f5f9', color: status === 'actief' ? '#166534' : '#64748b'
+        })
+    };
+
     return (
-        <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
-            {/* Header */}
-            <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 px-8 py-4 flex justify-between items-center border-b border-slate-200">
-                <div className="flex items-center gap-10">
-                    <div className="text-2xl font-black tracking-tighter flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-xs italic">RS</div>
-                        ROPESCORE <span className="text-blue-600">PRO</span>
+        <div style={styles.appContainer}>
+            <GlobalStyles />
+            
+            <header style={styles.header}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '40px' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 900, letterSpacing: '-0.05em' }}>
+                        ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span>
                     </div>
-                    <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                    <nav style={styles.nav}>
                         {[
-                            {id: 'management', label: 'Beheer', icon: Layout},
-                            {id: 'live', label: 'Live', icon: Play},
-                            {id: 'display', label: 'Scherm', icon: Monitor}
+                            { id: 'management', label: 'Beheer', icon: Layout },
+                            { id: 'live', label: 'Live', icon: Play },
+                            { id: 'display', label: 'Scherm', icon: Monitor }
                         ].map(v => (
-                            <button 
-                                key={v.id} 
-                                onClick={() => setView(v.id)} 
-                                className={`px-4 py-2 rounded-lg text-xs font-black flex items-center gap-2 transition ${view === v.id ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
-                            >
-                                <v.icon size={14} />
-                                {v.label.toUpperCase()}
+                            <button key={v.id} onClick={() => setView(v.id)} style={styles.navButton(view === v.id)}>
+                                <v.icon size={14} /> {v.label.toUpperCase()}
                             </button>
                         ))}
                     </nav>
                 </div>
                 {selectedComp && (
-                    <div className="flex items-center gap-4">
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            selectedComp.status === 'actief' ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-slate-100 text-slate-500'
-                        }`}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={styles.badge(selectedComp.status)} className={selectedComp.status === 'actief' ? 'pulse-active' : ''}>
                             {selectedComp.status}
-                        </div>
-                        <div className="font-bold text-slate-700">{selectedComp.name}</div>
+                        </span>
+                        <span style={{ fontWeight: 800 }}>{selectedComp.name}</span>
                     </div>
                 )}
             </header>
 
-            <main className="flex-1 overflow-hidden p-8">
+            <main style={styles.main}>
                 {view === 'management' && (
-                    <div className="max-w-7xl mx-auto h-full grid grid-cols-12 gap-8">
-                        {/* Sidebar */}
-                        <div className="col-span-4 flex flex-col gap-6 overflow-hidden">
-                            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 shrink-0">
-                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                    <Plus size={12} /> Nieuwe Wedstrijd
-                                </h3>
-                                <form onSubmit={handleCreateComp} className="space-y-3">
-                                    <input required placeholder="Wedstrijdnaam" className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white outline-none rounded-xl p-3 text-sm transition" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input placeholder="Locatie" className="bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white outline-none rounded-xl p-3 text-sm transition" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} />
-                                        <input type="date" className="bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white outline-none rounded-xl p-3 text-xs transition" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem', height: '100%', maxWidth: '1200px', margin: '0 auto' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', overflow: 'hidden' }}>
+                            <div style={styles.card}>
+                                <h3 style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '1rem' }}>Nieuwe Wedstrijd</h3>
+                                <form onSubmit={handleCreateComp} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <input required placeholder="Wedstrijdnaam" style={styles.input} value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} />
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                        <input placeholder="Locatie" style={styles.input} value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} />
+                                        <input type="date" style={styles.input} value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} />
                                     </div>
-                                    <button className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-black text-xs uppercase tracking-widest transition shadow-lg shadow-blue-200">AANMAKEN</button>
+                                    <button style={styles.btnPrimary}>WEDSTRIJD OPSLAAN</button>
                                 </form>
                             </div>
-
-                            <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden">
-                                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alle Wedstrijden</h3>
-                                    <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-black">{competitions.length}</span>
-                                </div>
-                                <div className="flex-1 overflow-y-auto">
+                            
+                            <div style={{ ...styles.card, flex: 1, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f1f5f9', fontWeight: 900, fontSize: '10px', color: '#94a3b8' }}>ALLE WEDSTRIJDEN</div>
+                                <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
                                     {competitions.map(c => (
-                                        <div 
-                                            key={c.id} 
-                                            onClick={() => setActiveCompId(c.id)} 
-                                            className={`p-6 border-b border-slate-50 cursor-pointer transition-all ${activeCompId === c.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
-                                        >
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className={`font-black text-lg ${activeCompId === c.id ? 'text-blue-700' : 'text-slate-800'}`}>{c.name}</span>
+                                        <div key={c.id} onClick={() => setActiveCompId(c.id)} style={{ 
+                                            padding: '1.5rem', borderBottom: '1px solid #f8fafc', cursor: 'pointer',
+                                            backgroundColor: activeCompId === c.id ? '#eff6ff' : 'transparent',
+                                            borderLeft: activeCompId === c.id ? '4px solid #2563eb' : '4px solid transparent',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                        }}>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '16px' }}>{c.name}</div>
+                                                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', fontWeight: 700 }}>{c.location} • {c.date}</div>
                                             </div>
-                                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-tight">
-                                                <span className="flex items-center gap-1"><MapPin size={10}/> {c.location}</span>
-                                                <span className="flex items-center gap-1"><Calendar size={10}/> {c.date}</span>
-                                            </div>
+                                            <button onClick={(e) => handleDeleteComp(c.id, e)} style={{ border: 'none', background: 'none', color: '#cbd5e1', cursor: 'pointer' }}><Trash2 size={16}/></button>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Content Area */}
-                        <div className="col-span-8 flex flex-col gap-8 overflow-hidden">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', overflow: 'hidden' }}>
                             {selectedComp ? (
                                 <>
-                                    <div className="grid grid-cols-3 gap-6">
-                                        <div className="bg-blue-600 rounded-[2rem] p-6 text-white shadow-xl shadow-blue-100">
-                                            <div className="text-[10px] font-black opacity-60 uppercase mb-3">Status Beheren</div>
-                                            <div className="flex flex-wrap gap-2">
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                                        <div style={{ ...styles.card, backgroundColor: '#2563eb', color: 'white', border: 'none' }}>
+                                            <div style={{ fontSize: '10px', fontWeight: 900, opacity: 0.7, marginBottom: '12px' }}>STATUS</div>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
                                                 {['gepland', 'actief', 'afgesloten'].map(s => (
-                                                    <button key={s} onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), {status: s})} 
-                                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase border transition ${selectedComp.status === s ? 'bg-white text-blue-600' : 'border-white/20 hover:bg-white/10'}`}>
-                                                        {s}
-                                                    </button>
+                                                    <button key={s} onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', activeCompId), {status: s})} style={{
+                                                        padding: '4px 8px', borderRadius: '6px', fontSize: '9px', fontWeight: 900, border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer',
+                                                        backgroundColor: selectedComp.status === s ? 'white' : 'transparent', color: selectedComp.status === s ? '#2563eb' : 'white'
+                                                    }}>{s.toUpperCase()}</button>
                                                 ))}
                                             </div>
                                         </div>
-                                        <div className="bg-white rounded-[2rem] p-6 border border-slate-200">
-                                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1 flex items-center gap-2"><Play size={10} className="text-blue-600"/> Speed Reeksen</div>
-                                            <div className="text-5xl font-black text-slate-900">{stats.speed}</div>
+                                        <div style={styles.card}>
+                                            <div style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', marginBottom: '4px' }}>SPEED REEKSEN</div>
+                                            <div style={{ fontSize: '32px', fontWeight: 900 }}>{stats.speed}</div>
                                         </div>
-                                        <div className="bg-white rounded-[2rem] p-6 border border-slate-200">
-                                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1 flex items-center gap-2"><Users size={10} className="text-purple-600"/> Freestyle</div>
-                                            <div className="text-5xl font-black text-slate-900">{stats.freestyle}</div>
+                                        <div style={styles.card}>
+                                            <div style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', marginBottom: '4px' }}>FREESTYLE</div>
+                                            <div style={{ fontSize: '32px', fontWeight: 900 }}>{stats.freestyle}</div>
                                         </div>
                                     </div>
 
-                                    <div className="bg-white rounded-[2rem] p-8 flex-1 flex flex-col overflow-hidden border border-slate-200 shadow-sm">
-                                        <div className="flex items-center justify-between mb-6">
-                                            <h2 className="text-xl font-black flex items-center gap-3">
-                                                <Upload className="text-blue-600" />
-                                                CSV Import
-                                            </h2>
-                                            <div className="flex bg-slate-100 p-1 rounded-xl">
-                                                <button onClick={() => setImportType('speed')} className={`px-4 py-2 rounded-lg text-xs font-black transition ${importType === 'speed' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>SPEED</button>
-                                                <button onClick={() => setImportType('freestyle')} className={`px-4 py-2 rounded-lg text-xs font-black transition ${importType === 'freestyle' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400'}`}>FREESTYLE</button>
+                                    <div style={{ ...styles.card, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                            <h2 style={{ fontSize: '18px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px' }}><Upload size={20}/> DATA IMPORT</h2>
+                                            <div style={styles.nav}>
+                                                <button onClick={() => setImportType('speed')} style={styles.navButton(importType === 'speed')}>SPEED</button>
+                                                <button onClick={() => setImportType('freestyle')} style={styles.navButton(importType === 'freestyle')}>FREESTYLE</button>
                                             </div>
                                         </div>
                                         <textarea 
-                                            value={csvInput} 
-                                            onChange={e => setCsvInput(e.target.value)} 
-                                            placeholder={`Plak ${importType} CSV data hier... (Reeks,Onderdeel,Uur,Club,Naam...)`} 
-                                            className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-mono text-xs focus:bg-white focus:border-blue-600 outline-none transition mb-4 resize-none"
+                                            style={{ flex: 1, backgroundColor: '#f8fafc', border: '2px solid #f1f5f9', borderRadius: '16px', padding: '1rem', fontFamily: 'monospace', fontSize: '12px', resize: 'none', outline: 'none' }}
+                                            value={csvInput} onChange={e => setCsvInput(e.target.value)}
+                                            placeholder="Plak CSV data (met headers) hier..."
                                         />
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-xs text-slate-400 font-bold">Zorg dat de kolommen exact overeenkomen met het format.</p>
-                                            <button onClick={handleImport} className="bg-slate-900 hover:bg-black text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition">IMPORTEREN</button>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
+                                            <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Gebruik het standaard export format.</span>
+                                            <button onClick={handleImport} style={{ ...styles.btnPrimary, padding: '12px 30px' }}>IMPORT STARTEN</button>
                                         </div>
                                     </div>
                                 </>
                             ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[3rem] border-4 border-dashed border-slate-100">
-                                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200 mb-4">
-                                        <Layout size={40} />
-                                    </div>
-                                    <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Selecteer een wedstrijd in de lijst</p>
+                                <div style={{ flex: 1, border: '4px dashed #e2e8f0', borderRadius: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
+                                    <Layout size={48} />
+                                    <p style={{ fontWeight: 900, marginTop: '1rem', fontSize: '12px', letterSpacing: '0.1em' }}>SELECTEER EEN WEDSTRIJD</p>
                                 </div>
                             )}
                         </div>
@@ -291,47 +332,47 @@ export default function App() {
                 )}
 
                 {view === 'live' && selectedComp && (
-                    <div className="max-w-4xl mx-auto h-full flex flex-col gap-6">
-                        <div className="flex justify-center border-b border-slate-200">
-                            <button onClick={() => setActiveTab('speed')} className={`px-8 py-4 font-black text-sm tracking-widest border-b-4 transition ${activeTab === 'speed' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>SPEED</button>
-                            <button onClick={() => setActiveTab('freestyle')} className={`px-8 py-4 font-black text-sm tracking-widest border-b-4 transition ${activeTab === 'freestyle' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-400'}`}>FREESTYLE</button>
+                    <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem', height: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', borderBottom: '2px solid #e2e8f0' }}>
+                            <button onClick={() => setActiveTab('speed')} style={{ padding: '1rem 2rem', background: 'none', border: 'none', fontWeight: 900, cursor: 'pointer', borderBottom: activeTab === 'speed' ? '4px solid #2563eb' : '4px solid transparent', color: activeTab === 'speed' ? '#2563eb' : '#94a3b8' }}>SPEED</button>
+                            <button onClick={() => setActiveTab('freestyle')} style={{ padding: '1rem 2rem', background: 'none', border: 'none', fontWeight: 900, cursor: 'pointer', borderBottom: activeTab === 'freestyle' ? '4px solid #7c3aed' : '4px solid transparent', color: activeTab === 'freestyle' ? '#7c3aed' : '#94a3b8' }}>FREESTYLE</button>
                         </div>
 
-                        <div className="bg-white rounded-[3rem] p-10 text-center flex flex-col items-center shadow-xl shadow-slate-200/50 border border-slate-100">
-                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">Huidige Actieve Reeks</span>
-                            <div className="flex items-center gap-12">
-                                <button onClick={() => updateHeat(-1)} className="w-14 h-14 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition text-slate-400"><ChevronLeft size={24}/></button>
-                                <span className="text-8xl font-black text-slate-900 tabular-nums tracking-tighter">{(activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1))}</span>
-                                <button onClick={() => updateHeat(1)} className="w-14 h-14 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition text-slate-400"><ChevronRight size={24}/></button>
-                            </div>
-                            <div className="mt-6">
-                                <div className="text-2xl font-black text-blue-600 uppercase tracking-tight">{currentHeat?.onderdeel || 'Geen reeks'}</div>
-                                <div className="text-slate-400 font-black text-sm mt-1 tracking-widest flex items-center justify-center gap-2">
-                                    <Calendar size={12}/> {currentHeat?.uur || '--:--'}
+                        <div style={{ ...styles.card, textAlign: 'center', padding: '3rem' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.2em', marginBottom: '1.5rem' }}>HUIDIGE REEKS</div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3rem' }}>
+                                <button onClick={() => updateHeat(-1)} style={{ width: '60px', height: '60px', borderRadius: '30px', border: 'none', backgroundColor: '#f1f5f9', cursor: 'pointer' }}><ChevronLeft/></button>
+                                <div style={{ fontSize: '100px', fontWeight: 900, lineHeight: 1, fontFamily: 'JetBrains Mono' }}>
+                                    {(activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1))}
                                 </div>
+                                <button onClick={() => updateHeat(1)} style={{ width: '60px', height: '60px', borderRadius: '30px', border: 'none', backgroundColor: '#f1f5f9', cursor: 'pointer' }}><ChevronRight/></button>
+                            </div>
+                            <div style={{ marginTop: '2rem' }}>
+                                <div style={{ fontSize: '24px', fontWeight: 900, color: '#2563eb' }}>{currentHeat?.onderdeel || 'Geen reeks gevonden'}</div>
+                                <div style={{ fontWeight: 800, color: '#94a3b8', fontSize: '14px', marginTop: '4px' }}>PLANTIJD: {currentHeat?.uur || '--:--'}</div>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-3 overflow-y-auto pb-10 pr-2">
+                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingBottom: '2rem' }}>
                             {activeTab === 'speed' ? (
                                 Array.from({length: 10}).map((_, i) => {
                                     const vNum = i + 1;
                                     const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
                                     const sk = slot ? skippers[slot.skipperId] : null;
                                     return (
-                                        <div key={vNum} className={`bg-white p-5 rounded-2xl flex items-center gap-6 border-2 transition ${!sk ? 'opacity-20 border-transparent bg-slate-50' : 'border-slate-100 hover:border-blue-200'}`}>
-                                            <div className="w-20 font-black text-blue-600 text-xs italic">VELD {vNum}</div>
-                                            <div className="flex-1 font-black text-lg">{sk?.naam || 'Leeg'}</div>
-                                            <div className="text-slate-400 font-black text-[10px] uppercase tracking-widest">{sk?.club || ''}</div>
+                                        <div key={vNum} style={{ ...styles.card, padding: '1rem 2rem', display: 'flex', alignItems: 'center', opacity: sk ? 1 : 0.2 }}>
+                                            <div style={{ width: '100px', fontWeight: 900, color: '#2563eb', fontSize: '12px', fontStyle: 'italic' }}>VELD {vNum}</div>
+                                            <div style={{ flex: 1, fontWeight: 900, fontSize: '18px' }}>{sk?.naam || 'Leeg'}</div>
+                                            <div style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase' }}>{sk?.club}</div>
                                         </div>
                                     );
                                 })
                             ) : (
                                 currentHeat?.slots?.map((slot, i) => (
-                                    <div key={i} className="bg-white p-8 rounded-[2rem] flex items-center gap-8 border-2 border-purple-50 shadow-sm">
-                                        <div className="w-24 font-black text-purple-600 text-lg uppercase italic">{slot.veld}</div>
-                                        <div className="flex-1 font-black text-3xl">{skippers[slot.skipperId]?.naam}</div>
-                                        <div className="text-slate-400 font-black text-sm uppercase tracking-widest">{skippers[slot.skipperId]?.club}</div>
+                                    <div key={i} style={{ ...styles.card, padding: '2rem', display: 'flex', alignItems: 'center' }}>
+                                        <div style={{ width: '120px', fontWeight: 900, color: '#7c3aed', fontSize: '18px', fontStyle: 'italic' }}>{slot.veld}</div>
+                                        <div style={{ flex: 1, fontWeight: 900, fontSize: '28px' }}>{skippers[slot.skipperId]?.naam}</div>
+                                        <div style={{ fontWeight: 900, color: '#94a3b8' }}>{skippers[slot.skipperId]?.club}</div>
                                     </div>
                                 ))
                             )}
@@ -340,52 +381,57 @@ export default function App() {
                 )}
 
                 {view === 'display' && (
-                    <div className="fixed inset-0 bg-white z-[100] flex flex-col p-16 overflow-hidden">
-                        <div className="flex justify-between items-end mb-16">
+                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'white', zIndex: 1000, padding: '4rem', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4rem' }}>
                             <div>
-                                <h1 className="text-9xl font-black tracking-tighter leading-none mb-6">{currentHeat?.onderdeel?.toUpperCase() || 'OFFLINE'}</h1>
-                                <div className="flex items-center gap-4 text-blue-600 font-black text-3xl">
-                                    <div className="w-3 h-3 bg-blue-600 rounded-full animate-ping" />
+                                <h1 style={{ fontSize: '120px', fontWeight: 900, letterSpacing: '-0.05em', lineHeight: 0.9, margin: 0 }}>{currentHeat?.onderdeel?.toUpperCase() || 'OFFLINE'}</h1>
+                                <div style={{ fontSize: '24px', fontWeight: 900, color: '#2563eb', marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ width: '12px', height: '12px', borderRadius: '6px', backgroundColor: '#2563eb' }} className="pulse-active"></div>
                                     LIVE WEDSTRIJD • {selectedComp?.name?.toUpperCase()}
                                 </div>
                             </div>
-                            <div className="flex gap-8">
-                                <div className="bg-slate-100 rounded-[3rem] px-12 py-8 text-right">
-                                    <div className="text-lg font-black text-slate-400 uppercase tracking-widest mb-1">Tijd</div>
-                                    <div className="text-6xl font-black tracking-tight">{currentHeat?.uur || '--:--'}</div>
+                            <div style={{ display: 'flex', gap: '2rem' }}>
+                                <div style={{ backgroundColor: '#f1f5f9', borderRadius: '40px', padding: '2rem 3rem', textAlign: 'right' }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', marginBottom: '4px' }}>TIJD</div>
+                                    <div style={{ fontSize: '60px', fontWeight: 900 }}>{currentHeat?.uur || '--:--'}</div>
                                 </div>
-                                <div className="bg-black rounded-[3rem] px-12 py-8 text-white text-right">
-                                    <div className="text-lg font-black text-white/40 uppercase tracking-widest mb-1">Reeks</div>
-                                    <div className="text-6xl font-black tracking-tight tabular-nums">{(activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1))}</div>
+                                <div style={{ backgroundColor: 'black', borderRadius: '40px', padding: '2rem 3rem', textAlign: 'right', color: 'white' }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: '4px' }}>REEKS</div>
+                                    <div style={{ fontSize: '60px', fontWeight: 900, fontFamily: 'JetBrains Mono' }}>
+                                        {(activeTab === 'speed' ? (compSettings.currentSpeedHeat || 1) : (compSettings.currentFreestyleHeat || 1))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex-1 grid grid-cols-1 gap-3 overflow-hidden">
+                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
                             {activeTab === 'speed' ? (
                                 Array.from({length: 10}).map((_, i) => {
                                     const vNum = i + 1;
                                     const slot = currentHeat?.slots?.find(s => s.veldNr === vNum);
                                     const sk = slot ? skippers[slot.skipperId] : null;
                                     return (
-                                        <div key={vNum} className={`flex-1 flex items-center px-16 border-4 rounded-[3rem] transition-all duration-500 ${sk ? 'bg-white border-slate-100 translate-x-0 opacity-100' : 'bg-slate-50 border-transparent opacity-5 translate-x-10'}`}>
-                                            <span className="w-48 text-2xl font-black text-blue-600 italic">VELD {vNum}</span>
-                                            <span className="flex-1 text-5xl font-black">{sk?.naam || ''}</span>
-                                            <span className="text-3xl font-black text-slate-200 uppercase tracking-tighter">{sk?.club || ''}</span>
+                                        <div key={vNum} style={{ 
+                                            flex: 1, display: 'flex', alignItems: 'center', padding: '0 4rem', borderRadius: '30px', border: '4px solid #f1f5f9',
+                                            opacity: sk ? 1 : 0.05, backgroundColor: sk ? 'white' : 'transparent'
+                                        }}>
+                                            <span style={{ width: '200px', fontSize: '24px', fontWeight: 900, color: '#2563eb', fontStyle: 'italic' }}>VELD {vNum}</span>
+                                            <span style={{ flex: 1, fontSize: '56px', fontWeight: 900 }}>{sk?.naam || ''}</span>
+                                            <span style={{ fontSize: '32px', fontWeight: 900, color: '#cbd5e1' }}>{sk?.club || ''}</span>
                                         </div>
                                     );
                                 })
                             ) : (
                                 currentHeat?.slots?.map((slot, i) => (
-                                    <div key={i} className="flex-1 flex items-center px-24 bg-white border-8 border-slate-50 rounded-[4rem] shadow-sm">
-                                        <span className="w-56 text-5xl font-black text-purple-600 italic uppercase">{slot.veld}</span>
-                                        <span className="flex-1 text-9xl font-black tracking-tighter leading-none">{skippers[slot.skipperId]?.naam}</span>
-                                        <span className="text-5xl font-black text-slate-200 uppercase italic tracking-tighter">{skippers[slot.skipperId]?.club}</span>
+                                    <div key={i} style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 5rem', borderRadius: '50px', backgroundColor: 'white', border: '8px solid #f1f5f9' }}>
+                                        <span style={{ width: '250px', fontSize: '48px', fontWeight: 900, color: '#7c3aed', fontStyle: 'italic' }}>{slot.veld}</span>
+                                        <span style={{ flex: 1, fontSize: '100px', fontWeight: 900, letterSpacing: '-0.04em' }}>{skippers[slot.skipperId]?.naam}</span>
+                                        <span style={{ fontSize: '48px', fontWeight: 900, color: '#cbd5e1' }}>{skippers[slot.skipperId]?.club}</span>
                                     </div>
                                 ))
                             )}
                         </div>
-                        <button onClick={() => setView('live')} className="absolute bottom-8 left-8 opacity-0 hover:opacity-100 text-[10px] font-black uppercase tracking-widest text-slate-300">Exit Display Mode</button>
+                        <button onClick={() => setView('live')} style={{ position: 'absolute', bottom: '2rem', left: '2rem', opacity: 0.1, border: 'none', background: 'none', cursor: 'pointer', fontWeight: 900, fontSize: '10px' }}>EXIT</button>
                     </div>
                 )}
             </main>
