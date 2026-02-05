@@ -35,30 +35,24 @@ import {
   Trash2,
   Settings,
   Monitor,
-  DatabaseZap,
-  Clock,
-  Info
+  Download,
+  Info,
+  AlertTriangle
 } from 'lucide-react';
 
-const getFirebaseConfig = () => {
-  if (typeof __firebase_config !== 'undefined') {
-    return JSON.parse(__firebase_config);
-  }
-  return {
-    apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
-    authDomain: "ropeskippingcontest.firebaseapp.com",
-    projectId: "ropeskippingcontest",
-    storageBucket: "ropeskippingcontest.firebasestorage.app",
-    messagingSenderId: "430066523717",
-    appId: "1:430066523717:web:eea53ced41773af66a4d2c",
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+  authDomain: "ropeskippingcontest.firebaseapp.com",
+  projectId: "ropeskippingcontest",
+  storageBucket: "ropeskippingcontest.firebasestorage.app",
+  messagingSenderId: "430066523717",
+  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
 
-const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropeskipping-v3-desktop';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-v4-pro';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -81,11 +75,7 @@ const App = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInAnonymously(auth);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (e) { console.error(e); }
     };
     initAuth();
@@ -98,22 +88,37 @@ const App = () => {
     const skippersRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
     const heatsRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
 
-    const unsub1 = onSnapshot(settingsRef, (d) => d.exists() && setSettings(d.data()), (e) => console.error(e));
+    const unsub1 = onSnapshot(settingsRef, (d) => d.exists() && setSettings(d.data()));
     const unsub2 = onSnapshot(skippersRef, (s) => {
       const d = {}; s.forEach(doc => d[doc.id] = doc.data());
       setSkippers(d);
-    }, (e) => console.error(e));
+    });
     const unsub3 = onSnapshot(heatsRef, (s) => {
       setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
-    }, (e) => console.error(e));
+    });
 
     return () => { unsub1(); unsub2(); unsub3(); };
   }, [user]);
 
+  const downloadTemplate = (type) => {
+    let content = "";
+    if (type === 'speed') {
+      content = "reeks,onderdeel,uur,club1,skipper1,club2,skipper2,club3,skipper3,club4,skipper4,club5,skipper5,club6,skipper6,club7,skipper7,club8,skipper8,club9,skipper9,club10,skipper10\n1,Speed 30s,14:00,Club A,Naam 1,Club B,Naam 2,Club C,Naam 3,,,,,,,,,,,,,,,";
+    } else {
+      content = "reeks,uur,veld,club,skipper\n1,15:00,Veld A,Club X,Naam Springer\n2,15:02,Veld B,Club Y,Naam Springer";
+    }
+    const blob = new Blob([content], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `template_${type}.csv`;
+    a.click();
+  };
+
   const handleImport = async () => {
     if (!csvInput.trim()) return;
     setIsProcessing(true);
-    setStatusMsg({ type: 'loading', text: 'Data wordt geüpload...' });
+    setStatusMsg({ type: 'info', text: 'Data verwerken...' });
     try {
       const rows = csvInput.split('\n').map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
       const batch = writeBatch(db);
@@ -126,7 +131,7 @@ const App = () => {
           const slots = [];
           for (let i = 0; i < 10; i++) {
             const club = row[3 + (i * 2)], naam = row[4 + (i * 2)];
-            if (naam) {
+            if (naam && naam !== "") {
               const sid = `s_${naam}_${club}`.replace(/\s+/g, '_');
               batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam, club });
               slots.push({ veld: i + 1, skipperId: sid });
@@ -150,15 +155,15 @@ const App = () => {
         });
       }
       await batch.commit();
-      setStatusMsg({ type: 'success', text: `${count} reeksen succesvol geladen!` });
+      setStatusMsg({ type: 'success', text: `${count} reeksen toegevoegd.` });
       setCsvInput('');
     } catch (e) {
-      setStatusMsg({ type: 'error', text: 'Fout bij importeren.' });
+      setStatusMsg({ type: 'error', text: 'Fout bij verwerken.' });
     } finally { setIsProcessing(false); }
   };
 
   const clearData = async () => {
-    if (!confirm("Weet je zeker dat je alle data wilt wissen?")) return;
+    if (!confirm("Alle data wissen?")) return;
     const q1 = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'skippers'));
     const q2 = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'heats'));
     const batch = writeBatch(db);
@@ -168,7 +173,6 @@ const App = () => {
       currentSpeedHeat: 1, currentFreestyleHeat: 1, announcement: "Database gereset."
     });
     await batch.commit();
-    alert("Database gewist.");
   };
 
   const currentHeat = useMemo(() => {
@@ -187,217 +191,202 @@ const App = () => {
   const getSkipper = (id) => skippers[id] || { naam: "---", club: "---" };
 
   return (
-    <div className="min-h-screen bg-[#0F172A] text-slate-100 font-sans selection:bg-indigo-500/30 flex flex-col">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
       
-      {/* Sidebar-stijl Header */}
-      <header className="bg-[#1E293B]/80 backdrop-blur-md border-b border-white/5 px-8 py-4 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-8">
+      {/* Header met Navigatie */}
+      <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center gap-10">
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
-              <Trophy size={24} className="text-white" />
+            <div className="bg-blue-600 p-2 rounded-lg">
+              <Trophy size={20} className="text-white" />
             </div>
-            <h1 className="text-2xl font-black tracking-tighter italic uppercase">RopeScore<span className="text-indigo-500">Pro</span></h1>
+            <h1 className="text-xl font-black uppercase tracking-tight">RopeScore<span className="text-blue-600">Pro</span></h1>
           </div>
           
-          <nav className="flex gap-2">
+          <nav className="flex gap-1 bg-slate-100 p-1 rounded-xl">
             {[
-              { id: 'live', label: 'Live Jury', icon: Activity },
-              { id: 'management', label: 'Data & Import', icon: DatabaseZap },
-              { id: 'display', label: 'Display Mode', icon: Monitor },
+              { id: 'live', label: 'Wedstrijd Jury', icon: Activity },
+              { id: 'management', label: 'Beheer & Import', icon: Database },
+              { id: 'display', label: 'Groot Scherm', icon: Monitor },
             ].map(tab => (
               <button 
                 key={tab.id}
                 onClick={() => setView(tab.id)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                  view === tab.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                  view === tab.id ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <tab.icon size={16} />
+                <tab.icon size={14} />
                 {tab.label}
               </button>
             ))}
           </nav>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="text-right hidden xl:block">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Verbonden met Cloud</p>
-            <p className="text-xs font-bold text-emerald-400 flex items-center justify-end gap-2">
-              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Operationeel
-            </p>
+        <div className="flex items-center gap-4">
+          <div className="bg-emerald-50 px-4 py-1.5 rounded-full border border-emerald-100">
+            <span className="text-[10px] font-black text-emerald-600 uppercase flex items-center gap-2">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Verbonden
+            </span>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 p-8 max-w-[1600px] mx-auto w-full">
+      <main className="flex-1 p-8 max-w-[1400px] mx-auto w-full">
         
         {view === 'live' && (
-          <div className="animate-in fade-in duration-500 space-y-8">
+          <div className="grid grid-cols-12 gap-8 animate-in fade-in duration-300">
             {/* Discipline Selector */}
-            <div className="flex gap-4 bg-[#1E293B] p-2 rounded-[2rem] border border-white/5 max-w-2xl mx-auto shadow-2xl">
-              <button 
-                onClick={() => setActiveTab('speed')}
-                className={`flex-1 flex items-center justify-center gap-3 py-6 rounded-[1.6rem] font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'speed' ? 'bg-orange-500 text-white shadow-xl shadow-orange-500/20' : 'text-slate-500 hover:text-white'}`}
-              >
-                <Zap size={20} /> Speed Control
-              </button>
-              <button 
-                onClick={() => setActiveTab('freestyle')}
-                className={`flex-1 flex items-center justify-center gap-3 py-6 rounded-[1.6rem] font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'freestyle' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-slate-500 hover:text-white'}`}
-              >
-                <Star size={20} /> Freestyle Control
-              </button>
+            <div className="col-span-12 flex justify-center mb-4">
+              <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200 flex gap-1">
+                <button 
+                  onClick={() => setActiveTab('speed')}
+                  className={`px-10 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-3 ${activeTab === 'speed' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-400 hover:bg-slate-50'}`}
+                >
+                  <Zap size={16} /> Speed
+                </button>
+                <button 
+                  onClick={() => setActiveTab('freestyle')}
+                  className={`px-10 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-3 ${activeTab === 'freestyle' ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'text-slate-400 hover:bg-slate-50'}`}
+                >
+                  <Star size={16} /> Freestyle
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-12 gap-8">
-              {/* Hoofd Bediening */}
-              <div className="col-span-12 lg:col-span-9 bg-[#1E293B] rounded-[3rem] p-12 border border-white/5 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-12 opacity-10 pointer-events-none">
-                  {activeTab === 'speed' ? <Zap size={300} /> : <Star size={300} />}
+            {/* Hoofdscherm Bediening */}
+            <div className="col-span-12 lg:col-span-9 space-y-8">
+              <div className="bg-white rounded-3xl p-10 border border-slate-200 shadow-sm relative overflow-hidden">
+                <div className="flex justify-between items-center mb-10">
+                   <div>
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Huidige Reeks</span>
+                     <h2 className="text-3xl font-black text-slate-800 uppercase italic">
+                       {currentHeat?.onderdeel || "Einde programma"}
+                     </h2>
+                   </div>
+                   <div className="text-right">
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Totaal Geladen</span>
+                     <p className="font-bold text-slate-800">{heats.filter(h => h.type === activeTab).length} Reeksen</p>
+                   </div>
                 </div>
 
-                <div className="relative z-10 text-center mb-16">
-                  <span className="text-xs font-black text-slate-500 uppercase tracking-[0.5em] mb-6 block">Huidige Reeks</span>
-                  <div className="flex items-center justify-center gap-12">
-                    <button onClick={() => updateHeat(-1)} className="p-8 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all shadow-inner">
-                      <ChevronLeft size={48} strokeWidth={3} />
-                    </button>
-                    <div className="text-[18rem] font-black leading-none tabular-nums tracking-tighter italic text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
-                      {activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}
-                    </div>
-                    <button onClick={() => updateHeat(1)} className="p-8 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all shadow-inner">
-                      <ChevronRight size={48} strokeWidth={3} />
-                    </button>
+                <div className="flex items-center justify-center gap-10 mb-16">
+                  <button onClick={() => updateHeat(-1)} className="p-6 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-400 transition-all border border-slate-200">
+                    <ChevronLeft size={40} />
+                  </button>
+                  <div className="text-[12rem] font-black text-slate-900 leading-none tabular-nums tracking-tighter">
+                    {activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}
                   </div>
-                  <div className="mt-10 inline-block px-12 py-4 bg-white/5 rounded-full border border-white/10 backdrop-blur-md">
-                     <p className="font-black text-xl uppercase italic tracking-widest text-indigo-400">
-                       {currentHeat?.onderdeel || "Einde van Programma"}
-                     </p>
-                  </div>
+                  <button onClick={() => updateHeat(1)} className="p-6 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-400 transition-all border border-slate-200">
+                    <ChevronRight size={40} />
+                  </button>
                 </div>
 
-                {/* Grid van velden - Horizontaal Desktop Layout */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-16 relative z-10">
+                {/* Velden Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   {currentHeat?.slots?.map((slot, i) => {
                     const s = getSkipper(slot.skipperId);
                     return (
-                      <div key={i} className="bg-white/5 border border-white/10 p-8 rounded-[2rem] hover:bg-white/10 transition-all group">
-                        <div className="flex justify-between items-start mb-6">
-                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Veld</span>
-                           <span className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center font-black text-lg">{slot.veld}</span>
+                      <div key={i} className="bg-slate-50 border border-slate-200 p-6 rounded-2xl hover:border-blue-300 transition-all group">
+                        <div className="flex justify-between items-center mb-4">
+                           <span className="text-[10px] font-black text-slate-400 uppercase">Veld {slot.veld}</span>
+                           <div className={`w-2 h-2 rounded-full ${activeTab === 'speed' ? 'bg-blue-500' : 'bg-purple-500'}`}></div>
                         </div>
-                        <h4 className="font-black text-lg uppercase italic tracking-tight mb-1 group-hover:text-indigo-400 transition-colors truncate">{s.naam}</h4>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">{s.club}</p>
+                        <p className="font-black text-slate-900 uppercase text-sm leading-tight truncate">{s.naam}</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate mt-1">{s.club}</p>
                       </div>
                     );
                   })}
-                  {(!currentHeat || currentHeat.slots.length === 0) && (
-                    <div className="col-span-full py-12 text-center text-slate-500 font-black uppercase tracking-widest italic opacity-50">
-                      Geen springers voor deze reeks
-                    </div>
-                  )}
                 </div>
 
                 <button 
                   onClick={() => updateHeat(1)}
-                  className={`w-full py-10 rounded-[2.5rem] font-black text-3xl uppercase italic tracking-[0.2em] transition-all flex items-center justify-center gap-6 shadow-2xl ${activeTab === 'speed' ? 'bg-orange-600 hover:bg-orange-500 shadow-orange-600/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'}`}
+                  className={`w-full mt-10 py-8 rounded-2xl font-black text-xl uppercase italic tracking-widest transition-all flex items-center justify-center gap-4 text-white shadow-xl ${activeTab === 'speed' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-100' : 'bg-purple-600 hover:bg-purple-700 shadow-purple-100'}`}
                 >
-                  <CheckCircle2 size={40} /> Volgende Reeks
+                  <CheckCircle2 size={24} /> Volgende Reeks
                 </button>
               </div>
+            </div>
 
-              {/* Zijbalk: Overzicht en Mededeling */}
-              <div className="col-span-12 lg:col-span-3 space-y-8">
-                <div className="bg-[#1E293B] rounded-[2.5rem] p-8 border border-white/5 shadow-xl">
-                  <h3 className="font-black text-xs uppercase tracking-widest mb-6 flex items-center gap-3 text-indigo-400">
-                    <Megaphone size={18} /> Berichten
+            {/* Zijbalk: Berichten */}
+            <div className="col-span-12 lg:col-span-3">
+               <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm sticky top-24">
+                  <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                    <Megaphone size={14} /> Mededeling op scherm
                   </h3>
                   <textarea 
                     value={settings.announcement}
                     onChange={(e) => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { announcement: e.target.value })}
-                    className="w-full h-32 bg-black/20 border border-white/5 rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all placeholder:text-slate-700"
-                    placeholder="Dit verschijnt op het grote scherm..."
+                    className="w-full h-40 bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    placeholder="Typ hier een bericht voor de springers..."
                   />
-                </div>
-
-                <div className="bg-slate-900/50 rounded-[2.5rem] p-8 border border-white/5 shadow-xl">
-                  <h3 className="font-black text-xs uppercase tracking-widest mb-6 flex items-center gap-3 text-slate-500">
-                    <Clock size={18} /> Programma Verloop
-                  </h3>
-                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    {heats.filter(h => h.type === activeTab).slice(settings[activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat'] - 1, settings[activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat'] + 5).map((h, idx) => (
-                      <div key={idx} className={`p-5 rounded-2xl border transition-all ${idx === 0 ? 'bg-indigo-600/10 border-indigo-500/50' : 'bg-white/5 border-transparent opacity-40'}`}>
-                        <div className="flex justify-between items-center">
-                          <span className="font-black text-sm italic uppercase">Reeks {h.reeks}</span>
-                          <span className="text-[10px] font-bold uppercase text-slate-500">{h.onderdeel}</span>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="mt-8 p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                    <p className="text-[10px] text-blue-700 leading-relaxed font-bold uppercase tracking-tight">
+                      Tip: Je kunt dit bericht tijdens de wedstrijd live aanpassen.
+                    </p>
                   </div>
-                </div>
-              </div>
+               </div>
             </div>
           </div>
         )}
 
         {view === 'management' && (
-          <div className="max-w-6xl mx-auto animate-in zoom-in-95 duration-500">
-            <div className="bg-[#1E293B] rounded-[3rem] p-12 border border-white/5 shadow-2xl">
-              <div className="flex justify-between items-center mb-12">
+          <div className="max-w-5xl mx-auto animate-in slide-in-from-bottom-4 duration-300">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-10 py-8 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                 <div>
-                  <h2 className="text-4xl font-black uppercase italic tracking-tighter mb-2">Data Management</h2>
-                  <p className="text-slate-400 font-bold text-xs uppercase tracking-[0.2em]">Importeer reeksen en beheer de database</p>
+                  <h2 className="text-2xl font-black uppercase italic tracking-tight">Beheer & Import</h2>
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Database configuratie</p>
                 </div>
-                <button 
-                  onClick={clearData}
-                  className="px-8 py-4 bg-red-600/10 text-red-500 border border-red-500/20 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all flex items-center gap-3"
-                >
-                  <Trash2 size={16} /> Volledige Reset
+                <button onClick={clearData} className="px-6 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-bold text-xs uppercase hover:bg-red-600 hover:text-white transition-all">
+                  Database Wissen
                 </button>
               </div>
 
-              <div className="grid grid-cols-12 gap-12">
-                <div className="col-span-12 lg:col-span-4 space-y-8">
-                  <div className="bg-black/20 p-8 rounded-3xl border border-white/5 space-y-6">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Kies Onderdeel</label>
-                    <div className="flex bg-white/5 p-1.5 rounded-2xl">
+              <div className="p-10 grid grid-cols-1 md:grid-cols-12 gap-10">
+                <div className="md:col-span-4 space-y-6">
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Selecteer Type</label>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
                       <button 
                         onClick={() => setImportType('speed')}
-                        className={`flex-1 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${importType === 'speed' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                        className={`flex-1 py-3 rounded-lg font-bold text-xs uppercase transition-all ${importType === 'speed' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}
                       >Speed</button>
                       <button 
                         onClick={() => setImportType('freestyle')}
-                        className={`flex-1 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${importType === 'freestyle' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                        className={`flex-1 py-3 rounded-lg font-bold text-xs uppercase transition-all ${importType === 'freestyle' ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500'}`}
                       >Freestyle</button>
                     </div>
                   </div>
 
-                  <div className="bg-indigo-600/10 p-8 rounded-3xl border border-indigo-500/20">
-                     <h4 className="font-black text-xs text-indigo-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <Info size={16} /> Help bij Import
-                     </h4>
-                     <p className="text-xs leading-relaxed text-indigo-200/70 font-medium">
-                       Kopieer de rijen uit je Excel of Google Sheet. <br/><br/>
-                       Voor <strong>Speed</strong> verwachten we de kolom-structuur: <br/>
-                       <span className="text-white">Reeks, Type, Tijd, Club1, Naam1, Club2, Naam2...</span><br/><br/>
-                       Voor <strong>Freestyle</strong>:<br/>
-                       <span className="text-white">Reeks, Uur, Veld, Club, Naam</span>
-                     </p>
+                  <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-800 uppercase flex items-center gap-2">
+                      <Download size={14} /> Voorbeeldbestanden
+                    </h4>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Gebruik deze sjablonen om je data correct te formatteren voordat je gaat plakken.
+                    </p>
+                    <button 
+                      onClick={() => downloadTemplate(importType)}
+                      className="w-full py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold uppercase hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
+                    >
+                      Download {importType} CSV
+                    </button>
                   </div>
                 </div>
 
-                <div className="col-span-12 lg:col-span-8 space-y-6">
+                <div className="md:col-span-8 space-y-4">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">2. Plak hier je CSV data</label>
                   <textarea 
                     value={csvInput}
                     onChange={(e) => setCsvInput(e.target.value)}
-                    placeholder="Plak hier je CSV data..."
-                    className="w-full h-80 bg-black/40 border border-white/5 rounded-[2rem] p-8 font-mono text-xs focus:ring-4 focus:ring-indigo-500/20 focus:outline-none transition-all shadow-inner placeholder:text-slate-800"
+                    className="w-full h-80 bg-slate-50 border border-slate-200 rounded-2xl p-6 font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none shadow-inner"
+                    placeholder="reeks,onderdeel,uur,club1,skipper1..."
                   />
                   
                   {statusMsg && (
-                    <div className={`p-6 rounded-2xl font-black text-sm uppercase tracking-widest text-center animate-pulse ${
-                      statusMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-indigo-500/10 text-indigo-500'
-                    }`}>
+                    <div className={`p-4 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-3 ${statusMsg.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                      {statusMsg.type === 'info' ? <Loader2 size={16} className="animate-spin" /> : <Info size={16} />}
                       {statusMsg.text}
                     </div>
                   )}
@@ -405,10 +394,9 @@ const App = () => {
                   <button 
                     disabled={isProcessing || !csvInput}
                     onClick={handleImport}
-                    className="w-full py-8 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white rounded-[2rem] font-black text-xl uppercase italic tracking-widest shadow-2xl shadow-indigo-600/20 transition-all flex items-center justify-center gap-4"
+                    className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-sm uppercase italic tracking-widest hover:bg-blue-700 disabled:opacity-50 shadow-lg shadow-blue-100 transition-all"
                   >
-                    {isProcessing ? <Loader2 className="animate-spin" size={24} /> : <UploadCloud size={24} />}
-                    Verwerk & Upload naar Cloud
+                    Start Import naar Cloud
                   </button>
                 </div>
               </div>
@@ -417,94 +405,76 @@ const App = () => {
         )}
 
         {view === 'display' && (
-          <div className="fixed inset-0 bg-slate-950 text-white z-[100] p-16 flex flex-col overflow-hidden animate-in fade-in duration-1000">
-             <div className="flex justify-between items-end mb-24">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-4 h-4 bg-red-600 rounded-full animate-pulse shadow-[0_0_30px_rgba(220,38,38,1)]"></div>
-                    <span className="text-sm font-black uppercase tracking-[0.8em] text-slate-500">Live Competition Feed</span>
+          <div className="fixed inset-0 bg-white z-[100] p-12 flex flex-col animate-in fade-in duration-500">
+             <div className="flex justify-between items-center mb-16">
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs font-black uppercase tracking-[0.4em] text-slate-400 font-sans">Live Wedstrijd</span>
                   </div>
-                  <h1 className="text-[12rem] font-black italic uppercase leading-[0.75] tracking-tighter drop-shadow-2xl">
-                    {activeTab === 'speed' ? <span className="text-orange-500">Speed</span> : <span className="text-indigo-500">Freestyle</span>}<br/>
-                    <span className="text-white">Arena</span>
+                  <h1 className="text-9xl font-black uppercase italic tracking-tighter text-slate-900 leading-[0.8]">
+                    {activeTab === 'speed' ? <span className="text-blue-600">Speed</span> : <span className="text-purple-600">Freestyle</span>}<br/>
+                    Arena
                   </h1>
                 </div>
 
-                <div className="bg-white/5 backdrop-blur-3xl p-20 rounded-[5rem] border border-white/10 text-center min-w-[400px] shadow-[0_0_100px_rgba(0,0,0,0.5)]">
-                   <span className="text-lg font-black text-slate-500 uppercase tracking-[0.5em] block mb-6">Reeks</span>
-                   <div className="text-[18rem] font-black leading-none tabular-nums italic tracking-tighter text-white">
+                <div className="bg-slate-50 p-12 rounded-[3rem] border border-slate-200 text-center min-w-[300px]">
+                   <span className="text-sm font-black text-slate-400 uppercase tracking-[0.4em] block mb-4">Reeks</span>
+                   <div className="text-[12rem] font-black leading-none tabular-nums text-slate-900 italic">
                      {activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}
                    </div>
                 </div>
              </div>
 
-             <div className="flex-1 grid grid-cols-5 grid-rows-2 gap-10">
+             <div className="flex-1 grid grid-cols-5 grid-rows-2 gap-6">
                 {currentHeat?.slots?.map((slot, i) => {
                   const s = getSkipper(slot.skipperId);
                   return (
-                    <div key={i} className="bg-white/5 border border-white/10 rounded-[4rem] p-12 flex flex-col justify-between hover:bg-white/10 transition-all relative group overflow-hidden">
-                       <div className="absolute -right-8 -bottom-12 text-[15rem] font-black text-white/[0.03] italic leading-none group-hover:text-white/[0.07] transition-all">
-                         {slot.veld}
-                       </div>
+                    <div key={i} className="bg-white border-2 border-slate-100 rounded-[2.5rem] p-8 flex flex-col justify-between shadow-sm relative overflow-hidden group">
                        <div className="flex justify-between items-start relative z-10">
-                         <span className="text-sm font-black text-slate-500 uppercase tracking-widest">Veld</span>
-                         <div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-5xl font-black shadow-2xl ${activeTab === 'speed' ? 'bg-orange-500' : 'bg-indigo-600'}`}>
+                         <span className="text-xs font-black text-slate-300 uppercase tracking-widest">Veld</span>
+                         <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-black text-white ${activeTab === 'speed' ? 'bg-blue-600' : 'bg-purple-600'}`}>
                            {slot.veld}
                          </div>
                        </div>
                        <div className="relative z-10">
-                         <h3 className="text-6xl font-black uppercase tracking-tight italic mb-4 leading-tight text-white">{s.naam}</h3>
-                         <p className="text-xl font-bold text-slate-400 uppercase tracking-[0.3em]">{s.club}</p>
+                         <h3 className="text-4xl font-black uppercase italic tracking-tight mb-2 text-slate-900">{s.naam}</h3>
+                         <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.2em]">{s.club}</p>
+                       </div>
+                       <div className="absolute -right-4 -bottom-4 text-9xl font-black text-slate-50 italic opacity-[0.03] select-none">
+                         {slot.veld}
                        </div>
                     </div>
                   );
                 })}
-                {(!currentHeat || currentHeat.slots.length === 0) && Array.from({length: 10}).map((_, i) => (
-                  <div key={i} className="bg-white/[0.01] border border-white/5 rounded-[4rem] flex items-center justify-center italic text-slate-800 font-black text-4xl uppercase tracking-widest">
-                    Pauze
+                {!currentHeat && (
+                  <div className="col-span-full flex items-center justify-center text-4xl font-black text-slate-200 uppercase italic">
+                    Geen actieve reeks
                   </div>
-                ))}
+                )}
              </div>
 
-             <div className="mt-20 flex items-center gap-12 bg-indigo-600/10 p-12 rounded-[4rem] border border-indigo-500/20">
-                <Megaphone size={64} className="text-indigo-500 animate-bounce shrink-0" />
-                <div className="overflow-hidden">
-                  <p className="text-5xl font-black italic uppercase tracking-tight whitespace-nowrap animate-marquee text-white">
+             <div className="mt-12 flex items-center gap-10 bg-slate-900 p-8 rounded-[2.5rem] overflow-hidden">
+                <Megaphone size={40} className="text-blue-400 shrink-0" />
+                <div className="overflow-hidden flex-1">
+                  <p className="text-3xl font-black italic uppercase tracking-tight text-white whitespace-nowrap animate-marquee">
                     {settings.announcement} • {settings.announcement}
                   </p>
                 </div>
-                <button onClick={() => setView('live')} className="ml-auto text-[10px] font-black text-slate-700 uppercase tracking-widest hover:text-white transition-all">Exit View</button>
+                <button onClick={() => setView('live')} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white">Sluiten</button>
              </div>
           </div>
         )}
       </main>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0F172A; }
-        
         @keyframes marquee {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
         .animate-marquee {
           display: inline-block;
-          animation: marquee 40s linear infinite;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(99, 102, 241, 0.5);
+          animation: marquee 30s linear infinite;
         }
       `}} />
     </div>
