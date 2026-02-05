@@ -41,7 +41,6 @@ const getFirebaseConfig = () => {
   }
   
   // FALLBACK: Vul hier je eigen Firebase gegevens in voor Vercel/Github
-  // Je kunt deze gegevens vinden in de Firebase Console (Project Settings)
   return {
     apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
     authDomain: "ropeskippingcontest.firebaseapp.com",
@@ -90,7 +89,8 @@ const App = () => {
   useEffect(() => {
     if (!user) return;
 
-    const settingsRef = doc(db, 'artifacts', appId, 'public', 'settings', 'competition');
+    // AANGEPAST: Paden gecorrigeerd naar even aantal segmenten (artifacts/id/public/data/collectie/doc)
+    const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
     const skippersRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
     const heatsRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
 
@@ -135,7 +135,7 @@ const App = () => {
       endTime: serverTimestamp()
     });
 
-    const settingsRef = doc(db, 'artifacts', appId, 'public', 'settings', 'competition');
+    const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
     const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
     await updateDoc(settingsRef, { [key]: settings[key] + 1 });
   };
@@ -211,7 +211,7 @@ const App = () => {
                 <button 
                   onClick={() => {
                      const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
-                     updateDoc(doc(db, 'artifacts', appId, 'public', 'settings', 'competition'), { [key]: Math.max(1, settings[key] - 1) });
+                     updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { [key]: Math.max(1, settings[key] - 1) });
                   }}
                   className="px-6 py-4 rounded-2xl bg-slate-100 text-slate-600 hover:bg-slate-200"
                 >
