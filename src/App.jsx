@@ -2,32 +2,26 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, collection, doc, onSnapshot, updateDoc, 
-  writeBatch, getDocs 
+  writeBatch, getDocs, query 
 } from 'firebase/firestore';
 import { 
-  getAuth, signInAnonymously, onAuthStateChanged 
+  getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
   Trophy, ChevronRight, ChevronLeft, CheckCircle2, 
   Megaphone, Activity, Zap, Star, Database, Monitor, Download, Info 
 } from 'lucide-react';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
-  authDomain: "ropeskippingcontest.firebaseapp.com",
-  projectId: "ropeskippingcontest",
-  storageBucket: "ropeskippingcontest.firebasestorage.app",
-  messagingSenderId: "430066523717",
-  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
-};
-
+// Firebase configuratie
+const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-v6-fixed';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
 
 const App = () => {
   const [user, setUser] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [view, setView] = useState('live'); 
   const [activeTab, setActiveTab] = useState('speed');
   const [skippers, setSkippers] = useState({});
@@ -43,28 +37,58 @@ const App = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
 
+  // STAP 1: Authenticatie (Verplicht voor Firestore)
   useEffect(() => {
-    signInAnonymously(auth).catch(err => console.error("Auth error:", err));
-    return onAuthStateChanged(auth, setUser);
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+      }
+    };
+    initAuth();
+    
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (u) setIsAuthReady(true);
+    });
+    return () => unsubscribe();
   }, []);
 
+  // STAP 2: Data listeners (Alleen starten NA auth succes)
   useEffect(() => {
-    if (!user) return;
+    if (!isAuthReady || !user) return;
+
+    // RULE 1: Gebruik altijd dit specifieke pad-formaat
     const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
     const skippersRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
     const heatsRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
 
-    const unsub1 = onSnapshot(settingsRef, (d) => d.exists() && setSettings(d.data()));
-    const unsub2 = onSnapshot(skippersRef, (s) => {
-      const d = {}; s.forEach(doc => d[doc.id] = doc.data());
-      setSkippers(d);
-    });
-    const unsub3 = onSnapshot(heatsRef, (s) => {
-      setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
-    });
+    const unsubSettings = onSnapshot(settingsRef, (d) => {
+      if (d.exists()) setSettings(d.data());
+    }, (err) => console.error("Settings error:", err));
 
-    return () => { unsub1(); unsub2(); unsub3(); };
-  }, [user]);
+    const unsubSkippers = onSnapshot(skippersRef, (s) => {
+      const d = {}; 
+      s.forEach(doc => d[doc.id] = doc.data());
+      setSkippers(d);
+    }, (err) => console.error("Skippers error:", err));
+
+    const unsubHeats = onSnapshot(heatsRef, (s) => {
+      const hList = s.docs.map(d => ({ id: d.id, ...d.data() }));
+      setHeats(hList.sort((a,b) => a.reeks - b.reeks));
+    }, (err) => console.error("Heats error:", err));
+
+    return () => {
+      unsubSettings();
+      unsubSkippers();
+      unsubHeats();
+    };
+  }, [isAuthReady, user]);
 
   const downloadTemplate = (type) => {
     const content = type === 'speed' 
@@ -79,18 +103,29 @@ const App = () => {
   };
 
   const handleImport = async () => {
-    if (!csvInput.trim()) return;
+    if (!csvInput.trim() || !user) return;
     setIsProcessing(true);
-    setStatusMsg({ type: 'info', text: 'Data verwerken...' });
+    setStatusMsg({ type: 'info', text: 'Data uploaden naar beveiligde cloud...' });
+    
     try {
-      const rows = csvInput.split('\n').filter(r => r.trim()).map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      const rows = csvInput.split('\n')
+        .filter(r => r.trim())
+        .map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      
+      if (rows.length > 0 && isNaN(parseInt(rows[0][0]))) {
+        rows.shift();
+      }
+
       const batch = writeBatch(db);
       let count = 0;
 
-      if (importType === 'speed') {
-        rows.forEach(row => {
-          if (!row[0] || isNaN(row[0])) return;
-          const heatId = `speed_${row[0]}`;
+      for (const row of rows) {
+        if (!row[0] || isNaN(parseInt(row[0]))) continue;
+        
+        const reeksNum = parseInt(row[0]);
+        
+        if (importType === 'speed') {
+          const heatId = `speed_${reeksNum}`;
           const slots = [];
           for (let i = 0; i < 10; i++) {
             const club = row[3 + (i * 2)], naam = row[4 + (i * 2)];
@@ -101,56 +136,60 @@ const App = () => {
             }
           }
           batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId), {
-            type: 'speed', reeks: parseInt(row[0]), onderdeel: row[1] || 'Speed', slots
+            type: 'speed', reeks: reeksNum, onderdeel: row[1] || 'Speed', slots
           });
-          count++;
-        });
-      } else {
-        rows.forEach(row => {
-          if (!row[0] || isNaN(row[0])) return;
+        } else {
+          // Freestyle: 0:reeks, 1:uur, 2:veld, 3:club, 4:skipper
           const sid = `fs_${row[4]}_${row[3]}`.replace(/[^a-zA-Z0-9]/g, '_');
-          const heatId = `fs_${row[0]}`;
+          const heatId = `fs_${reeksNum}`;
           batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'skippers', sid), { id: sid, naam: row[4], club: row[3] });
           batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'heats', heatId), {
-            type: 'freestyle', reeks: parseInt(row[0]), onderdeel: 'Freestyle', slots: [{ veld: row[2], skipperId: sid }]
+            type: 'freestyle', reeks: reeksNum, onderdeel: 'Freestyle', slots: [{ veld: row[2], skipperId: sid }]
           });
-          count++;
-        });
+        }
+        count++;
       }
+      
       await batch.commit();
-      setStatusMsg({ type: 'success', text: `${count} reeksen succesvol geladen.` });
+      setStatusMsg({ type: 'success', text: `${count} reeksen succesvol verwerkt.` });
       setCsvInput('');
     } catch (e) {
-      console.error(e);
-      setStatusMsg({ type: 'error', text: 'Fout bij import. Controleer je CSV.' });
-    } finally { setIsProcessing(false); }
+      console.error("Import error:", e);
+      setStatusMsg({ type: 'error', text: `Upload mislukt: ${e.message}` });
+    } finally { 
+      setIsProcessing(false); 
+    }
   };
 
   const updateHeat = async (delta) => {
+    if (!user) return;
     const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), {
+    const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    await updateDoc(settingsRef, {
       [key]: Math.max(1, (settings[key] || 1) + delta)
     });
   };
 
   const currentHeat = useMemo(() => {
     const list = activeTab === 'speed' ? heats.filter(h => h.type === 'speed') : heats.filter(h => h.type === 'freestyle');
-    const num = activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat;
+    const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
     return list.find(h => h.reeks === num) || null;
   }, [heats, activeTab, settings]);
 
-  const mainStyles = {
-    fontFamily: '"Inter", system-ui, sans-serif',
-    backgroundColor: '#ffffff',
-    color: '#000000',
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column'
-  };
+  if (!isAuthReady) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
+        <div style={{ textAlign: 'center' }}>
+          <Activity className="animate-spin" size={48} color="#2563eb" />
+          <p style={{ marginTop: '20px', fontWeight: 600 }}>Verbinden met wedstrijd-server...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={mainStyles}>
-      {/* HEADER */}
+    <div style={{ fontFamily: '"Inter", sans-serif', backgroundColor: '#fff', color: '#000', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* NAV BAR */}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 30px', borderBottom: '2px solid #eee', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontWeight: 900, fontSize: '1.2rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></h2>
@@ -160,7 +199,9 @@ const App = () => {
             <button onClick={() => setView('display')} style={{ padding: '8px 20px', border: 'none', borderRadius: '7px', cursor: 'pointer', fontWeight: 700, background: view === 'display' ? '#fff' : 'transparent', color: view === 'display' ? '#2563eb' : '#666' }}>Groot Scherm</button>
           </div>
         </div>
-        <div style={{ color: '#10b981', fontWeight: 800, fontSize: '0.8rem' }}>LIVE CLOUD SYNC</div>
+        <div style={{ color: '#10b981', fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <Database size={14} /> LIVE SYNC ACTIEF
+        </div>
       </div>
 
       <div style={{ flex: 1, padding: '40px' }}>
@@ -177,7 +218,7 @@ const App = () => {
               
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '50px', margin: '40px 0' }}>
                 <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: '80px', height: '80px', cursor: 'pointer' }}><ChevronLeft size={40}/></button>
-                <div style={{ fontSize: '12rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
+                <div style={{ fontSize: '12rem', fontWeight: 900 }}>{activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}</div>
                 <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: '80px', height: '80px', cursor: 'pointer' }}><ChevronRight size={40}/></button>
               </div>
 
@@ -208,16 +249,16 @@ const App = () => {
                 <button onClick={() => downloadTemplate('speed')} style={{ width: '100%', padding: '15px', border: '1px solid #ddd', borderRadius: '10px', background: '#fff', cursor: 'pointer', fontWeight: 700, marginBottom: '10px' }}>Speed Sjabloon (.csv)</button>
                 <button onClick={() => downloadTemplate('freestyle')} style={{ width: '100%', padding: '15px', border: '1px solid #ddd', borderRadius: '10px', background: '#fff', cursor: 'pointer', fontWeight: 700 }}>Freestyle Sjabloon (.csv)</button>
                 <div style={{ marginTop: '20px', padding: '15px', background: '#eef2ff', borderRadius: '15px', fontSize: '0.8rem', lineHeight: '1.5', color: '#3730a3' }}>
-                  <strong>Instructie:</strong> Open het sjabloon in Excel. Kopieer je data in de juiste kolommen. Sla op of kopieer de rijen en plak ze hiernaast.
+                  <strong>Instructie:</strong> Kopieer je rijen uit Excel/CSV en plak ze hiernaast. Klik op upload om de data live te zetten.
                 </div>
               </div>
               <div>
-                <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999' }}>2. PLAK DATA</h4>
+                <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: '#999' }}>2. PLAK DATA ({importType.toUpperCase()})</h4>
                 <div style={{ marginBottom: '10px' }}>
                   <label><input type="radio" checked={importType === 'speed'} onChange={() => setImportType('speed')} /> Speed</label>
                   <label style={{ marginLeft: '20px' }}><input type="radio" checked={importType === 'freestyle'} onChange={() => setImportType('freestyle')} /> Freestyle</label>
                 </div>
-                <textarea value={csvInput} onChange={(e) => setCsvInput(e.target.value)} placeholder="reeks, onderdeel, uur, club, skipper..." style={{ width: '100%', height: '300px', borderRadius: '15px', border: '1px solid #ddd', padding: '15px', fontFamily: 'monospace', fontSize: '0.8rem' }} />
+                <textarea value={csvInput} onChange={(e) => setCsvInput(e.target.value)} placeholder="reeks, uur, veld, club, skipper..." style={{ width: '100%', height: '300px', borderRadius: '15px', border: '1px solid #ddd', padding: '15px', fontFamily: 'monospace', fontSize: '0.8rem' }} />
                 <button onClick={handleImport} disabled={isProcessing} style={{ width: '100%', marginTop: '10px', padding: '20px', borderRadius: '15px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>{isProcessing ? "Laden..." : "UPLOAD NAAR CLOUD"}</button>
                 {statusMsg && <div style={{ marginTop: '15px', padding: '15px', borderRadius: '10px', background: statusMsg.type === 'success' ? '#dcfce7' : '#dbeafe', color: statusMsg.type === 'success' ? '#166534' : '#1e40af', fontWeight: 700, textAlign: 'center' }}>{statusMsg.text}</div>}
               </div>
@@ -231,7 +272,7 @@ const App = () => {
                <h1 style={{ fontSize: '10rem', fontWeight: 900, lineHeight: 0.8, margin: 0 }}>{activeTab === 'speed' ? 'SPEED' : 'FREESTYLE'}</h1>
                <div style={{ background: '#f5f5f5', padding: '30px 60px', borderRadius: '30px', textAlign: 'center' }}>
                  <div style={{ fontSize: '2rem', fontWeight: 900, color: '#ccc' }}>REEKS</div>
-                 <div style={{ fontSize: '12rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</div>
+                 <div style={{ fontSize: '12rem', fontWeight: 900 }}>{activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1)}</div>
                </div>
             </div>
             <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }}>
