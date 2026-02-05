@@ -122,14 +122,13 @@ const App = () => {
       const plannedTime = new Date(currentTime);
       plannedTime.setHours(h, m, 0, 0);
 
-      // Verschil in minuten
       const diffInMs = currentTime.getTime() - plannedTime.getTime();
       const diffInMins = Math.floor(diffInMs / 60000);
 
       return {
         minutes: diffInMins,
-        isBehind: diffInMins > 0, // Positief = Achterstand (+)
-        isAhead: diffInMins < 0,  // Negatief = Voorsprong (-)
+        isBehind: diffInMins > 0,
+        isAhead: diffInMins < 0,
         label: diffInMins > 0 ? `+${diffInMins}` : `${diffInMins}`
       };
     } catch (e) {
@@ -213,17 +212,17 @@ const App = () => {
     header: { display: 'flex', justifyContent: 'space-between', padding: '0.75rem 2rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
     main: { flex: 1, padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
     card: { border: '1px solid #eee', borderRadius: '1.5rem', padding: '1.5rem', width: '100%', maxWidth: '800px', backgroundColor: '#fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
-    displayOverlay: { position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 1000, padding: '3rem', display: 'flex', flexDirection: 'column' },
+    displayOverlay: { position: 'fixed', inset: 0, backgroundColor: '#fff', zIndex: 1000, padding: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
     diffBadge: (info) => ({
-      padding: '0.4rem 1rem',
-      borderRadius: '0.75rem',
+      padding: '0.3rem 0.8rem',
+      borderRadius: '0.6rem',
       fontWeight: '900',
-      fontSize: '1.4rem',
+      fontSize: '1.2rem',
       backgroundColor: info.isBehind ? '#fee2e2' : '#dcfce7',
       color: info.isBehind ? '#dc2626' : '#16a34a',
       display: 'inline-flex',
       alignItems: 'center',
-      marginLeft: '1rem'
+      marginLeft: '0.75rem'
     })
   };
 
@@ -288,63 +287,64 @@ const App = () => {
 
         {view === 'display' && (
           <div style={styles.displayOverlay}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
-                <h1 style={{ fontSize: '4.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
-                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1.5rem' }}>ROPESKIPPING COMPETITION</div>
+                <h1 style={{ fontSize: '3.5rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || "SPEED"}</h1>
+                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '1.2rem' }}>ROPESKIPPING COMPETITION</div>
               </div>
 
               <div style={{ textAlign: 'right' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                   <div style={{ fontSize: '3.5rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+                   <div style={{ fontSize: '2.8rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
                    {timeDifferenceInfo && (
                       <div style={styles.diffBadge(timeDifferenceInfo)}>
                         {timeDifferenceInfo.label} min.
                       </div>
                    )}
                 </div>
-                {currentHeat?.uur && (
-                  <div style={{ fontWeight: 800, color: '#999', fontSize: '1.2rem', marginTop: '0.5rem' }}>
-                    GEPLAND: {currentHeat.uur} u.
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                  <div style={{ fontWeight: 900, color: '#fff', background: '#000', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '1rem' }}>
+                    GEPLAND: {currentHeat?.uur || "--:--"} u.
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', backgroundColor: '#f8fafc', padding: '1.5rem 3rem', borderRadius: '2rem', marginBottom: '2rem', border: '2px solid #e2e8f0' }}>
-               <span style={{ fontSize: '1.5rem', fontWeight: 900, color: '#64748b' }}>HUIDIGE REEKS</span>
-               <span style={{ fontSize: '5rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.75rem 2rem', borderRadius: '1.2rem', marginBottom: '1rem', border: '2px solid #e2e8f0' }}>
+               <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#64748b' }}>HUIDIGE REEKS</span>
+               <span style={{ fontSize: '3.5rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
             </div>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem', minHeight: 0 }}>
               {speedSlots.map((s, i) => (
                 <div key={i} style={{ 
                   flex: 1, 
                   display: 'grid', 
-                  gridTemplateColumns: '200px 1fr 1fr', 
+                  gridTemplateColumns: '150px 1fr 1fr', 
                   alignItems: 'center', 
-                  padding: '0 3rem', 
-                  borderRadius: '1.5rem', 
-                  border: '3px solid #f1f5f9',
+                  padding: '0 2rem', 
+                  borderRadius: '1rem', 
+                  border: '2px solid #f1f5f9',
                   backgroundColor: s.empty ? 'transparent' : '#fff',
-                  opacity: s.empty ? 0.2 : 1
+                  opacity: s.empty ? 0.15 : 1,
+                  minHeight: 0
                 }}>
-                  <span style={{ fontSize: '1.8rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
-                  <span style={{ fontSize: '3rem', fontWeight: 900 }}>{skippers[s.skipperId]?.naam || ""}</span>
-                  <span style={{ fontSize: '1.8rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right' }}>{skippers[s.skipperId]?.club || ""}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
+                  <span style={{ fontSize: '2.2rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skippers[s.skipperId]?.naam || ""}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right' }}>{skippers[s.skipperId]?.club || ""}</span>
                 </div>
               ))}
             </div>
 
             {currentHeat?.status === 'finished' && (
               <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(16, 185, 129, 0.98)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 100, borderRadius: 'inherit' }}>
-                <Trophy size={160} />
-                <h2 style={{ fontSize: '6rem', fontWeight: 900, margin: 0 }}>REEKS VOLTOOID</h2>
-                <p style={{ fontSize: '2rem', fontWeight: 700, opacity: 0.8 }}>Even geduld voor de volgende reeks...</p>
+                <Trophy size={120} />
+                <h2 style={{ fontSize: '4.5rem', fontWeight: 900, margin: 0 }}>REEKS VOLTOOID</h2>
+                <p style={{ fontSize: '1.5rem', fontWeight: 700, opacity: 0.8 }}>Even geduld voor de volgende reeks...</p>
               </div>
             )}
 
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '1rem', right: '1rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700 }}>X SLUITEN</button>
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, opacity: 0.3 }}>X</button>
           </div>
         )}
       </main>
