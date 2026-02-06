@@ -21,7 +21,38 @@ import {
 };
 */
 
-const firebaseConfig = process.env.VITE_FIREBASE_CONFIG2;
+/**
+ * CONFIGURATIE & INITIALISATIE
+ * Haalt configuratie op uit Environment Variables.
+ * De fout "Need to provide options" komt omdat de config undefined is.
+ */
+const getFirebaseConfig = () => {
+  // We kijken eerst naar de door jou opgegeven variabele
+  const rawConfig = process.env.VITE_FIREBASE_CONFIG || process.env.NEXT_PUBLIC_FIREBASE_CONFIG;
+
+  if (rawConfig) {
+    // Als de env var een string is (wat meestal zo is in Vercel), moeten we hem parsen
+    if (typeof rawConfig === 'string') {
+      try {
+        return JSON.parse(rawConfig);
+      } catch (e) {
+        console.error("Fout bij het parsen van VITE_FIREBASE_CONFIG2. Zorg dat de waarde valide JSON is.", e);
+      }
+    } else {
+      return rawConfig; // Het is al een object
+    }
+  }
+
+  // Fallback voor lokale preview/ontwikkeling
+  if (typeof __firebase_config !== 'undefined') {
+    return JSON.parse(__firebase_config);
+  }
+
+  console.error("Geen Firebase configuratie gevonden in process.env of fallback.");
+  return null;
+};
+
+const firebaseConfig = getFirebaseConfig();
 
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
