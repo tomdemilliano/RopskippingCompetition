@@ -69,9 +69,9 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    // Corrected path: collection 'artifacts', doc 'appId', collection 'public', doc 'data', collection 'items', doc 'currentContest'
-    // Or simplified to even segments: artifacts / {appId} / public / data
-    const contestRef = doc(db, 'artifacts', appId, 'public', 'data');
+    // MANDATORY PATH (Rule 1): artifacts / {appId} / public / data / {collectionName} / {docId}
+    // We gebruiken 'contest' als collectie en 'current' als documentnaam.
+    const contestRef = doc(db, 'artifacts', appId, 'public', 'data', 'contest', 'current');
     
     const unsubContest = onSnapshot(contestRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -90,9 +90,7 @@ export default function App() {
       setLoading(false);
     }, (err) => console.error("Contest sync error:", err));
 
-    // Corrected path for collection: artifacts / {appId} / public / data / participants (5 segments)
-    // Firestore needs even for doc, odd for collection. 
-    // The previous error was using doc() with 5 segments.
+    // Deelnemers collectie
     const partsRef = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
     
     const unsubParts = onSnapshot(partsRef, (querySnap) => {
@@ -135,7 +133,7 @@ export default function App() {
   );
 }
 
-// --- VIEW: LIVE (ONGEWIJZIGD) ---
+// --- VIEW: LIVE ---
 function LiveView({ contest, participants, setView }) {
   const currentSlots = useMemo(() => {
     const slots = [];
@@ -156,7 +154,7 @@ function LiveView({ contest, participants, setView }) {
 
   const updateReeks = async (val) => {
     const newReeks = Math.max(1, contest.huidigeReeks + val);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data'), {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'contest', 'current'), {
       huidigeReeks: newReeks
     });
   };
@@ -222,7 +220,7 @@ function LiveView({ contest, participants, setView }) {
   );
 }
 
-// --- VIEW: DISPLAY (ONGEWIJZIGD) ---
+// --- VIEW: DISPLAY ---
 function DisplayView({ contest, participants, setView }) {
   const currentSlots = useMemo(() => {
     const slots = [];
@@ -238,7 +236,6 @@ function DisplayView({ contest, participants, setView }) {
 
   return (
     <div className="fixed inset-0 bg-[#0f172a] text-white flex flex-col font-sans overflow-hidden">
-      {/* Header */}
       <div style={{ padding: '2vh 4vw', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
           <div style={{ color: '#3b82f6', fontWeight: 900, fontSize: '1.2rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>{contest.naam}</div>
@@ -250,7 +247,6 @@ function DisplayView({ contest, participants, setView }) {
         </div>
       </div>
 
-      {/* Grid */}
       <div style={{ flex: 1, padding: '3vh 4vw', display: 'grid', gridTemplateColumns: '1fr 1fr', gridAutoRows: '1fr', gap: '1.5rem' }}>
         {currentSlots.map(s => (
           <div key={s.veld} style={{ 
@@ -288,22 +284,19 @@ function DisplayView({ contest, participants, setView }) {
           </div>
         ))}
       </div>
-
-      {/* Control overlay hidden during display */}
       <button onClick={() => setView('live')} className="fixed bottom-4 right-4 opacity-0 hover:opacity-100 bg-white/10 p-4 rounded-full">X</button>
     </div>
   );
 }
 
-// --- VIEW: MANAGE (GEWIJZIGD) ---
+// --- VIEW: MANAGE ---
 function ManageView({ contest, participants, setView }) {
   const [newOnderdeel, setNewOnderdeel] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef(null);
-  const [targetOnderdeel, setTargetOnderdeel] = useState(null);
 
   const saveContest = async (updates) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data'), updates);
+    const contestRef = doc(db, 'artifacts', appId, 'public', 'data', 'contest', 'current');
+    await updateDoc(contestRef, updates);
   };
 
   const addOnderdeel = async () => {
@@ -321,7 +314,6 @@ function ManageView({ contest, participants, setView }) {
     await saveContest({ onderdelen: list });
   };
 
-  // CSV Import Logic
   const handleFileUpload = (e, onderdeel) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -338,7 +330,6 @@ function ManageView({ contest, participants, setView }) {
         const [naam, club, reeks, veld] = line.split(',').map(s => s.trim());
         if (naam && reeks) {
           const id = `p_${onderdeel}_${index}_${Date.now()}`;
-          // Correct path: artifacts / {appId} / public / data / participants / {id}
           const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'participants', id);
           batch.set(pRef, {
             id,
@@ -363,7 +354,6 @@ function ManageView({ contest, participants, setView }) {
     reader.readAsText(file);
   };
 
-  // Helper om stats te berekenen per onderdeel
   const getStats = (onderdeel) => {
     const relevant = Object.values(participants).filter(p => p.onderdeel === onderdeel);
     const deelnemers = relevant.length;
@@ -380,7 +370,6 @@ function ManageView({ contest, participants, setView }) {
         <h2 className="text-2xl font-black">Beheer</h2>
       </div>
 
-      {/* Algemene Info */}
       <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <h3 className="font-bold flex items-center gap-2 text-slate-400 text-xs uppercase tracking-widest">
           <Info size={16} /> Algemene Informatie
@@ -419,7 +408,6 @@ function ManageView({ contest, participants, setView }) {
         </div>
       </section>
 
-      {/* Onderdelen Beheer */}
       <section className="space-y-4">
         <h3 className="font-bold flex items-center gap-2 text-slate-400 text-xs uppercase tracking-widest">
           <Activity size={16} /> Onderdelen & Deelnemers
@@ -450,14 +438,11 @@ function ManageView({ contest, participants, setView }) {
             return (
               <div key={ond} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-black text-lg text-slate-900">{ond}</span>
-                  </div>
+                  <span className="font-black text-lg text-slate-900">{ond}</span>
                   <button onClick={() => removeOnderdeel(ond)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
                     <Trash2 size={18} />
                   </button>
                 </div>
-
                 <div className="flex items-center gap-6">
                   <div className="flex items-center gap-2 text-slate-500">
                     <Users size={16} className="text-blue-500" />
@@ -468,17 +453,11 @@ function ManageView({ contest, participants, setView }) {
                     <span className="text-sm font-bold">{stats.reeksen} <span className="font-medium text-slate-400">reeksen</span></span>
                   </div>
                 </div>
-
                 <div className="pt-2 border-t border-slate-50">
                   <label className="flex items-center justify-center gap-2 w-full bg-slate-50 hover:bg-slate-100 py-2 rounded-lg cursor-pointer transition-colors text-slate-600 font-bold text-xs uppercase tracking-wider">
                     <Upload size={14} />
-                    {isUploading ? 'Bezig met laden...' : 'CSV Deelnemers Laden'}
-                    <input 
-                      type="file" 
-                      accept=".csv" 
-                      className="hidden" 
-                      onChange={(e) => handleFileUpload(e, ond)}
-                    />
+                    {isUploading ? 'Bezig...' : 'Deelnemers CSV'}
+                    <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, ond)} />
                   </label>
                 </div>
               </div>
@@ -486,17 +465,6 @@ function ManageView({ contest, participants, setView }) {
           })}
         </div>
       </section>
-
-      {/* CSV Handleiding */}
-      <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-        <h4 className="text-blue-700 font-bold text-sm mb-1 flex items-center gap-2">
-          <Info size={14} /> CSV Formaat handleiding
-        </h4>
-        <p className="text-blue-600/70 text-xs font-medium">
-          Gebruik een CSV met kolommen: <code className="bg-blue-100 px-1 rounded">Naam, Club, Reeks, Veld</code>. 
-          Deelnemers worden direct gekoppeld aan het betreffende onderdeel.
-        </p>
-      </div>
     </div>
   );
 }
