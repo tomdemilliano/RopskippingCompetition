@@ -1,59 +1,64 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc, addDoc, deleteDoc, arrayRemove, arrayUnion
+  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc, deleteDoc, addDoc
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock, Trash2, UserPlus, Play, Square, RotateCcw
+  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock, Settings, Monitor, Play
 } from 'lucide-react';
 
 /**
- * FIREBASE CONFIGURATIE via Environment Variabelen
- * Voeg deze toe in Vercel Dashboard onder 'Environment Variables'
+ * CONFIGURATIE & INITIALISATIE
+ * Haalt configuratie op uit Environment Variables (Vercel/Vite/Next.js)
  */
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "",
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "",
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "",
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || ""
+const getFirebaseConfig = () => {
+  // Check voor verschillende mogelijke env namen afhankelijk van je framework
+  const envConfig = 
+    process.env.NEXT_PUBLIC_FIREBASE_CONFIG || 
+    process.env.VITE_FIREBASE_CONFIG || 
+    process.env.FIREBASE_CONFIG;
+
+  if (envConfig) {
+    try {
+      return JSON.parse(envConfig);
+    } catch (e) {
+      console.error("Fout bij parsen van FIREBASE_CONFIG env var:", e);
+    }
+  }
+
+  // Fallback voor de lokale preview omgeving
+  if (typeof __firebase_config !== 'undefined') {
+    return JSON.parse(__firebase_config);
+  }
+
+  return {};
 };
 
-// Initialiseer Firebase (Singleton pattern)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+const firebaseConfig = getFirebaseConfig();
+
+// Initialiseer app enkel als er nog geen app is (voorkomt dubbele initialisatie bij hot reloads)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
-
-// Gebruik een unieke ID voor de app context
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-v2';
 
 const POSSIBLE_ONDERDELEN = [
-  'Speed',
-  'Endurance',
-  'Freestyle',
-  'Double under',
-  'Triple under'
+  'Speed', 'Endurance', 'Freestyle', 'Double under', 'Triple under', 'DD Speed'
 ];
 
+/**
+ * HOOFDCOMPONENT: Navigatie tussen de 3 delen
+ */
 export default function App() {
+  const [view, setView] = useState('selection'); // selection, live, beheer, display
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('live'); // 'live', 'admin', 'scores', 'heats'
+  const [compData, setCompData] = useState(null);
   const [participants, setParticipants] = useState({});
-  const [status, setStatus] = useState({ 
-    activeOnderdeel: 'Speed', 
-    timerRunning: false, 
-    currentHeat: 1, 
-    startTime: null,
-    totalHeats: 1
-  });
-  const [heats, setHeats] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  // 1. Authenticate & Setup
+  // 1. Auth Initialisatie
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -62,299 +67,290 @@ export default function App() {
         } else {
           await signInAnonymously(auth);
         }
-      } catch (error) {
-        console.error("Auth error:", error);
+      } catch (err) {
+        console.error("Auth error:", err);
       }
     };
-
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
-    return () => unsubscribe();
+    return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // 2. Real-time Data Listeners
+  // 2. Data Sync
   useEffect(() => {
     if (!user) return;
 
-    // Listen to status
-    const statusRef = doc(db, 'artifacts', appId, 'public', 'data', 'status');
-    const unsubStatus = onSnapshot(statusRef, (docSnap) => {
-      if (docSnap.exists()) setStatus(docSnap.data());
-      setLoading(false);
-    }, (err) => console.error("Status listener error:", err));
-
-    // Listen to participants
+    const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competition');
     const partRef = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
+
+    const unsubComp = onSnapshot(compRef, (doc) => {
+      if (doc.exists()) setCompData(doc.data());
+    }, (err) => console.error("Competition sync error:", err));
+
     const unsubPart = onSnapshot(partRef, (snap) => {
       const p = {};
       snap.forEach(d => p[d.id] = { id: d.id, ...d.data() });
       setParticipants(p);
-    });
+    }, (err) => console.error("Participants sync error:", err));
 
-    // Listen to heats
-    const heatRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
-    const unsubHeats = onSnapshot(heatRef, (snap) => {
-      const h = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setHeats(h.sort((a, b) => a.heatNr - b.heatNr));
-    });
-
-    return () => {
-      unsubStatus();
-      unsubPart();
-      unsubHeats();
-    };
+    return () => { unsubComp(); unsubPart(); };
   }, [user]);
 
-  // --- LOGICA VOOR RANGSCHIKKING ---
-  const rankings = useMemo(() => {
-    const list = Object.values(participants).filter(p => p.scores && p.scores[status.activeOnderdeel]);
-    return list.sort((a, b) => (b.scores[status.activeOnderdeel] || 0) - (a.scores[status.activeOnderdeel] || 0));
-  }, [participants, status.activeOnderdeel]);
+  if (!user) return <div className="flex h-screen items-center justify-center font-bold text-slate-400">Verbinden met server...</div>;
 
-  // --- ACTIONS ---
-  const toggleTimer = async () => {
-    const statusRef = doc(db, 'artifacts', appId, 'public', 'data', 'status');
-    await updateDoc(statusRef, { 
-      timerRunning: !status.timerRunning,
-      startTime: !status.timerRunning ? Date.now() : status.startTime
-    });
-  };
+  // Render view gebaseerd op state
+  switch (view) {
+    case 'live':
+      return <LiveView compData={compData} participants={participants} onBack={() => setView('selection')} />;
+    case 'beheer':
+      return <BeheerView compData={compData} participants={participants} onBack={() => setView('selection')} />;
+    case 'display':
+      return <DisplayView compData={compData} participants={participants} onBack={() => setView('selection')} />;
+    default:
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 space-y-8 text-slate-800">
+          <div className="text-center">
+            <h1 className="text-4xl font-black tracking-tight mb-2">ROPESCORE PRO</h1>
+            <p className="text-slate-500 uppercase tracking-widest text-sm font-bold">Wedstrijd Management Systeem</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+            <MenuCard 
+              icon={<Play size={32} />} 
+              title="Live Overzicht" 
+              desc="Bekijk de huidige status van de wedstrijd in real-time."
+              onClick={() => setView('live')}
+              color="bg-blue-600"
+            />
+            <MenuCard 
+              icon={<Settings size={32} />} 
+              title="Beheer" 
+              desc="Configureer onderdelen, deelnemers en veld-indelingen."
+              onClick={() => setView('beheer')}
+              color="bg-slate-800"
+            />
+            <MenuCard 
+              icon={<Monitor size={32} />} 
+              title="Display" 
+              desc="Groot scherm weergave voor publiek en atleten."
+              onClick={() => setView('display')}
+              color="bg-emerald-600"
+            />
+          </div>
+        </div>
+      );
+  }
+}
 
-  const nextHeat = async () => {
-    if (status.currentHeat >= status.totalHeats) return;
-    const statusRef = doc(db, 'artifacts', appId, 'public', 'data', 'status');
-    await updateDoc(statusRef, { currentHeat: status.currentHeat + 1, timerRunning: false });
-  };
-
-  // --- RENDER HELPERS ---
-  if (loading) return (
-    <div className="flex items-center justify-center h-screen bg-slate-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-    </div>
+function MenuCard({ icon, title, desc, onClick, color }) {
+  return (
+    <button 
+      onClick={onClick}
+      className="flex flex-col items-center p-8 bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all group"
+    >
+      <div className={`${color} text-white p-4 rounded-xl mb-4 group-hover:scale-110 transition-transform`}>
+        {icon}
+      </div>
+      <h3 className="text-xl font-bold text-slate-800">{title}</h3>
+      <p className="text-slate-500 text-sm mt-2 text-center">{desc}</p>
+    </button>
   );
+}
+
+/**
+ * DEEL 1: LIVE OVERZICHT
+ */
+function LiveView({ compData, participants, onBack }) {
+  if (!compData) return <div className="p-10 text-center">Initialiseren...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Top Nav */}
-      <nav className="bg-white border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Activity className="text-blue-600 w-6 h-6" />
-          <span className="font-bold text-xl tracking-tight">RopeScore <span className="text-blue-600">Pro</span></span>
+    <div className="min-h-screen bg-white">
+      <header className="p-4 bg-blue-600 text-white flex justify-between items-center sticky top-0 z-10 shadow-lg">
+        <button onClick={onBack} className="flex items-center gap-2 font-bold hover:bg-blue-700 px-3 py-1 rounded-lg transition-colors"><ChevronLeft /> Terug</button>
+        <div className="text-center">
+          <div className="text-xs opacity-80 uppercase font-black tracking-widest">Nu bezig: {compData.currentOnderdeel}</div>
+          <div className="text-xl font-black italic">REEKS {compData.currentHeat}</div>
         </div>
-        <div className="flex gap-2 bg-slate-100 p-1 rounded-lg">
-          {['live', 'scores', 'heats', 'admin'].map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === v ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              {v.charAt(0).toUpperCase() + v.slice(1)}
-            </button>
-          ))}
-        </div>
-      </nav>
+        <div className="w-20"></div>
+      </header>
 
-      <main className="p-4 max-w-6xl mx-auto">
-        {view === 'live' && <LiveView status={status} participants={participants} heats={heats} />}
-        {view === 'admin' && <AdminDashboard status={status} participants={participants} toggleTimer={toggleTimer} nextHeat={nextHeat} appId={appId} />}
-        {view === 'scores' && <Scoreboard rankings={rankings} activeOnderdeel={status.activeOnderdeel} />}
-        {view === 'heats' && <HeatOverview heats={heats} participants={participants} currentHeat={status.currentHeat} />}
-      </main>
+      <div className="p-4 space-y-4 max-w-2xl mx-auto mt-4">
+        {compData.slots?.map((s, idx) => {
+          const p = participants[s.skipperId];
+          return (
+            <div key={idx} className={`p-4 rounded-xl border-2 flex items-center justify-between ${s.empty ? 'bg-slate-50 border-slate-100 opacity-50' : 'bg-white border-blue-100 shadow-sm'}`}>
+              <div className="flex items-center gap-4">
+                <span className="text-2xl font-black text-blue-600 w-12 text-center">{s.veld}</span>
+                <div>
+                  <div className="font-bold text-lg leading-tight text-slate-800">{p?.naam || (s.empty ? 'VRIJ' : 'Laden...')}</div>
+                  <div className="text-sm text-slate-500 font-bold">{p?.club || '-'}</div>
+                </div>
+              </div>
+              {!s.empty && <Activity className="text-blue-500 animate-pulse" size={24} />}
+            </div>
+          );
+        })}
+        {(!compData.slots || compData.slots.length === 0) && (
+          <div className="text-center p-12 text-slate-400 italic">Geen velden geconfigureerd voor deze reeks.</div>
+        )}
+      </div>
     </div>
   );
 }
 
-// --- SUBCOMPONENTS ---
+/**
+ * DEEL 2: BEHEER DEEL
+ */
+function BeheerView({ compData, participants, onBack }) {
+  const [newSkipper, setNewSkipper] = useState({ naam: '', club: '' });
 
-function LiveView({ status, participants, heats }) {
-  const currentHeatData = heats.find(h => h.heatNr === status.currentHeat);
-  
+  const updateComp = async (updates) => {
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'competition');
+    await updateDoc(ref, updates);
+  };
+
+  const addParticipant = async () => {
+    if (!newSkipper.naam) return;
+    const ref = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
+    await addDoc(ref, newSkipper);
+    setNewSkipper({ naam: '', club: '' });
+  };
+
+  const nextHeat = () => {
+    updateComp({ currentHeat: (compData.currentHeat || 1) + 1 });
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="bg-blue-600 rounded-3xl p-8 text-white shadow-xl flex justify-between items-center overflow-hidden relative">
-        <div className="relative z-10">
-          <p className="text-blue-100 font-medium uppercase tracking-widest text-sm mb-1">{status.activeOnderdeel}</p>
-          <h1 className="text-6xl font-black mb-2">Heat {status.currentHeat}</h1>
-          <div className="flex items-center gap-2 text-blue-100">
-            <Clock size={20} />
-            <span className="text-xl font-bold">Live Wedstrijd</span>
-          </div>
+    <div className="min-h-screen bg-slate-100 p-6 pb-24 text-slate-800">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex justify-between items-center">
+          <button onClick={onBack} className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:bg-slate-50"><ChevronLeft /></button>
+          <h2 className="text-2xl font-black text-slate-800 uppercase italic">Instellingen & Beheer</h2>
+          <div className="w-10"></div>
         </div>
-        <div className="text-8xl font-mono font-black tabular-nums bg-blue-700/50 px-8 py-4 rounded-2xl border border-blue-400/30">
-          {status.timerRunning ? "RUN" : "00"}
+
+        {/* Wedstrijd Status */}
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Trophy size={16}/> Wedstrijd Status</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">ONDERDEEL</label>
+              <select 
+                value={compData?.currentOnderdeel || ''} 
+                onChange={(e) => updateComp({ currentOnderdeel: e.target.value })}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">Kies onderdeel...</option>
+                {POSSIBLE_ONDERDELEN.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">HUIDIGE REEKS</label>
+              <div className="flex gap-2">
+                <input 
+                  type="number" 
+                  value={compData?.currentHeat || 0} 
+                  onChange={(e) => updateComp({ currentHeat: parseInt(e.target.value) || 0 })}
+                  className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                <button onClick={nextHeat} className="bg-blue-600 text-white px-4 rounded-xl font-bold shadow-md shadow-blue-200 hover:bg-blue-700 transition-colors">VOLGENDE</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Deelnemers Beheer */}
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Info size={16}/> Deelnemers Toevoegen</h3>
+          <div className="flex flex-col sm:flex-row gap-2 mb-6">
+            <input 
+              placeholder="Naam skipper..." 
+              value={newSkipper.naam}
+              onChange={(e) => setNewSkipper({...newSkipper, naam: e.target.value})}
+              className="flex-1 p-3 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-slate-400 outline-none"
+            />
+            <input 
+              placeholder="Club..." 
+              value={newSkipper.club}
+              onChange={(e) => setNewSkipper({...newSkipper, club: e.target.value})}
+              className="sm:w-40 p-3 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-slate-400 outline-none"
+            />
+            <button onClick={addParticipant} className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors">VOEG TOE</button>
+          </div>
+          
+          <div className="max-h-64 overflow-y-auto space-y-2 pr-2">
+            {Object.values(participants).length > 0 ? (
+              Object.values(participants).map(p => (
+                <div key={p.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg group">
+                  <span className="font-bold text-slate-700">{p.naam} <span className="text-slate-400 font-normal ml-2">({p.club})</span></span>
+                  <button 
+                    onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'participants', p.id))} 
+                    className="text-slate-300 hover:text-red-500 p-1 font-bold transition-colors"
+                  >
+                    Verwijder
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-slate-400 italic">Nog geen deelnemers in de lijst.</div>
+            )}
+          </div>
+        </section>
+
+        <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-blue-800 text-sm">
+          <strong>Tip:</strong> Alle wijzigingen die je hier maakt zijn onmiddellijk zichtbaar op de <strong>Live</strong> en <strong>Display</strong> schermen voor alle gebruikers.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * DEEL 3: DISPLAY DEEL
+ */
+function DisplayView({ compData, participants, onBack }) {
+  if (!compData) return <div className="h-screen bg-black text-white flex items-center justify-center font-black text-4xl italic animate-pulse">Laden...</div>;
+
+  return (
+    <div className="h-screen bg-slate-950 text-white overflow-hidden flex flex-col p-8">
+      {/* Header */}
+      <div className="flex justify-between items-end border-b-8 border-blue-600 pb-8 mb-10">
+        <div>
+          <h2 className="text-3xl font-black text-blue-500 uppercase italic tracking-tighter mb-2">ROPESCORE PRO DISPLAY</h2>
+          <h1 className="text-8xl font-black tracking-tight leading-none uppercase">{compData.currentOnderdeel || 'Wachten...'}</h1>
+        </div>
+        <div className="text-right">
+          <div className="text-5xl font-black text-slate-500 uppercase italic mb-1">REEKS</div>
+          <div className="text-[12rem] font-black leading-[0.8]">{compData.currentHeat || '-'}</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {currentHeatData?.assignments?.map((a, idx) => {
-          const p = participants[a.skipperId];
+      {/* Grid voor velden */}
+      <div className="flex-1 grid grid-cols-2 gap-10">
+        {compData.slots?.map((s, idx) => {
+          const p = participants[s.skipperId];
           return (
-            <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center font-black text-xl">
-                {a.veld}
-              </div>
-              <div>
-                <h3 className="font-bold text-lg leading-tight">{p?.naam || 'Leeg'}</h3>
-                <p className="text-slate-500 text-sm">{p?.club || 'Geen club'}</p>
+            <div key={idx} className={`p-10 rounded-[2.5rem] flex items-center gap-14 transition-all ${s.empty ? 'bg-slate-900/40 border-4 border-dashed border-slate-800 opacity-40' : 'bg-slate-900 border-b-[12px] border-blue-700 shadow-2xl shadow-blue-900/20'}`}>
+              <div className="text-9xl font-black text-blue-600 opacity-90 min-w-[160px] text-center">{s.veld}</div>
+              <div className="overflow-hidden">
+                <div className="text-6xl font-black whitespace-nowrap overflow-hidden text-ellipsis uppercase tracking-tight mb-3">
+                  {p?.naam || (s.empty ? '' : '...')}
+                </div>
+                <div className="text-4xl font-bold text-slate-500 uppercase tracking-wide">
+                  {p?.club || ''}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
-    </div>
-  );
-}
 
-function AdminDashboard({ status, participants, toggleTimer, nextHeat, appId }) {
-  const [newSkipper, setNewSkipper] = useState({ naam: '', club: '' });
-
-  const addSkipper = async () => {
-    if (!newSkipper.naam) return;
-    const id = Date.now().toString();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'participants', id), {
-      naam: newSkipper.naam,
-      club: newSkipper.club,
-      scores: {}
-    });
-    setNewSkipper({ naam: '', club: '' });
-  };
-
-  const deleteSkipper = async (id) => {
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'participants', id));
-  };
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {/* Controls */}
-      <div className="md:col-span-1 space-y-4">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <h2 className="font-bold mb-4 flex items-center gap-2"><Play size={18} /> Wedstrijd Verloop</h2>
-          <div className="flex flex-col gap-3">
-            <button 
-              onClick={toggleTimer}
-              className={`w-full py-4 rounded-xl font-bold text-white transition-transform active:scale-95 flex items-center justify-center gap-2 ${status.timerRunning ? 'bg-red-500' : 'bg-green-600'}`}
-            >
-              {status.timerRunning ? <><Square fill="white" size={20}/> Stop Timer</> : <><Play fill="white" size={20}/> Start Timer</>}
-            </button>
-            <button 
-              onClick={nextHeat}
-              className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700"
-            >
-              Volgende Heat <ChevronRight size={20} />
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <h2 className="font-bold mb-4 flex items-center gap-2"><UserPlus size={18} /> Deelnemer Toevoegen</h2>
-          <div className="space-y-3">
-            <input 
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
-              placeholder="Naam springer"
-              value={newSkipper.naam}
-              onChange={e => setNewSkipper({...newSkipper, naam: e.target.value})}
-            />
-            <input 
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
-              placeholder="Club"
-              value={newSkipper.club}
-              onChange={e => setNewSkipper({...newSkipper, club: e.target.value})}
-            />
-            <button onClick={addSkipper} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">
-              Voeg toe
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="md:col-span-2">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-            <h2 className="font-bold uppercase text-xs tracking-widest text-slate-500">Geregistreerde Deelnemers</h2>
-            <span className="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs font-bold">{Object.keys(participants).length}</span>
-          </div>
-          <div className="divide-y max-h-[600px] overflow-y-auto">
-            {Object.values(participants).map(p => (
-              <div key={p.id} className="p-4 flex justify-between items-center hover:bg-slate-50">
-                <div>
-                  <div className="font-bold">{p.naam}</div>
-                  <div className="text-sm text-slate-500">{p.club}</div>
-                </div>
-                <button onClick={() => deleteSkipper(p.id)} className="text-slate-400 hover:text-red-500 p-2 transition-colors">
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            ))}
-            {Object.keys(participants).length === 0 && (
-              <div className="p-12 text-center text-slate-400 italic">Geen deelnemers gevonden.</div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Scoreboard({ rankings, activeOnderdeel }) {
-  return (
-    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="bg-slate-800 p-8 text-white flex justify-between items-end">
-        <div>
-          <h2 className="text-blue-400 font-bold uppercase tracking-widest text-sm mb-2">{activeOnderdeel}</h2>
-          <h1 className="text-4xl font-black italic">TOP RANGSCHIKKING</h1>
-        </div>
-        <Trophy size={48} className="text-yellow-400" />
-      </div>
-      <div className="p-4">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-slate-400 text-xs uppercase tracking-tighter border-b">
-              <th className="pb-4 px-4">Pos</th>
-              <th className="pb-4">Springer</th>
-              <th className="pb-4">Club</th>
-              <th className="pb-4 text-right px-4">Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rankings.map((p, idx) => (
-              <tr key={p.id} className={`border-b last:border-0 ${idx === 0 ? 'bg-yellow-50' : idx === 1 ? 'bg-slate-50' : idx === 2 ? 'bg-orange-50' : ''}`}>
-                <td className="py-5 px-4 font-black text-xl italic text-slate-400">
-                  {idx + 1 === 1 ? '🥇' : idx + 1 === 2 ? '🥈' : idx + 1 === 3 ? '🥉' : idx + 1}
-                </td>
-                <td className="py-5 font-bold text-lg">{p.naam}</td>
-                <td className="py-5 text-slate-500">{p.club}</td>
-                <td className="py-5 text-right px-4 font-black text-2xl text-blue-600">{p.scores[activeOnderdeel]}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function HeatOverview({ heats, participants, currentHeat }) {
-  return (
-    <div className="space-y-6">
-      {heats.map(h => (
-        <div key={h.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden transition-all ${h.heatNr === currentHeat ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-slate-100 opacity-60'}`}>
-          <div className={`p-3 px-6 flex justify-between items-center ${h.heatNr === currentHeat ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
-            <span className="font-black text-lg">HEAT {h.heatNr}</span>
-            {h.heatNr === currentHeat && <span className="text-xs font-bold bg-white text-blue-600 px-2 py-0.5 rounded-full animate-pulse">NU BEZIG</span>}
-          </div>
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {h.assignments.map((a, i) => (
-              <div key={i} className="flex flex-col border rounded-xl p-3 bg-slate-50">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Veld {a.veld}</span>
-                <span className="font-bold truncate">{participants[a.skipperId]?.naam || 'Leeg'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* Navigatie knopje (vrijwel onzichtbaar voor publiek) */}
+      <button 
+        onClick={onBack} 
+        className="fixed bottom-4 right-4 text-slate-800 hover:text-slate-600 transition-colors p-2"
+      >
+        <Settings size={24} />
+      </button>
     </div>
   );
 }
