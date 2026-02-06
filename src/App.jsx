@@ -10,17 +10,6 @@ import {
   ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATIE ---
-/*const firebaseConfig = {
-  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
-  authDomain: "ropeskippingcontest.firebaseapp.com",
-  projectId: "ropeskippingcontest",
-  storageBucket: "ropeskippingcontest.firebasestorage.app",
-  messagingSenderId: "430066523717",
-  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
-};
-*/
-
 /**
  * CONFIGURATIE & INITIALISATIE
  * Haalt configuratie op uit Environment Variables.
