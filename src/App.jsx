@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
   getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc, addDoc, deleteDoc, arrayRemove, arrayUnion
@@ -7,24 +7,20 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock, Upload, Users, Hash, Trash2
+  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATIE ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : {
-      apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
-      authDomain: "ropeskippingcontest.firebaseapp.com",
-      projectId: "ropeskippingcontest",
-      storageBucket: "ropeskippingcontest.firebasestorage.app",
-      messagingSenderId: "430066523717",
-      appId: "1:430066523717:web:eea53ced41773af66a4d2c",
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+  authDomain: "ropeskippingcontest.firebaseapp.com",
+  projectId: "ropeskippingcontest",
+  storageBucket: "ropeskippingcontest.firebasestorage.app",
+  messagingSenderId: "430066523717",
+  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
+};
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
 
 // --- MOGELIJKE ONDERDELEN ---
@@ -33,438 +29,684 @@ const POSSIBLE_ONDERDELEN = [
   'Endurance',
   'Freestyle',
   'Double under',
-  'Triple under',
-  'DDC Speed',
-  'DDC Freestyle',
-  'Wheel',
-  'Show'
+  'Triple under'
 ];
 
-export default function App() {
-  const [view, setView] = useState('live');
+const App = () => {
   const [user, setUser] = useState(null);
-  const [contest, setContest] = useState(null);
-  const [participants, setParticipants] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [view, setView] = useState('live'); 
+  const [activeTab, setActiveTab] = useState('speed');
+  const [skippers, setSkippers] = useState({});
+  const [heats, setHeats] = useState([]);
+  const [competitions, setCompetitions] = useState([]); // nieuw
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState(null); // voor beheer
+  const [participants, setParticipants] = useState({}); // deelnemers voor geselecteerde competitie
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [settings, setSettings] = useState({
+    currentSpeedHeat: 1,
+    currentFreestyleHeat: 1,
+    announcement: "Welkom!",
+    activeCompetitionId: null, // nieuw: id van actieve wedstrijd
+  });
 
-  // Auth setup
+  const [importType, setImportType] = useState('speed');
+  const [csvInput, setCsvInput] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [status, setStatus] = useState({ type: null, msg: null });
+
+  // beheer: formulier state
+  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', setActive: false });
+  const [compCsvInput, setCompCsvInput] = useState(''); // CSV voor deelnemers import binnen beheer
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Update klok elke seconde
   useEffect(() => {
-    const initAuth = async () => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
       try {
+        app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+        auth = getAuth(app);
+        db = getFirestore(app);
+
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) {
-        console.error("Auth error:", err);
+
+        onAuthStateChanged(auth, (u) => {
+          if (u) {
+            setUser(u);
+            setIsAuthReady(true);
+          }
+        });
+      } catch (e) {
+        console.error("Firebase Init Error", e);
       }
     };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
+    init();
   }, []);
 
-  // Data sync
   useEffect(() => {
-    if (!user) return;
+    if (!isAuthReady || !user || !db) return;
 
-    // MANDATORY PATH (Rule 1): artifacts / {appId} / public / data / {collectionName} / {docId}
-    // We gebruiken 'contest' als collectie en 'current' als documentnaam.
-    const contestRef = doc(db, 'artifacts', appId, 'public', 'data', 'contest', 'current');
-    
-    const unsubContest = onSnapshot(contestRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setContest(docSnap.data());
+    const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
+    const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
+    const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions');
+
+    const unsubS = onSnapshot(sRef, async (d) => {
+      if (d.exists()) {
+        setSettings(d.data());
       } else {
-        const initial = {
-          naam: 'Nieuwe Wedstrijd',
-          onderdelen: [],
-          actiefOnderdeel: '',
-          huidigeReeks: 1,
-          velden: 6,
-          status: 'klaar'
-        };
-        setDoc(contestRef, initial);
+        await setDoc(sRef, settings);
       }
-      setLoading(false);
-    }, (err) => console.error("Contest sync error:", err));
+    }, (err) => console.error("Settings error:", err));
 
-    // Deelnemers collectie
-    const partsRef = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
-    
-    const unsubParts = onSnapshot(partsRef, (querySnap) => {
-      const p = {};
-      querySnap.forEach(doc => {
-        p[doc.id] = doc.data();
-      });
-      setParticipants(p);
-    }, (err) => console.error("Participants sync error:", err));
+    const unsubSk = onSnapshot(skRef, s => {
+      const d = {}; s.forEach(doc => d[doc.id] = doc.data());
+      setSkippers(d);
+    }, (err) => console.error("Skippers error:", err));
 
-    return () => {
-      unsubContest();
-      unsubParts();
-    };
-  }, [user]);
+    const unsubH = onSnapshot(hRef, s => {
+      setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
+    }, (err) => console.error("Heats error:", err));
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <Activity className="w-12 h-12 text-blue-600 animate-pulse" />
-          <p className="text-slate-500 font-medium">Laden...</p>
-        </div>
-      </div>
-    );
-  }
+    const unsubC = onSnapshot(cRef, s => {
+      // competitie documenten bevatten: name, date, location, status, onderdelen
+      setCompetitions(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')));
+    }, (err) => console.error("Competitions error:", err));
 
-  const renderView = () => {
-    switch (view) {
-      case 'manage': return <ManageView contest={contest} participants={participants} setView={setView} />;
-      case 'display': return <DisplayView contest={contest} participants={participants} setView={setView} />;
-      default: return <LiveView contest={contest} participants={participants} setView={setView} />;
+    return () => { unsubS(); unsubSk(); unsubH(); unsubC(); };
+  }, [isAuthReady, user]);
+
+  // luister naar participants subcollectie wanneer geselecteerde competitie verandert
+  useEffect(() => {
+    if (!isAuthReady || !user || !db) return;
+    if (!selectedCompetitionId) {
+      setParticipants({});
+      return;
+    }
+    const pRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants');
+    const unsubP = onSnapshot(pRef, s => {
+      const d = {};
+      s.forEach(doc => d[doc.id] = doc.data());
+      setParticipants(d);
+    }, err => console.error("Participants error:", err));
+    return () => unsubP();
+  }, [isAuthReady, user, selectedCompetitionId]);
+
+  // actieve competitie object (uit settings)
+  const activeCompetition = useMemo(() => {
+    return competitions.find(c => c.id === settings.activeCompetitionId) || null;
+  }, [competitions, settings]);
+
+  const currentHeat = useMemo(() => {
+    const list = heats.filter(h => h.type === activeTab);
+    const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
+    return list.find(h => h.reeks === num) || null;
+  }, [heats, activeTab, settings]);
+
+  const timeDifferenceInfo = useMemo(() => {
+    if (!currentHeat?.uur || !currentHeat.uur.includes(':')) return null;
+
+    try {
+      const parts = currentHeat.uur.split(':');
+      const h = parseInt(parts[0]);
+      const m = parseInt(parts[1]);
+      if (isNaN(h) || isNaN(m)) return null;
+
+      const plannedTime = new Date(currentTime);
+      plannedTime.setHours(h, m, 0, 0);
+
+      const diffInMs = currentTime.getTime() - plannedTime.getTime();
+      const diffInMins = Math.floor(diffInMs / 60000);
+
+      return {
+        minutes: diffInMins,
+        isBehind: diffInMins > 0,
+        isAhead: diffInMins < 0,
+        label: diffInMins > 0 ? `+${diffInMins}` : `${diffInMins}`
+      };
+    } catch (e) {
+      return null;
+    }
+  }, [currentHeat, currentTime]);
+
+  // speedSlots: wanneer er een actieve competitie is, vullen we velden op basis van deelnemers die een startVeld/veldNr hebben of simpelweg show deelnemers
+  const speedSlots = useMemo(() => {
+    if (activeTab !== 'speed') return currentHeat?.slots || [];
+    // probeer eerst gebruik te maken van currentHeat.slots (bestaat mogelijk)
+    if (currentHeat?.slots?.length) {
+      const fullList = [];
+      for (let i = 1; i <= 10; i++) {
+        const found = currentHeat?.slots?.find(s => s.veldNr === i || s.veld === `Veld ${i}`);
+        fullList.push(found || { veld: `Veld ${i}`, skipperId: null, empty: true });
+      }
+      return fullList;
+    }
+    // fallback: vul met deelnemers uit actieve competitie die deelnemen aan speed
+    if (activeCompetition && Object.keys(participants).length) {
+      const partArr = Object.values(participants).filter(p => p.events?.includes('speed'));
+      const fullList = [];
+      for (let i = 1; i <= 10; i++) {
+        const p = partArr[i-1];
+        fullList.push(p ? { veld: `Veld ${i}`, skipperId: p.id, empty: false } : { veld: `Veld ${i}`, skipperId: null, empty: true });
+      }
+      return fullList;
+    }
+    // default
+    const defaultList = [];
+    for (let i = 1; i <= 10; i++) defaultList.push({ veld: `Veld ${i}`, skipperId: null, empty: true });
+    return defaultList;
+  }, [currentHeat, activeTab, activeCompetition, participants]);
+
+  const updateHeat = async (delta) => {
+    if (!db || !user) return;
+    const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    try {
+      const currentVal = settings[key] || 1;
+      await updateDoc(ref, { [key]: Math.max(1, currentVal + delta) });
+    } catch (e) { console.error(e); }
+  };
+
+  const finishHeat = async () => {
+    if (!currentHeat || !db || !user) return;
+    try {
+      const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', currentHeat.id);
+      await updateDoc(heatRef, { status: 'finished' });
+      await updateHeat(1);
+    } catch (e) { console.error(e); }
+  };
+
+  // Competitie aanmaken (nu met onderdelen array)
+  const addCompetition = async ({ name, date, location, setActive=false }) => {
+    if (!name || !db || !user) return;
+    try {
+      const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions');
+      // voeg onderdelen toe als lege array zodat structuur consistent is
+      const docRef = await addDoc(cRef, { name, date, location, status: 'gepland', onderdelen: [], createdAt: new Date().toISOString() });
+      if (setActive) {
+        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+        await updateDoc(sRef, { activeCompetitionId: docRef.id });
+      }
+      setStatus({ type: 'success', msg: 'Competitie toegevoegd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {renderView()}
-    </div>
-  );
-}
-
-// --- VIEW: LIVE ---
-function LiveView({ contest, participants, setView }) {
-  const currentSlots = useMemo(() => {
-    const slots = [];
-    const pArray = Object.values(participants).filter(p => 
-      p.onderdeel === contest.actiefOnderdeel && p.reeks === contest.huidigeReeks
-    );
-
-    for (let i = 1; i <= contest.velden; i++) {
-      const p = pArray.find(x => x.veld === i);
-      slots.push({
-        veld: i,
-        skipperId: p?.id || null,
-        empty: !p
-      });
+  // Stel actieve competitie in
+  const setActiveCompetition = async (competitionId) => {
+    if (!db || !user) return;
+    try {
+      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+      await updateDoc(sRef, { activeCompetitionId: competitionId });
+      // zet status van deze competitie op 'actief' en andere op 'gepland' indien gewenst
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { status: 'actief' });
+      setStatus({ type: 'success', msg: 'Actieve wedstrijd ingesteld' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
     }
-    return slots;
-  }, [contest, participants]);
-
-  const updateReeks = async (val) => {
-    const newReeks = Math.max(1, contest.huidigeReeks + val);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'contest', 'current'), {
-      huidigeReeks: newReeks
-    });
   };
 
-  return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4 gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-xl">
-            <Trophy className="text-white w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="font-bold text-lg leading-tight">{contest.naam}</h1>
-            <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">{contest.actiefOnderdeel || 'Geen onderdeel'}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => setView('manage')} className="p-2 text-slate-400 hover:text-blue-600 transition-colors">Instellingen</button>
-          <button onClick={() => setView('display')} className="bg-slate-900 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-slate-200 transition-transform active:scale-95">Display</button>
-        </div>
-      </div>
-
-      {/* Reeks Selector */}
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center gap-4">
-        <span className="text-slate-400 font-bold text-xs uppercase tracking-[0.2em]">Huidige Reeks</span>
-        <div className="flex items-center gap-8">
-          <button onClick={() => updateReeks(-1)} className="p-4 rounded-2xl bg-slate-50 text-slate-900 hover:bg-slate-100 transition-all active:scale-90 border border-slate-100">
-            <ChevronLeft size={32} />
-          </button>
-          <span className="text-7xl font-black tabular-nums tracking-tighter text-blue-600">{contest.huidigeReeks}</span>
-          <button onClick={() => updateReeks(1)} className="p-4 rounded-2xl bg-slate-50 text-slate-900 hover:bg-slate-100 transition-all active:scale-90 border border-slate-100">
-            <ChevronRight size={32} />
-          </button>
-        </div>
-      </div>
-
-      {/* Grid */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 overflow-y-auto pb-4">
-        {currentSlots.map((s) => (
-          <div key={s.veld} className={`relative flex items-center p-4 rounded-2xl border transition-all ${
-            s.empty ? 'bg-slate-50 border-slate-100 opacity-40' : 'bg-white border-slate-200 shadow-sm'
-          }`}>
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-50 text-blue-600 font-black text-lg mr-4 border border-blue-100">
-              {s.veld}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mb-1">Skipper</p>
-              <h3 className="font-bold text-lg truncate leading-tight">
-                {s.empty ? 'Leeg' : (participants[s.skipperId]?.naam || 'Laden...')}
-              </h3>
-              {!s.empty && (
-                <p className="text-slate-500 text-sm font-medium truncate mt-0.5">
-                  {participants[s.skipperId]?.club}
-                </p>
-              )}
-            </div>
-            {!s.empty && <CheckCircle2 className="text-emerald-500 w-5 h-5 absolute top-4 right-4" />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// --- VIEW: DISPLAY ---
-function DisplayView({ contest, participants, setView }) {
-  const currentSlots = useMemo(() => {
-    const slots = [];
-    const pArray = Object.values(participants).filter(p => 
-      p.onderdeel === contest.actiefOnderdeel && p.reeks === contest.huidigeReeks
-    );
-    for (let i = 1; i <= contest.velden; i++) {
-      const p = pArray.find(x => x.veld === i);
-      slots.push({ veld: i, skipperId: p?.id || null, empty: !p });
+  // Wijzig status van competitie
+  const setCompetitionStatus = async (competitionId, newStatus) => {
+    if (!db || !user) return;
+    try {
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { status: newStatus });
+      setStatus({ type: 'success', msg: 'Status bijgewerkt' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
     }
-    return slots;
-  }, [contest, participants]);
-
-  return (
-    <div className="fixed inset-0 bg-[#0f172a] text-white flex flex-col font-sans overflow-hidden">
-      <div style={{ padding: '2vh 4vw', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div style={{ color: '#3b82f6', fontWeight: 900, fontSize: '1.2rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>{contest.naam}</div>
-          <div style={{ fontSize: '5rem', fontWeight: 900, lineHeight: 1, letterSpacing: '-0.02em' }}>{contest.actiefOnderdeel || 'Geen onderdeel'}</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: '1.2rem', textTransform: 'uppercase', letterSpacing: '0.2em' }}>Huidige Reeks</div>
-          <div style={{ fontSize: '7rem', fontWeight: 900, lineHeight: 0.9, color: '#3b82f6' }}>{contest.huidigeReeks}</div>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, padding: '3vh 4vw', display: 'grid', gridTemplateColumns: '1fr 1fr', gridAutoRows: '1fr', gap: '1.5rem' }}>
-        {currentSlots.map(s => (
-          <div key={s.veld} style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            padding: '0 2rem', 
-            borderRadius: '1.5rem', 
-            backgroundColor: s.empty ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)',
-            border: s.empty ? '2px dashed rgba(255,255,255,0.05)' : 'none',
-            opacity: s.empty ? 0.3 : 1
-          }}>
-            <div style={{ 
-              width: '4.5rem', 
-              height: '4.5rem', 
-              borderRadius: '50%', 
-              backgroundColor: '#3b82f6', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              fontSize: '2.5rem', 
-              fontWeight: 900,
-              marginRight: '2rem',
-              boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.5)'
-            }}>
-              {s.veld}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '3rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {s.empty ? '' : (participants[s.skipperId]?.naam || '...')}
-              </div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                {s.empty ? '' : (participants[s.skipperId]?.club || '')}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <button onClick={() => setView('live')} className="fixed bottom-4 right-4 opacity-0 hover:opacity-100 bg-white/10 p-4 rounded-full">X</button>
-    </div>
-  );
-}
-
-// --- VIEW: MANAGE ---
-function ManageView({ contest, participants, setView }) {
-  const [newOnderdeel, setNewOnderdeel] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-
-  const saveContest = async (updates) => {
-    const contestRef = doc(db, 'artifacts', appId, 'public', 'data', 'contest', 'current');
-    await updateDoc(contestRef, updates);
   };
 
-  const addOnderdeel = async () => {
-    if (!newOnderdeel) return;
-    const list = [...(contest.onderdelen || [])];
-    if (!list.includes(newOnderdeel)) {
-      list.push(newOnderdeel);
-      await saveContest({ onderdelen: list });
-    }
-    setNewOnderdeel('');
-  };
-
-  const removeOnderdeel = async (ond) => {
-    const list = (contest.onderdelen || []).filter(o => o !== ond);
-    await saveContest({ onderdelen: list });
-  };
-
-  const handleFileUpload = (e, onderdeel) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      setIsUploading(true);
-      const text = event.target.result;
-      const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-      
-      const batch = writeBatch(db);
-      
-      lines.forEach((line, index) => {
-        const [naam, club, reeks, veld] = line.split(',').map(s => s.trim());
-        if (naam && reeks) {
-          const id = `p_${onderdeel}_${index}_${Date.now()}`;
-          const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'participants', id);
-          batch.set(pRef, {
-            id,
-            naam,
-            club: club || '',
-            reeks: parseInt(reeks) || 1,
-            veld: parseInt(veld) || (index % contest.velden) + 1,
-            onderdeel: onderdeel
-          });
+  // Verwijder competitie (en deelnemers subcollectie) - voorzichtig: hier verwijderen we alleen competitie-doc en deelnemers docs
+  const deleteCompetition = async (competitionId) => {
+    if (!db || !user) return;
+    try {
+      // verwijder deelnemers in subcollectie
+      const pRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants');
+      if (selectedCompetitionId === competitionId) {
+        for (const pid of Object.keys(participants)) {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', pid));
         }
-      });
-
-      try {
-        await batch.commit();
-      } catch (err) {
-        console.error("Batch error:", err);
-      } finally {
-        setIsUploading(false);
-        e.target.value = null;
+      } else {
+        // Onzekerheid - probeer niets verder
       }
-    };
-    reader.readAsText(file);
+      // verwijder competitie-doc
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId));
+      setStatus({ type: 'success', msg: 'Competitie verwijderd' });
+      // als dit de actieve competitie was, clear settings.activeCompetitionId
+      if (settings.activeCompetitionId === competitionId) {
+        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+        await updateDoc(sRef, { activeCompetitionId: null });
+      }
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
   };
 
-  const getStats = (onderdeel) => {
-    const relevant = Object.values(participants).filter(p => p.onderdeel === onderdeel);
-    const deelnemers = relevant.length;
-    const reeksen = new Set(relevant.map(p => p.reeks)).size;
-    return { deelnemers, reeksen };
+  // ONDERDELEN BEHEREN: add / remove / move
+  const addOnderdeelToCompetition = async (competitionId, onderdeel) => {
+    if (!competitionId || !onderdeel || !db || !user) return;
+    try {
+      const comp = competitions.find(c => c.id === competitionId) || {};
+      const existing = Array.isArray(comp.onderdelen) ? comp.onderdelen : [];
+      if (existing.includes(onderdeel)) {
+        setStatus({ type: 'error', msg: 'Onderdeel bestaat al' });
+        return;
+      }
+      const newList = [...existing, onderdeel];
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { onderdelen: newList });
+      setStatus({ type: 'success', msg: 'Onderdeel toegevoegd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  const removeOnderdeelFromCompetition = async (competitionId, index) => {
+    if (!competitionId || index == null || !db || !user) return;
+    try {
+      const comp = competitions.find(c => c.id === competitionId) || {};
+      const existing = Array.isArray(comp.onderdelen) ? comp.onderdelen : [];
+      if (index < 0 || index >= existing.length) return;
+      const newList = [...existing.slice(0, index), ...existing.slice(index + 1)];
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { onderdelen: newList });
+      setStatus({ type: 'success', msg: 'Onderdeel verwijderd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  const moveOnderdeelCompetition = async (competitionId, fromIndex, toIndex) => {
+    if (!competitionId || fromIndex == null || toIndex == null || !db || !user) return;
+    try {
+      const comp = competitions.find(c => c.id === competitionId) || {};
+      const existing = Array.isArray(comp.onderdelen) ? comp.onderdelen : [];
+      if (fromIndex < 0 || fromIndex >= existing.length || toIndex < 0 || toIndex >= existing.length) return;
+      const arr = [...existing];
+      const [item] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, item);
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { onderdelen: arr });
+      setStatus({ type: 'success', msg: 'Volgorde bijgewerkt' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // CSV import deelnemers voor een competitie
+  const importParticipantsForCompetition = async (competitionId, csvText) => {
+    if (!competitionId || !csvText || !db || !user) return;
+    setIsProcessing(true);
+    try {
+      const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      const batch = writeBatch(db);
+      for (const row of rows) {
+        // verwacht CSV format (voorbeeld): naam,club,events (events gescheiden door ;)
+        const naam = row[0] || '';
+        const club = row[1] || '';
+        const eventsRaw = row[2] || '';
+        const events = eventsRaw.split(';').map(e => e.trim()).filter(e => e);
+        // generate id-safe
+        const pid = `p_${(naam + '_' + club).replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const pDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', pid);
+        batch.set(pDocRef, { id: pid, naam, club, events, createdAt: new Date().toISOString() });
+        // (optioneel) ook zetten in globale skippers
+        const skRef = doc(db, 'artifacts', appId, 'public', 'data', 'skippers', pid);
+        batch.set(skRef, { id: pid, naam, club }, { merge: true });
+      }
+      await batch.commit();
+      setStatus({ type: 'success', msg: 'Deelnemers geïmporteerd' });
+      // herlaad deelnemers via snapshot listener
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setIsProcessing(false);
+  };
+
+  // Verwijder deelnemer uit competitie
+  const removeParticipantFromCompetition = async (competitionId, participantId) => {
+    if (!competitionId || !participantId || !db || !user) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', participantId));
+      setStatus({ type: 'success', msg: 'Deelnemer verwijderd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // schrappen uit onderdeel (remove event from participant.events)
+  const removeParticipantFromEvent = async (competitionId, participantId, eventName) => {
+    if (!competitionId || !participantId || !eventName || !db || !user) return;
+    try {
+      const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', participantId);
+      // We gebruiken arrayRemove om het event te verwijderen
+      await updateDoc(pRef, { events: arrayRemove(eventName) });
+      setStatus({ type: 'success', msg: `${eventName} verwijderd voor deelnemer` });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  const styles = {
+    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', color: '#000', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' },
+    header: { display: 'flex', justifyContent: 'space-between', padding: '0.5rem 1.5rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
+    main: { flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+    card: { border: '1px solid #eee', borderRadius: '1rem', padding: '1rem', width: '100%', maxWidth: '900px', backgroundColor: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' },
+    displayOverlay: { 
+      position: 'fixed', 
+      inset: 0, 
+      backgroundColor: '#fff', 
+      zIndex: 1000, 
+      padding: '0.75rem 1.25rem', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      overflow: 'hidden',
+      boxSizing: 'border-box'
+    },
+    primaryButton: { padding: '0.6rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: '#2563eb', color: '#fff', fontWeight: 900 },
+    outlineButton: { padding: '0.45rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #eee', background: '#fff', cursor: 'pointer' }
+  };
+
+  // helper voor toevoegen via modal
+  const handleAddCompetitionFromModal = async () => {
+    await addCompetition({ ...newComp });
+    setNewComp({ name: '', date: '', location: '', setActive: false });
+    setShowAddModal(false);
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-8">
-      <div className="flex items-center justify-between">
-        <button onClick={() => setView('live')} className="flex items-center text-slate-500 font-bold hover:text-slate-900 transition-colors">
-          <ChevronLeft className="mr-1" /> Terug naar Live
-        </button>
-        <h2 className="text-2xl font-black">Beheer</h2>
-      </div>
-
-      <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <h3 className="font-bold flex items-center gap-2 text-slate-400 text-xs uppercase tracking-widest">
-          <Info size={16} /> Algemene Informatie
-        </h3>
-        <div className="grid gap-4">
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Naam Wedstrijd</label>
-            <input 
-              className="w-full bg-slate-50 border-none rounded-xl p-3 font-semibold focus:ring-2 ring-blue-500 transition-all"
-              value={contest.naam || ''}
-              onChange={(e) => saveContest({ naam: e.target.value })}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">Aantal Velden</label>
-              <input 
-                type="number"
-                className="w-full bg-slate-50 border-none rounded-xl p-3 font-semibold focus:ring-2 ring-blue-500"
-                value={contest.velden || 1}
-                onChange={(e) => saveContest({ velden: parseInt(e.target.value) || 1 })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">Actief Onderdeel</label>
-              <select 
-                className="w-full bg-slate-50 border-none rounded-xl p-3 font-semibold focus:ring-2 ring-blue-500 appearance-none"
-                value={contest.actiefOnderdeel || ''}
-                onChange={(e) => saveContest({ actiefOnderdeel: e.target.value })}
-              >
-                <option value="">Kies onderdeel...</option>
-                {contest.onderdelen?.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-          </div>
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontWeight: 900, fontSize: '1rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></span>
+          <nav style={{ display: 'flex', gap: '0.25rem', background: '#f5f5f5', padding: '0.2rem', borderRadius: '0.5rem' }}>
+            <button onClick={() => setView('live')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'live' ? '#fff' : 'transparent' }}>Live</button>
+            <button onClick={() => setView('management')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'management' ? '#fff' : 'transparent' }}>Beheer</button>
+            <button onClick={() => setView('display')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'display' ? '#fff' : 'transparent' }}>Display</button>
+          </nav>
         </div>
-      </section>
+        <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>{currentTime.toLocaleTimeString('nl-BE')}</div>
+      </header>
 
-      <section className="space-y-4">
-        <h3 className="font-bold flex items-center gap-2 text-slate-400 text-xs uppercase tracking-widest">
-          <Activity size={16} /> Onderdelen & Deelnemers
-        </h3>
-        
-        <div className="flex gap-2">
-          <select 
-            className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 font-semibold focus:ring-2 ring-blue-500"
-            value={newOnderdeel}
-            onChange={(e) => setNewOnderdeel(e.target.value)}
-          >
-            <option value="">Selecteer onderdeel...</option>
-            {POSSIBLE_ONDERDELEN.map(o => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-          <button 
-            onClick={addOnderdeel}
-            className="bg-blue-600 text-white px-6 rounded-xl font-bold hover:bg-blue-700 transition-colors"
-          >
-            Toevoegen
-          </button>
-        </div>
+      <main style={styles.main}>
+        {view === 'live' && (
+          <div style={styles.card}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button onClick={() => setActiveTab('speed')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#f3f4f6', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#2563eb' : '#f3f4f6', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
+            </div>
 
-        <div className="space-y-3">
-          {contest.onderdelen?.map(ond => {
-            const stats = getStats(ond);
-            return (
-              <div key={ond} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-lg text-slate-900">{ond}</span>
-                  <button onClick={() => removeOnderdeel(ond)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
-                    <Trash2 size={18} />
-                  </button>
+            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#999' }}>REEKS</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
+                <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
+                <span style={{ fontSize: '3rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+                <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight size={20}/></button>
+              </div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#666' }}>
+                Gepland: {currentHeat?.uur || "--:--"} {activeCompetition ? `— Wedstrijd: ${activeCompetition.name} (${activeCompetition.location || '-'}, ${activeCompetition.date || '-'})` : ''}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {speedSlots.map((s, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr', padding: '0.5rem 1rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '0.6rem', border: '1px solid rgba(0,0,0,0.03)', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.7rem' }}>{s.veld}</span>
+                  <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                    { participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || (s.empty ? "" : "...") }
+                  </span>
+                  <span style={{ textAlign: 'right', color: '#999', fontSize: '0.75rem' }}>
+                    { participants[s.skipperId]?.club || skippers[s.skipperId]?.club || "" }
+                  </span>
                 </div>
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Users size={16} className="text-blue-500" />
-                    <span className="text-sm font-bold">{stats.deelnemers} <span className="font-medium text-slate-400">deelnemers</span></span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Hash size={16} className="text-blue-500" />
-                    <span className="text-sm font-bold">{stats.reeksen} <span className="font-medium text-slate-400">reeksen</span></span>
-                  </div>
-                </div>
-                <div className="pt-2 border-t border-slate-50">
-                  <label className="flex items-center justify-center gap-2 w-full bg-slate-50 hover:bg-slate-100 py-2 rounded-lg cursor-pointer transition-colors text-slate-600 font-bold text-xs uppercase tracking-wider">
-                    <Upload size={14} />
-                    {isUploading ? 'Bezig...' : 'Deelnemers CSV'}
-                    <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, ond)} />
-                  </label>
+              ))}
+            </div>
+
+            <button onClick={finishHeat} style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', borderRadius: '0.75rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+              <CheckCircle2 size={18}/> VOLTOOID
+            </button>
+          </div>
+        )}
+
+        {view === 'management' && (
+          <div style={styles.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <h2 style={{ fontWeight: 900, margin: 0, fontSize: '1.2rem' }}>Wedstrijden (Competities)</h2>
+                <div style={{ fontSize: '0.85rem', color: '#666' }}>Beheer je wedstrijden en deelnemers</div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button onClick={() => setShowAddModal(true)} style={styles.primaryButton}>+ Nieuwe wedstrijd</button>
+                <button onClick={() => { setSelectedCompetitionId(null); setCompCsvInput(''); }} style={styles.outlineButton}>Wis selectie</button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', justifyContent: 'center' }}>
+              <div style={{ flex: 1, maxWidth: '640px', border: '1px solid #f1f5f9', padding: '0.75rem', borderRadius: '0.8rem', background: '#fff' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', textAlign: 'center', fontWeight: 900 }}>Bestaan­de wedstrijden</h3>
+                <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {competitions.map(c => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem', borderRadius: '0.6rem', background: selectedCompetitionId === c.id ? '#f1f5ff' : '#fafafa', border: '1px solid #f3f4f6' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 900 }}>{c.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#666' }}>{c.date} — {c.location} <span style={{ marginLeft: '0.5rem', fontWeight: 900, color: c.status === 'actief' ? '#10b981' : '#94a3b8' }}>{c.status}</span></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button onClick={() => { setSelectedCompetitionId(c.id); }} style={styles.outlineButton}>Select</button>
+                        <button onClick={() => setActiveCompetition(c.id)} style={styles.outlineButton}>Maak actief</button>
+                        <button onClick={() => setCompetitionStatus(c.id, c.status === 'gepland' ? 'actief' : (c.status === 'actief' ? 'beëindigd' : 'gepland'))} style={styles.outlineButton}>Status</button>
+                        <button onClick={() => deleteCompetition(c.id)} style={{ padding: '0.45rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                      </div>
+                    </div>
+                  ))}
+                  {competitions.length === 0 && <div style={{ color: '#666', padding: '0.5rem', textAlign: 'center' }}>Geen wedstrijden gevonden</div>}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </section>
+
+              <div style={{ width: '360px', border: '1px solid #f1f5f9', padding: '0.75rem', borderRadius: '0.8rem', background: '#fff' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontWeight: 900 }}>Geselecteerde wedstrijd</h3>
+                {!selectedCompetitionId && <div style={{ color: '#666', marginBottom: '0.5rem' }}>Selecteer een wedstrijd uit de lijst om deelnemers en onderdelen te beheren.</div>}
+                {selectedCompetitionId && (
+                  <>
+                    <div style={{ fontWeight: 900 }}>{competitions.find(c => c.id === selectedCompetitionId)?.name || '...'}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>
+                      {competitions.find(c => c.id === selectedCompetitionId)?.date} — {competitions.find(c => c.id === selectedCompetitionId)?.location}
+                    </div>
+
+                    {/* Onderdelen beheer */}
+                    <div style={{ marginBottom: '0.6rem' }}>
+                      <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>Onderdelen</div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <select id="select-onderdeel" style={{ flex: 1, padding: '0.45rem', borderRadius: '0.4rem', border: '1px solid #eee' }} defaultValue="">
+                          <option value="" disabled>Voeg onderdeel toe…</option>
+                          {POSSIBLE_ONDERDELEN.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <button
+                          onClick={() => {
+                            const sel = document.getElementById('select-onderdeel');
+                            if (!sel) return;
+                            const value = sel.value;
+                            if (!value) {
+                              setStatus({ type: 'error', msg: 'Selecteer een onderdeel' });
+                              return;
+                            }
+                            addOnderdeelToCompetition(selectedCompetitionId, value);
+                            sel.value = '';
+                          }}
+                          style={{ ...styles.primaryButton, padding: '0.45rem 0.8rem' }}
+                        >
+                          Voeg toe
+                        </button>
+                      </div>
+
+                      <div style={{ border: '1px solid #f3f4f6', borderRadius: '0.5rem', padding: '0.5rem', background: '#fafafa' }}>
+                        {(competitions.find(c => c.id === selectedCompetitionId)?.onderdelen || []).length === 0 && (
+                          <div style={{ color: '#666', padding: '0.5rem' }}>Geen onderdelen toegevoegd</div>
+                        )}
+
+                        {(competitions.find(c => c.id === selectedCompetitionId)?.onderdelen || []).map((od, idx, arr) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem', borderBottom: idx !== arr.length - 1 ? '1px solid #eee' : 'none' }}>
+                            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                              <div style={{ fontWeight: 900 }}>{idx + 1}.</div>
+                              <div style={{ fontWeight: 800 }}>{od}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.3rem' }}>
+                              <button onClick={() => moveOnderdeelCompetition(selectedCompetitionId, idx, idx - 1)} disabled={idx === 0} style={styles.outlineButton}>↑</button>
+                              <button onClick={() => moveOnderdeelCompetition(selectedCompetitionId, idx, idx + 1)} disabled={idx === arr.length - 1} style={styles.outlineButton}>↓</button>
+                              <button onClick={() => removeOnderdeelFromCompetition(selectedCompetitionId, idx)} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>Import deelnemers (CSV)</div>
+                    <textarea placeholder="CSV: naam,club,events(sep ;)" value={compCsvInput} onChange={e => setCompCsvInput(e.target.value)} style={{ width: '100%', height: '100px', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <button onClick={() => { importParticipantsForCompetition(selectedCompetitionId, compCsvInput); setCompCsvInput(''); }} disabled={isProcessing} style={{ marginTop: '0.4rem', padding: '0.6rem', width: '100%', borderRadius: '0.5rem', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 900 }}>
+                      Importeer deelnemers
+                    </button>
+
+                    <hr style={{ margin: '0.75rem 0' }} />
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <div style={{ fontWeight: 900 }}>Deelnemers overzicht</div>
+                      <div style={{ fontSize: '0.85rem', color: '#666' }}>{Object.keys(participants).length} deelnemers</div>
+                    </div>
+
+                    <div style={{ maxHeight: '230px', overflowY: 'auto', borderTop: '1px solid #f3f4f6' }}>
+                      {Object.values(participants).map(p => (
+                        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 900 }}>{p.naam}</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666' }}>{p.club} — { (p.events || []).join(', ') }</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            {(p.events || []).map(ev => (
+                              <button key={ev} onClick={() => removeParticipantFromEvent(selectedCompetitionId, p.id, ev)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #eee', background: '#fff', cursor: 'pointer' }}>{ev}</button>
+                            ))}
+                            <button onClick={() => removeParticipantFromCompetition(selectedCompetitionId, p.id)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                          </div>
+                        </div>
+                      ))}
+                      {Object.keys(participants).length === 0 && <div style={{ color: '#666', padding: '0.5rem' }}>Geen deelnemers</div>}
+                    </div>
+                  </>
+                )}
+
+                {status.msg && <div style={{ marginTop: '0.6rem', color: status.type === 'error' ? '#dc2626' : '#10b981' }}>{status.msg}</div>}
+              </div>
+            </div>
+
+            {/* Add Competition Modal */}
+            {showAddModal && (
+              <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', zIndex: 1200 }}>
+                <div style={{ width: '520px', background: '#fff', borderRadius: '0.75rem', padding: '1rem', boxShadow: '0 10px 30px rgba(0,0,0,0.15)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>Nieuwe wedstrijd toevoegen</div>
+                    <button onClick={() => setShowAddModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 900 }}>✕</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <input placeholder="Naam" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <input placeholder="Datum (YYYY-MM-DD)" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <input placeholder="Locatie" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input type="checkbox" checked={newComp.setActive} onChange={e => setNewComp({...newComp, setActive: e.target.checked})} /> Stel actief
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <button onClick={handleAddCompetitionFromModal} style={{ ...styles.primaryButton, flex: 1 }}>Toevoegen</button>
+                      <button onClick={() => setShowAddModal(false)} style={{ ...styles.outlineButton, flex: 1 }}>Annuleer</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'display' && (
+          <div style={styles.displayOverlay}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+              <div>
+                <h1 style={{ fontSize: '1.8rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || (activeTab === 'speed' ? "SPEED" : "FREESTYLE")}</h1>
+                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '0.8rem' }}>ROPESKIPPING LIVE</div>
+                {activeCompetition && <div style={{ marginTop: '0.25rem', fontSize: '0.9rem', fontWeight: 800 }}>{activeCompetition.name} — {activeCompetition.date} — {activeCompetition.location}</div>}
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <div style={{ textAlign: 'right', backgroundColor: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#64748b' }}>DEBUG GEPLAND</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>{currentHeat?.uur || "GEEN DATA"}</div>
+                </div>
+
+                <div style={{ textAlign: 'right', backgroundColor: '#000', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+                  <div style={{ fontSize: '0.6rem', fontWeight: 800, opacity: 0.7 }}>LIVE TIJD</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.4rem 1rem', borderRadius: '0.6rem', marginBottom: '0.5rem', border: '1px solid #e2e8f0' }}>
+               <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#64748b' }}>REEKS</span>
+               <span style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+               {timeDifferenceInfo && (
+                  <div style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 900, backgroundColor: timeDifferenceInfo.isBehind ? '#fee2e2' : '#e6fffa', color: timeDifferenceInfo.isBehind ? '#dc2626' : '#065f46' }}>
+                    {timeDifferenceInfo.label}m vertraging
+                  </div>
+               )}
+            </div>
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem', overflow: 'hidden' }}>
+              {speedSlots.map((s, i) => (
+                <div key={i} style={{ 
+                  flex: 1, 
+                  display: 'grid', 
+                  gridTemplateColumns: '80px 1.5fr 1fr', 
+                  alignItems: 'center', 
+                  padding: '0 1rem', 
+                  borderRadius: '0.5rem', 
+                  border: '1px solid #f1f5f9',
+                  backgroundColor: s.empty ? 'rgba(0,0,0,0.02)' : '#fff',
+                  opacity: s.empty ? 0.3 : 1,
+                  boxShadow: s.empty ? 'none' : '0 1px 2px rgba(0,0,0,0.02)'
+                }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || (s.empty ? '' : '...')}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.club || skippers[s.skipperId]?.club || ''}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.25rem', left: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.6rem', border: 'none', background: '#f1f5f9', borderRadius: '0.4rem', cursor: 'pointer' }}>Terug</button>
+          </div>
+        )}
+      </main>
     </div>
   );
-}
+};
+
+export default App;
