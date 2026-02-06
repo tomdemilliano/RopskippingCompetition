@@ -28,7 +28,7 @@ import {
  */
 const getFirebaseConfig = () => {
   // We kijken eerst naar de door jou opgegeven variabele
-  const rawConfig = process.env.VITE_FIREBASE_CONFIG || process.env.NEXT_PUBLIC_FIREBASE_CONFIG;
+  const rawConfig = import.meta.env.VITE_FIREBASE_CONFIG || import.meta..env.NEXT_PUBLIC_FIREBASE_CONFIG;
 
   if (rawConfig) {
     // Als de env var een string is (wat meestal zo is in Vercel), moeten we hem parsen
