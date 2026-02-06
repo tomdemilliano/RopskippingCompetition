@@ -25,7 +25,7 @@ import {
  * CONFIGURATIE & INITIALISATIE
  * Haalt configuratie op uit Environment Variables (Vercel/Vite/Next.js)
  */
-const FirebaseConfig = () => {
+const firebaseConfig = () => {
   // Check voor verschillende mogelijke env namen afhankelijk van je framework
   const envConfig = 
     process.env.NEXT_PUBLIC_FIREBASE_CONFIG || 
