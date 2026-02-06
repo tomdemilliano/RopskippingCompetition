@@ -69,23 +69,26 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    // Sync State
-    const statusRef = doc(db, 'artifacts', appId, 'public', 'data', 'status');
+    // FIX: Gebruik een pad met 4 segmenten (Collectie/Doc/Collectie/Doc)
+    // artifacts (1) / {appId} (2) / public (3) / status (4)
+    const statusRef = doc(db, 'artifacts', appId, 'public', 'status');
     const unsubStatus = onSnapshot(statusRef, (docSnap) => {
       if (docSnap.exists()) {
         setStatus(prev => ({ ...prev, ...docSnap.data() }));
       } else {
         setDoc(statusRef, status);
       }
-    });
+    }, (err) => console.error("Status Sync Error:", err));
 
-    // Sync Participants
-    const partRef = doc(db, 'artifacts', appId, 'public', 'participants', 'all');
+    // artifacts (1) / {appId} (2) / public (3) / participants (4)
+    const partRef = doc(db, 'artifacts', appId, 'public', 'participants');
     const unsubPart = onSnapshot(partRef, (docSnap) => {
       if (docSnap.exists()) {
         setParticipants(docSnap.data());
+      } else {
+        setDoc(partRef, {});
       }
-    });
+    }, (err) => console.error("Participants Sync Error:", err));
 
     return () => {
       unsubStatus();
@@ -95,7 +98,8 @@ export default function App() {
 
   // --- ACTIONS ---
   const updateStatus = async (newData) => {
-    const statusRef = doc(db, 'artifacts', appId, 'public', 'data', 'status');
+    if (!user) return;
+    const statusRef = doc(db, 'artifacts', appId, 'public', 'status');
     await updateDoc(statusRef, newData);
   };
 
@@ -107,7 +111,15 @@ export default function App() {
 
   const deleteOnderdeel = async (id) => {
     const newOnderdelen = status.onderdelen.filter(o => o.id !== id);
-    await updateStatus({ onderdelen: newOnderdelen });
+    // Indien het actieve onderdeel verwijderd wordt, reset naar de eerste in de lijst of leeg
+    const newActiveId = status.activeOnderdeelId === id ? (newOnderdelen[0]?.id || '') : status.activeOnderdeelId;
+    const newActiveNaam = status.activeOnderdeelId === id ? (newOnderdelen[0]?.naam || '') : status.activeOnderdeel;
+    
+    await updateStatus({ 
+      onderdelen: newOnderdelen, 
+      activeOnderdeelId: newActiveId,
+      activeOnderdeel: newActiveNaam 
+    });
   };
 
   const setField = async (fIndex, skipperId) => {
@@ -125,14 +137,14 @@ export default function App() {
       const rows = text.split('\n').map(r => r.split(','));
       const newPartList = {};
       rows.slice(1).forEach((cols, idx) => {
-        if (cols[0]) {
+        if (cols[0] && cols[0].trim() !== "") {
           const id = `s_${onderdeelId}_${idx}`;
           newPartList[id] = { naam: cols[0].trim(), club: cols[1]?.trim() || '' };
         }
       });
       
-      const partRef = doc(db, 'artifacts', appId, 'public', 'participants', 'all');
-      await setDoc(partRef, { ...participants, [onderdeelId]: newPartList });
+      const partRef = doc(db, 'artifacts', appId, 'public', 'participants');
+      await updateDoc(partRef, { [onderdeelId]: newPartList });
     };
     reader.readAsText(file);
   };
@@ -142,7 +154,7 @@ export default function App() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = "voorbeeld.csv";
+    a.download = "voorbeeld_deelnemers.csv";
     a.click();
   };
 
@@ -150,7 +162,7 @@ export default function App() {
   const currentPartList = participants[status.activeOnderdeelId] || {};
   const currentOnderdeelObj = status.onderdelen?.find(o => o.id === status.activeOnderdeelId) || status.onderdelen?.[0];
 
-  // --- UI COMPONENTS (BEHOUDEN VAN ORIGINEEL) ---
+  // --- UI COMPONENTS ---
 
   const LiveView = () => (
     <div style={{ height: '100vh', backgroundColor: '#0f172a', color: '#fff', fontFamily: 'sans-serif', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
