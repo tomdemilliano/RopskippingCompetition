@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATIE ---
-const firebaseConfig = {
+/*const firebaseConfig = {
   apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
   authDomain: "ropeskippingcontest.firebaseapp.com",
   projectId: "ropeskippingcontest",
@@ -19,6 +19,35 @@ const firebaseConfig = {
   messagingSenderId: "430066523717",
   appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
+*/
+
+/**
+ * CONFIGURATIE & INITIALISATIE
+ * Haalt configuratie op uit Environment Variables (Vercel/Vite/Next.js)
+ */
+const getFirebaseConfig = () => {
+  // Check voor verschillende mogelijke env namen afhankelijk van je framework
+  const envConfig = 
+    process.env.NEXT_PUBLIC_FIREBASE_CONFIG || 
+    process.env.VITE_FIREBASE_CONFIG || 
+    process.env.FIREBASE_CONFIG;
+
+  if (envConfig) {
+    try {
+      return JSON.parse(envConfig);
+    } catch (e) {
+      console.error("Fout bij parsen van FIREBASE_CONFIG env var:", e);
+    }
+  }
+
+  // Fallback voor de lokale preview omgeving
+  if (typeof __firebase_config !== 'undefined') {
+    return JSON.parse(__firebase_config);
+  }
+
+  return {};
+};
+
 
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
