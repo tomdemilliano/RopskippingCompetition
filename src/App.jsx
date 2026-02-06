@@ -404,7 +404,7 @@ const App = () => {
                 <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight size={20}/></button>
               </div>
               <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#666' }}>
-                Gepland: {currentHeat?.uur || "--:--"} {activeCompetition ? `— Wedstrijd: ${activeCompetition.name} (${activeCompetition.location || '-', ${activeCompetition.date || '-'}})` : ''}
+                Gepland: {currentHeat?.uur || "--:--"} {activeCompetition ? `— Wedstrijd: ${activeCompetition.name} (${activeCompetition.location || '-'}, ${activeCompetition.date || '-'})` : ''}
               </div>
             </div>
 
