@@ -1,6 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
+//import App from './App.jsx'
+import App from './adminapp.jsx'
+
 import './index.css'
 
 // Mock globals voor lokale ontwikkeling als ze niet bestaan
