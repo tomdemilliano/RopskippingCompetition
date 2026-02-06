@@ -46,6 +46,11 @@ const App = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState({ type: null, msg: null });
 
+  // beheer: formulier state
+  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', setActive: false });
+  const [compCsvInput, setCompCsvInput] = useState(''); // CSV voor deelnemers import binnen beheer
+  const [showAddModal, setShowAddModal] = useState(false);
+
   // Update klok elke seconde
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -234,8 +239,7 @@ const App = () => {
     try {
       const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
       await updateDoc(sRef, { activeCompetitionId: competitionId });
-      // zet status van deze competitie op 'actief' en andere op 'gepland' indien gewenst
-      // Eenvoudige aanpak: update alleen gekozen competitie status -> 'actief'
+      // zet status van deze competitie op 'actief'
       const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
       await updateDoc(compRef, { status: 'actief' });
       setStatus({ type: 'success', msg: 'Actieve wedstrijd ingesteld' });
@@ -265,13 +269,12 @@ const App = () => {
       // verwijder deelnemers in subcollectie
       const pRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants');
       // geen getDocs import gebruikt om bulk te verwijderen: we kunnen batch verwijderen op basis van onSnapshot data (client-side)
-      // Simpelere aanpak: probeer alle deelnemers te verwijderen via participants state indien deze competitie geselecteerd is
       if (selectedCompetitionId === competitionId) {
         for (const pid of Object.keys(participants)) {
           await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', pid));
         }
       } else {
-        // Onzekerheid - probeer niets verder (of implementeer getDocs indien gewenst)
+        // Onzekerheid - probeer niets verder
       }
       // verwijder competitie-doc
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId));
@@ -295,7 +298,6 @@ const App = () => {
       const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
       const batch = writeBatch(db);
-      const compBase = 'artifacts/' + appId + '/public/data/competitions/' + competitionId + '/participants';
       for (const row of rows) {
         // verwacht CSV format (voorbeeld): naam,club,events (events gescheiden door ;)
         const naam = row[0] || '';
@@ -312,7 +314,6 @@ const App = () => {
       }
       await batch.commit();
       setStatus({ type: 'success', msg: 'Deelnemers geïmporteerd' });
-      // herlaad deelnemers via snapshot listener
     } catch (e) {
       console.error(e);
       setStatus({ type: 'error', msg: e.message });
@@ -361,12 +362,17 @@ const App = () => {
       flexDirection: 'column', 
       overflow: 'hidden',
       boxSizing: 'border-box'
-    }
+    },
+    primaryButton: { padding: '0.6rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: '#2563eb', color: '#fff', fontWeight: 900 },
+    outlineButton: { padding: '0.45rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #eee', background: '#fff', cursor: 'pointer' }
   };
 
-  // beheer: formulier state
-  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', setActive: false });
-  const [compCsvInput, setCompCsvInput] = useState(''); // CSV voor deelnemers import binnen beheer
+  // helper voor toevoegen via modal
+  const handleAddCompetitionFromModal = async () => {
+    await addCompetition({ ...newComp });
+    setNewComp({ name: '', date: '', location: '', setActive: false });
+    setShowAddModal(false);
+  };
 
   return (
     <div style={styles.container}>
@@ -398,13 +404,13 @@ const App = () => {
                 <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight size={20}/></button>
               </div>
               <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#666' }}>
-                Gepland: {currentHeat?.uur || "--:--"} {activeCompetition ? `— Wedstrijd: ${activeCompetition.name} (${activeCompetition.location || '-'}, ${activeCompetition.date || '-'})` : ''}
+                Gepland: {currentHeat?.uur || "--:--"} {activeCompetition ? `— Wedstrijd: ${activeCompetition.name} (${activeCompetition.location || '-', ${activeCompetition.date || '-'})` : ''}
               </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {speedSlots.map((s, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr', padding: '0.5rem 1rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '0.6rem', border: '1px solid rgba(0,0,0,0.03)' }}>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr', padding: '0.5rem 1rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '0.6rem', border: '1px solid rgba(0,0,0,0.03)', alignItems: 'center' }}>
                   <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.7rem' }}>{s.veld}</span>
                   <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>
                     { participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || (s.empty ? "" : "...") }
@@ -416,7 +422,7 @@ const App = () => {
               ))}
             </div>
 
-            <button onClick={finishHeat} style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', borderRadius: '0.75rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900 }}>
+            <button onClick={finishHeat} style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', borderRadius: '0.75rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
               <CheckCircle2 size={18}/> VOLTOOID
             </button>
           </div>
@@ -424,93 +430,109 @@ const App = () => {
 
         {view === 'management' && (
           <div style={styles.card}>
-            <h2 style={{ fontWeight: 900, marginBottom: '0.5rem' }}>Wedstrijden (Competities)</h2>
-
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-              <div style={{ flex: 1, border: '1px solid #eee', padding: '0.75rem', borderRadius: '0.6rem' }}>
-                <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>Nieuwe wedstrijd toevoegen</h3>
-                <input placeholder="Naam" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }} />
-                <input placeholder="Datum (YYYY-MM-DD)" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }} />
-                <input placeholder="Locatie" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }} />
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <input type="checkbox" checked={newComp.setActive} onChange={e => setNewComp({...newComp, setActive: e.target.checked})} /> Stel actief
-                </label>
-                <button onClick={() => { addCompetition({ ...newComp }); setNewComp({ name: '', date: '', location: '', setActive: false }); }} style={{ padding: '0.6rem', width: '100%', background: '#000', color: '#fff', border: 'none', borderRadius: '0.4rem' }}>Toevoegen</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <h2 style={{ fontWeight: 900, margin: 0, fontSize: '1.2rem' }}>Wedstrijden (Competities)</h2>
+                <div style={{ fontSize: '0.85rem', color: '#666' }}>Beheer je wedstrijden en deelnemers</div>
               </div>
-
-              <div style={{ flex: 1, border: '1px solid #eee', padding: '0.75rem', borderRadius: '0.6rem' }}>
-                <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>Bestaan­de wedstrijden</h3>
-                <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                  {competitions.map(c => (
-                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.2rem', borderBottom: '1px solid #f3f4f6' }}>
-                      <div>
-                        <div style={{ fontWeight: 900 }}>{c.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#666' }}>{c.date} — {c.location} <span style={{ marginLeft: '0.5rem', fontWeight: 900, color: c.status === 'actief' ? '#10b981' : '#64748b' }}>{c.status}</span></div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button onClick={() => { setSelectedCompetitionId(c.id); }} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Select</button>
-                        <button onClick={() => setActiveCompetition(c.id)} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Maak actief</button>
-                        <button onClick={() => setCompetitionStatus(c.id, c.status === 'gepland' ? 'actief' : (c.status === 'actief' ? 'beëindigd' : 'gepland'))} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Toggle status</button>
-                        <button onClick={() => deleteCompetition(c.id)} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #fee2e2', background: '#fff' }}>Verwijder</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button onClick={() => setShowAddModal(true)} style={styles.primaryButton}>+ Nieuwe wedstrijd</button>
+                <button onClick={() => { setSelectedCompetitionId(null); setCompCsvInput(''); }} style={styles.outlineButton}>Wis selectie</button>
               </div>
             </div>
 
-            <hr />
-
-            <h3 style={{ marginTop: '0.5rem' }}>Geselecteerde wedstrijd</h3>
-            {!selectedCompetitionId && <div style={{ color: '#666', marginBottom: '0.5rem' }}>Selecteer een wedstrijd uit de lijst om deelnemers te beheren.</div>}
-
-            {selectedCompetitionId && (
-              <>
-                <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 900 }}>
-                      {competitions.find(c => c.id === selectedCompetitionId)?.name || '...' }
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', justifyContent: 'center' }}>
+              <div style={{ flex: 1, maxWidth: '640px', border: '1px solid #f1f5f9', padding: '0.75rem', borderRadius: '0.8rem', background: '#fff' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', textAlign: 'center', fontWeight: 900 }}>Bestaan­de wedstrijden</h3>
+                <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {competitions.map(c => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem', borderRadius: '0.6rem', background: selectedCompetitionId === c.id ? '#f1f5ff' : '#fafafa', border: '1px solid #f3f4f6' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 900 }}>{c.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#666' }}>{c.date} — {c.location} <span style={{ marginLeft: '0.5rem', fontWeight: 900, color: c.status === 'actief' ? '#10b981' : '#94a3b8' }}>{c.status}</span></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button onClick={() => { setSelectedCompetitionId(c.id); }} style={styles.outlineButton}>Select</button>
+                        <button onClick={() => setActiveCompetition(c.id)} style={styles.outlineButton}>Maak actief</button>
+                        <button onClick={() => setCompetitionStatus(c.id, c.status === 'gepland' ? 'actief' : (c.status === 'actief' ? 'beëindigd' : 'gepland'))} style={styles.outlineButton}>Status</button>
+                        <button onClick={() => deleteCompetition(c.id)} style={{ padding: '0.45rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                  ))}
+                  {competitions.length === 0 && <div style={{ color: '#666', padding: '0.5rem', textAlign: 'center' }}>Geen wedstrijden gevonden</div>}
+                </div>
+              </div>
+
+              <div style={{ width: '360px', border: '1px solid #f1f5f9', padding: '0.75rem', borderRadius: '0.8rem', background: '#fff' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontWeight: 900 }}>Geselecteerde wedstrijd</h3>
+                {!selectedCompetitionId && <div style={{ color: '#666', marginBottom: '0.5rem' }}>Selecteer een wedstrijd uit de lijst om deelnemers te beheren.</div>}
+                {selectedCompetitionId && (
+                  <>
+                    <div style={{ fontWeight: 900 }}>{competitions.find(c => c.id === selectedCompetitionId)?.name || '...'}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>
                       {competitions.find(c => c.id === selectedCompetitionId)?.date} — {competitions.find(c => c.id === selectedCompetitionId)?.location}
                     </div>
-                  </div>
 
-                  <div style={{ flexBasis: '320px', border: '1px solid #eee', padding: '0.6rem', borderRadius: '0.5rem' }}>
                     <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>Import deelnemers (CSV)</div>
-                    <textarea placeholder="CSV: naam,club,events(sep ;)" value={compCsvInput} onChange={e => setCompCsvInput(e.target.value)} style={{ width: '100%', height: '100px', padding: '0.5rem' }} />
-                    <button onClick={() => { importParticipantsForCompetition(selectedCompetitionId, compCsvInput); setCompCsvInput(''); }} disabled={isProcessing} style={{ marginTop: '0.4rem', padding: '0.5rem', width: '100%', background: '#000', color: '#fff', border: 'none', borderRadius: '0.4rem' }}>{isProcessing ? 'Bezig...' : 'Importeer deelnemers'}</button>
+                    <textarea placeholder="CSV: naam,club,events(sep ;)" value={compCsvInput} onChange={e => setCompCsvInput(e.target.value)} style={{ width: '100%', height: '100px', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <button onClick={() => { importParticipantsForCompetition(selectedCompetitionId, compCsvInput); setCompCsvInput(''); }} disabled={isProcessing} style={{ marginTop: '0.4rem', padding: '0.6rem', width: '100%', borderRadius: '0.5rem', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 900 }}>
+                      Importeer deelnemers
+                    </button>
+
+                    <hr style={{ margin: '0.75rem 0' }} />
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <div style={{ fontWeight: 900 }}>Deelnemers overzicht</div>
+                      <div style={{ fontSize: '0.85rem', color: '#666' }}>{Object.keys(participants).length} deelnemers</div>
+                    </div>
+
+                    <div style={{ maxHeight: '230px', overflowY: 'auto', borderTop: '1px solid #f3f4f6' }}>
+                      {Object.values(participants).map(p => (
+                        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 900 }}>{p.naam}</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666' }}>{p.club} — { (p.events || []).join(', ') }</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            {(p.events || []).map(ev => (
+                              <button key={ev} onClick={() => removeParticipantFromEvent(selectedCompetitionId, p.id, ev)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #eee', background: '#fff', cursor: 'pointer' }}>{ev}</button>
+                            ))}
+                            <button onClick={() => removeParticipantFromCompetition(selectedCompetitionId, p.id)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                          </div>
+                        </div>
+                      ))}
+                      {Object.keys(participants).length === 0 && <div style={{ color: '#666', padding: '0.5rem' }}>Geen deelnemers</div>}
+                    </div>
+                  </>
+                )}
+
+                {status.msg && <div style={{ marginTop: '0.6rem', color: status.type === 'error' ? '#dc2626' : '#10b981' }}>{status.msg}</div>}
+              </div>
+            </div>
+
+            {/* Add Competition Modal */}
+            {showAddModal && (
+              <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', zIndex: 1200 }}>
+                <div style={{ width: '520px', background: '#fff', borderRadius: '0.75rem', padding: '1rem', boxShadow: '0 10px 30px rgba(0,0,0,0.15)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>Nieuwe wedstrijd toevoegen</div>
+                    <button onClick={() => setShowAddModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 900 }}>✕</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <input placeholder="Naam" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <input placeholder="Datum (YYYY-MM-DD)" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <input placeholder="Locatie" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input type="checkbox" checked={newComp.setActive} onChange={e => setNewComp({...newComp, setActive: e.target.checked})} /> Stel actief
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <button onClick={handleAddCompetitionFromModal} style={{ ...styles.primaryButton, flex: 1 }}>Toevoegen</button>
+                      <button onClick={() => setShowAddModal(false)} style={{ ...styles.outlineButton, flex: 1 }}>Annuleer</button>
+                    </div>
                   </div>
                 </div>
-
-                <div style={{ border: '1px solid #eee', borderRadius: '0.6rem', padding: '0.6rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <div style={{ fontWeight: 900 }}>Deelnemers overzicht</div>
-                    <div style={{ fontSize: '0.85rem', color: '#666' }}>{Object.keys(participants).length} deelnemers</div>
-                  </div>
-
-                  <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
-                    {Object.values(participants).map(p => (
-                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0.2rem', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 900 }}>{p.naam}</div>
-                          <div style={{ fontSize: '0.8rem', color: '#666' }}>{p.club} — { (p.events || []).join(', ') }</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          {(p.events || []).map(ev => (
-                            <button key={ev} onClick={() => removeParticipantFromEvent(selectedCompetitionId, p.id, ev)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #eee' }}>Verwijder {ev}</button>
-                          ))}
-                          <button onClick={() => removeParticipantFromCompetition(selectedCompetitionId, p.id)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #fee2e2' }}>Verwijder deelnemer</button>
-                        </div>
-                      </div>
-                    ))}
-                    {Object.keys(participants).length === 0 && <div style={{ color: '#666', padding: '0.5rem' }}>Geen deelnemers</div>}
-                  </div>
-                </div>
-              </>
+              </div>
             )}
-
-            {status.msg && <div style={{ marginTop: '0.6rem', color: status.type === 'error' ? '#dc2626' : '#10b981' }}>{status.msg}</div>}
           </div>
         )}
 
@@ -540,7 +562,7 @@ const App = () => {
                <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#64748b' }}>REEKS</span>
                <span style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
                {timeDifferenceInfo && (
-                  <div style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 900, backgroundColor: timeDifferenceInfo.isBehind ? '#fee2e2' : '#ecfccb', color: timeDifferenceInfo.isBehind ? '#991b1b' : '#134e4a' }}>
+                  <div style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 900, backgroundColor: timeDifferenceInfo.isBehind ? '#fee2e2' : '#e6fffa', color: timeDifferenceInfo.isBehind ? '#dc2626' : '#065f46' }}>
                     {timeDifferenceInfo.label}m vertraging
                   </div>
                )}
@@ -561,13 +583,13 @@ const App = () => {
                   boxShadow: s.empty ? 'none' : '0 1px 2px rgba(0,0,0,0.02)'
                 }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
-                  <span style={{ fontSize: '1.4rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || ""}</span>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.club || skippers[s.skipperId]?.club || ""}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || (s.empty ? '' : '...')}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.club || skippers[s.skipperId]?.club || ''}</span>
                 </div>
               ))}
             </div>
 
-            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.25rem', left: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.6rem', border: 'none', background: '#f1f5f9', borderRadius: '0.35rem' }}>Terug</button>
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.25rem', left: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.6rem', border: 'none', background: '#f1f5f9', borderRadius: '0.4rem', cursor: 'pointer' }}>Terug</button>
           </div>
         )}
       </main>
