@@ -69,6 +69,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
+    // CORRECTED PATH: artifacts/{appId}/public/data/{docId}
     const contestDoc = doc(db, 'artifacts', appId, 'public', 'data', 'contest');
     const unsubContest = onSnapshot(contestDoc, (docSnap) => {
       if (docSnap.exists()) {
@@ -112,7 +113,6 @@ export default function App() {
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'contest'), {
       onderdelen: updatedOnderdelen
     });
-    // Optioneel: verwijder ook deelnemers document in Firestore
   };
 
   const setFieldSkipper = async (fieldIndex, skipperId) => {
