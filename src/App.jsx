@@ -4,14 +4,14 @@ import {
   getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, deleteDoc, arrayRemove, arrayUnion, addDoc
 } from 'firebase/firestore';
 import { 
-  getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
+  getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, Plus, X, Calendar, MapPin, Users, Activity, Coffee, Search
+  Trash2, Upload, Plus, X, Calendar, MapPin, Users, Activity, Coffee, Search, CheckCircle2, AlertCircle, Archive, Star
 } from 'lucide-react';
 
 /**
- * CONFIGURATIE & INITIALISATIE - BEHOUDEN (Environment Variables)
+ * CONFIGURATIE & INITIALISATIE
  */
 const getFirebaseConfig = () => {
   const rawConfig = import.meta.env.VITE_FIREBASE_CONFIG || import.meta.env.NEXT_PUBLIC_FIREBASE_CONFIG;
@@ -38,14 +38,12 @@ const App = () => {
   const [participants, setParticipants] = useState({});
   const [settings, setSettings] = useState({ activeCompetitionId: null });
   
-  // UI States
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(null);
-  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', events: [] });
+  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', events: [], status: 'open' });
   const [csvInput, setCsvInput] = useState('');
 
-  // Firebase Init & Sync (Logica onveranderd)
   useEffect(() => {
     const init = async () => {
       try {
@@ -62,7 +60,10 @@ const App = () => {
   useEffect(() => {
     if (!isAuthReady || !db) return;
     onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), (d) => d.exists() && setSettings(d.data()));
-    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), s => setCompetitions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), s => {
+      const docs = s.docs.map(d => ({ id: d.id, ...d.data() }));
+      setCompetitions(docs);
+    });
   }, [isAuthReady]);
 
   useEffect(() => {
@@ -73,16 +74,24 @@ const App = () => {
     });
   }, [selectedCompetitionId, isAuthReady]);
 
-  // Zoekfilter logica
   const filteredParticipants = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return Object.values(participants).filter(p => 
-      p.naam?.toLowerCase().includes(term) || 
-      p.club?.toLowerCase().includes(term)
+      p.naam?.toLowerCase().includes(term) || p.club?.toLowerCase().includes(term)
     ).sort((a, b) => a.naam.localeCompare(b.naam));
   }, [participants, searchTerm]);
 
-  // CSV Import Logica (Behouden van vorige prompt)
+  // Functie om de status van een wedstrijd te bepalen
+  const getCompStatus = (comp) => {
+    if (comp.status === 'finished') return { label: 'AFGELOPEN', color: '#64748b', icon: <Archive size={12}/> };
+    if (!comp.events || comp.events.length === 0) return { label: 'LEEG', color: '#ef4444', icon: <AlertCircle size={12}/> };
+    // We kunnen hier niet direct checken op participants zonder ze allemaal in te laden voor elke comp, 
+    // maar we kunnen een benadering doen of een vlag 'hasData' in de comp doc bijhouden.
+    // Voor nu checken we de geselecteerde comp specifiek:
+    if (comp.id === selectedCompetitionId && Object.keys(participants).length === 0) return { label: 'GEEN DATA', color: '#f59e0b', icon: <Upload size={12}/> };
+    return { label: 'KLAAR', color: '#10b981', icon: <CheckCircle2 size={12}/> };
+  };
+
   const handleCsvUpload = async () => {
     if (!csvInput || !selectedCompetitionId || !showUploadModal) return;
     const batch = writeBatch(db);
@@ -122,13 +131,19 @@ const App = () => {
   };
 
   const styles = {
-    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f1f5f9', color: '#1e293b' },
+    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'sans-serif' },
     header: { display: 'flex', justifyContent: 'space-between', padding: '0.75rem 1.5rem', background: '#fff', borderBottom: '1px solid #e2e8f0', alignItems: 'center' },
-    card: { background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '1rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' },
+    card: { background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    sideItem: (isSelected, isActive) => ({
+      padding: '0.85rem', borderRadius: '8px', cursor: 'pointer', marginBottom: '0.6rem', border: '2px solid',
+      borderColor: isSelected ? '#2563eb' : (isActive ? '#bfdbfe' : 'transparent'),
+      backgroundColor: isSelected ? '#f0f7ff' : (isActive ? '#eff6ff' : '#fff'),
+      boxShadow: isActive ? '0 0 10px rgba(37, 99, 235, 0.1)' : 'none',
+      position: 'relative', transition: 'all 0.2s'
+    }),
+    statusBadge: (color) => ({ padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, color: '#fff', backgroundColor: color, display: 'flex', alignItems: 'center', gap: '0.25rem' }),
     primaryBtn: { padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', backgroundColor: '#2563eb', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' },
-    secondaryBtn: { padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' },
-    badge: { padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.3rem' },
-    searchBar: { display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0 0.75rem', width: '300px' }
+    secondaryBtn: { padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }
   };
 
   const selectedComp = competitions.find(c => c.id === selectedCompetitionId);
@@ -136,178 +151,171 @@ const App = () => {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <div style={{ fontWeight: 900, fontSize: '1.1rem', letterSpacing: '-0.5px' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></div>
-        <nav style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={() => setView('management')} style={{ ...styles.secondaryBtn, border: view === 'management' ? '2px solid #2563eb' : '1px solid #cbd5e1' }}>Beheer</button>
+        <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={() => setView('management')} style={{ ...styles.secondaryBtn, backgroundColor: view === 'management' ? '#f1f5f9' : '#fff' }}>Beheer</button>
           <button onClick={() => setView('live')} style={styles.secondaryBtn}>Live</button>
-        </nav>
+        </div>
       </header>
 
-      <main style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '1.5rem', maxWidth: '1700px', margin: '0 auto' }}>
+      <main style={{ flex: 1, padding: '1.5rem', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1.5rem', width: '100%', maxWidth: '1700px' }}>
           
-          {/* Sidebar */}
-          <aside>
+          {/* SIDEBAR */}
+          <aside style={{ overflowY: 'auto', paddingRight: '0.5rem' }}>
             <button onClick={() => setShowAddCompModal(true)} style={{ ...styles.primaryBtn, width: '100%', marginBottom: '1rem', justifyContent: 'center' }}>
-              <Plus size={16} /> Nieuwe Wedstrijd
+              <Plus size={18} /> Nieuwe Wedstrijd
             </button>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {competitions.map(c => (
-                <div key={c.id} onClick={() => setSelectedCompetitionId(c.id)} style={{ 
-                  ...styles.card, cursor: 'pointer', padding: '0.75rem', 
-                  borderColor: selectedCompetitionId === c.id ? '#2563eb' : '#e2e8f0',
-                  backgroundColor: selectedCompetitionId === c.id ? '#f0f7ff' : '#fff'
-                }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{c.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>{c.date}</div>
+            
+            {competitions.sort((a,b) => b.createdAt?.localeCompare(a.createdAt)).map(c => {
+              const isActive = settings.activeCompetitionId === c.id;
+              const isSelected = selectedCompetitionId === c.id;
+              const status = getCompStatus(c);
+              
+              return (
+                <div key={c.id} onClick={() => setSelectedCompetitionId(c.id)} style={styles.sideItem(isSelected, isActive)}>
+                  {isActive && <div style={{ position: 'absolute', top: -8, right: 10, backgroundColor: '#2563eb', color: '#fff', fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 900 }}>ACTIEF</div>}
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.2rem', color: c.status === 'finished' ? '#94a3b8' : '#1e293b' }}>{c.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.5rem' }}>{c.date}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={styles.statusBadge(status.color)}>{status.icon} {status.label}</div>
+                    {isActive && <Star size={14} fill="#2563eb" color="#2563eb" />}
+                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </aside>
 
-          {/* Main Content */}
-          <section style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* MAIN */}
+          <section style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {selectedComp ? (
               <>
-                {/* Header & Onderdelen Selectie (Compacter) */}
                 <div style={styles.card}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900 }}>{selectedComp.name} <span style={{ fontWeight: 400, color: '#64748b', fontSize: '0.9rem' }}>| {selectedComp.location}</span></h1>
-                    <button onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: selectedComp.id })} 
-                      style={{ ...styles.primaryBtn, backgroundColor: settings.activeCompetitionId === selectedComp.id ? '#10b981' : '#2563eb' }}>
-                      {settings.activeCompetitionId === selectedComp.id ? 'Actief' : 'Activeer'}
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>ONDERDELEN:</span>
-                    {POSSIBLE_ONDERDELEN.map(ond => {
-                      const isActive = selectedComp.events?.includes(ond);
-                      return (
-                        <button key={ond} onClick={() => {
-                          const newEvents = isActive ? selectedComp.events.filter(e => e !== ond) : [...(selectedComp.events || []), ond];
-                          updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id), { events: newEvents });
-                        }} style={{ ...styles.secondaryBtn, fontSize: '0.75rem', padding: '0.2rem 0.6rem', backgroundColor: isActive ? '#eff6ff' : '#fff', borderColor: isActive ? '#2563eb' : '#cbd5e1', color: isActive ? '#2563eb' : '#475569' }}>
-                          {isActive ? '✓' : '+'} {ond}
-                        </button>
-                      );
-                    })}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>{selectedComp.name}</h1>
+                      <p style={{ margin: '0.2rem 0', color: '#64748b' }}><MapPin size={14}/> {selectedComp.location} | <Calendar size={14}/> {selectedComp.date}</p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button 
+                        onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id), { status: selectedComp.status === 'finished' ? 'open' : 'finished' })}
+                        style={{ ...styles.secondaryBtn, color: selectedComp.status === 'finished' ? '#2563eb' : '#ef4444' }}
+                      >
+                        {selectedComp.status === 'finished' ? 'Heropenen' : 'Markeer als Afgelopen'}
+                      </button>
+                      <button 
+                        onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: selectedComp.id })} 
+                        style={{ ...styles.primaryBtn, backgroundColor: settings.activeCompetitionId === selectedComp.id ? '#10b981' : '#2563eb' }}
+                      >
+                        {settings.activeCompetitionId === selectedComp.id ? 'Huidige Actieve Wedstrijd' : 'Activeer Wedstrijd'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Grid van Actieve Onderdelen (Kleiner) */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
-                  {selectedComp.events?.map(ond => {
+                {/* Onderdelen compact */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                  {POSSIBLE_ONDERDELEN.map(ond => {
+                    const isActive = selectedComp.events?.includes(ond);
                     const count = Object.values(participants).filter(p => p.events?.includes(ond) && !p.isPause).length;
                     return (
-                      <div key={ond} style={{ ...styles.card, padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div key={ond} style={{ ...styles.card, opacity: isActive ? 1 : 0.5, borderStyle: isActive ? 'solid' : 'dashed' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontWeight: 800, fontSize: '0.85rem' }}>{ond}</span>
-                          <button onClick={() => setShowUploadModal(ond)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#2563eb' }} title="Import CSV"><Upload size={14}/></button>
+                          <input type="checkbox" checked={isActive} onChange={() => {
+                            const newEvents = isActive ? selectedComp.events.filter(e => e !== ond) : [...(selectedComp.events || []), ond];
+                            updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id), { events: newEvents });
+                          }} />
                         </div>
-                        <div style={{ marginTop: '0.5rem', fontSize: '1.1rem', fontWeight: 900 }}>{count} <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 600 }}>SKIPIERS</span></div>
+                        {isActive && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
+                            <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{count} <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>SKIPIERS</span></div>
+                            <button onClick={() => setShowUploadModal(ond)} style={{ ...styles.secondaryBtn, padding: '0.2rem 0.5rem' }}><Upload size={14}/></button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Deelnemers Tabel (Meer ruimte) */}
+                {/* Deelnemerslijst */}
                 <div style={{ ...styles.card, flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h3 style={{ margin: 0, fontWeight: 900, fontSize: '1rem' }}>Deelnemers & Planning</h3>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                       <div style={styles.searchBar}>
-                          <Search size={16} color="#94a3b8" />
-                          <input 
-                            style={{ border: 'none', padding: '0.5rem', outline: 'none', fontSize: '0.85rem', width: '100%' }} 
-                            placeholder="Zoek op naam of club..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                          />
-                       </div>
-                       <div style={{ ...styles.badge, background: '#f8fafc' }}><Users size={14}/> {filteredParticipants.length}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '0.4rem 0.75rem', borderRadius: '8px', width: '350px' }}>
+                      <Search size={16} color="#64748b" />
+                      <input style={{ border: 'none', background: 'none', marginLeft: '0.5rem', outline: 'none', width: '100%', fontSize: '0.85rem' }} placeholder="Zoek op naam of club..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                     </div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>{filteredParticipants.length} Deelnemers</div>
                   </div>
-
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left', fontSize: '0.7rem', color: '#64748b', borderBottom: '2px solid #f1f5f9', textTransform: 'uppercase' }}>
-                          <th style={{ padding: '0.75rem' }}>Naam</th>
-                          <th style={{ padding: '0.75rem' }}>Club</th>
-                          <th style={{ padding: '0.75rem' }}>Planning per onderdeel</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'right' }}>Acties</th>
+                  
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', fontSize: '0.7rem', color: '#94a3b8', borderBottom: '2px solid #f1f5f9', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '0.75rem' }}>Deelnemer</th>
+                        <th style={{ padding: '0.75rem' }}>Club</th>
+                        <th style={{ padding: '0.75rem' }}>Planning</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'right' }}>Actie</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredParticipants.map(p => (
+                        <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: p.isPause ? '#fffbeb' : 'transparent' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700 }}>
+                            {p.isPause ? <span style={{ color: '#b45309', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Coffee size={14}/> PAUZE</span> : p.naam}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', color: '#64748b', fontSize: '0.85rem' }}>{p.club}</td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                              {p.events?.map(ev => (
+                                <span key={ev} style={{ padding: '0.1rem 0.4rem', background: '#f1f5f9', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700 }}>
+                                  {ev}: R{p[`reeks_${ev.replace(/\s/g, '')}`]}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
+                            <button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id))} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={14}/></button>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {filteredParticipants.map(p => (
-                          <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc', backgroundColor: p.isPause ? '#fffbeb' : 'transparent' }}>
-                            <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700, fontSize: '0.9rem' }}>
-                              {p.isPause ? <span style={{ color: '#b45309', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Coffee size={14}/> PAUZE</span> : p.naam}
-                            </td>
-                            <td style={{ padding: '0.6rem 0.75rem', color: '#64748b', fontSize: '0.85rem' }}>{p.club}</td>
-                            <td style={{ padding: '0.6rem 0.75rem' }}>
-                              <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                                {p.events?.map(ev => {
-                                  const k = ev.replace(/\s/g, '');
-                                  return (
-                                    <span key={ev} style={{ ...styles.badge, fontSize: '0.65rem' }}>
-                                      <span style={{ color: '#2563eb' }}>{ev}:</span> R{p[`reeks_${k}`]} {p[`veld_${k}`] ? `V${p[`veld_${k}`]}` : ''}
-                                      <button onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id), { events: arrayRemove(ev) })} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }}><X size={10}/></button>
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </td>
-                            <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
-                              <button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id))} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 }}><Trash2 size={16} /></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </>
             ) : (
-              <div style={{ ...styles.card, textAlign: 'center', padding: '10rem 2rem', color: '#94a3b8' }}>Selecteer een wedstrijd.</div>
+              <div style={{ ...styles.card, textAlign: 'center', padding: '10rem', color: '#94a3b8' }}>Selecteer een wedstrijd in de lijst.</div>
             )}
           </section>
         </div>
       </main>
 
-      {/* Modal: CSV Upload (Gecentreerd) */}
+      {/* MODALS */}
       {showUploadModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ ...styles.card, width: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-            <h2 style={{ marginTop: 0, fontWeight: 900 }}>Import: {showUploadModal}</h2>
-            <textarea 
-              style={{ width: '100%', height: '300px', padding: '0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontSize: '0.75rem' }} 
-              placeholder="Plak CSV data hier..."
-              value={csvInput}
-              onChange={e => setCsvInput(e.target.value)}
-            />
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-              <button style={{ ...styles.primaryBtn, flex: 1, justifyContent: 'center' }} onClick={handleCsvUpload}>Start Import</button>
-              <button style={{ ...styles.secondaryBtn, flex: 1 }} onClick={() => { setShowUploadModal(null); setCsvInput(''); }}>Annuleren</button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ ...styles.card, width: '800px' }}>
+            <h2 style={{ marginTop: 0 }}>Importeer data voor {showUploadModal}</h2>
+            <textarea style={{ width: '100%', height: '300px', padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.75rem', marginBottom: '1rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} placeholder="Plak CSV hier..." value={csvInput} onChange={e => setCsvInput(e.target.value)} />
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button style={{ ...styles.primaryBtn, flex: 1, justifyContent: 'center' }} onClick={handleCsvUpload}>Import starten</button>
+              <button style={{ ...styles.secondaryBtn, flex: 1 }} onClick={() => setShowUploadModal(null)}>Annuleren</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Nieuwe Wedstrijd */}
       {showAddCompModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ ...styles.card, width: '400px' }}>
-            <h2 style={{ marginTop: 0, fontWeight: 900 }}>Nieuwe Wedstrijd</h2>
-            <input style={{ width: '100%', padding: '0.6rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Naam" onChange={e => setNewComp({...newComp, name: e.target.value})} />
-            <input type="date" style={{ width: '100%', padding: '0.6rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }} onChange={e => setNewComp({...newComp, date: e.target.value})} />
-            <input style={{ width: '100%', padding: '0.6rem', marginBottom: '1rem', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Locatie" onChange={e => setNewComp({...newComp, location: e.target.value})} />
+            <h2 style={{ marginTop: 0 }}>Nieuwe Wedstrijd</h2>
+            <input style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} placeholder="Naam wedstrijd" onChange={e => setNewComp({...newComp, name: e.target.value})} />
+            <input type="date" style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} onChange={e => setNewComp({...newComp, date: e.target.value})} />
+            <input style={{ width: '100%', padding: '0.5rem', marginBottom: '1rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} placeholder="Locatie" onChange={e => setNewComp({...newComp, location: e.target.value})} />
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.primaryBtn, flex: 1, justifyContent: 'center' }} onClick={async () => {
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), { ...newComp, createdAt: new Date().toISOString() });
                 setShowAddCompModal(false);
               }}>Opslaan</button>
-              <button style={{ ...styles.secondaryBtn, flex: 1 }} onClick={() => setShowAddCompModal(false)}>Sluiten</button>
+              <button style={{ ...styles.secondaryBtn, flex: 1 }} onClick={() => setShowAddCompModal(false)}>Annuleren</button>
             </div>
           </div>
         </div>
