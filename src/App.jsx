@@ -1,356 +1,712 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc, deleteDoc, addDoc
+  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc, getDoc, addDoc, deleteDoc, arrayRemove, arrayUnion
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock, Settings, Monitor, Play
+  ChevronRight, ChevronLeft, Activity, CheckCircle2, Trophy, Info, Clock
 } from 'lucide-react';
 
-/**
- * CONFIGURATIE & INITIALISATIE
- * Haalt configuratie op uit Environment Variables (Vercel/Vite/Next.js)
- */
-const getFirebaseConfig = () => {
-  // Check voor verschillende mogelijke env namen afhankelijk van je framework
-  const envConfig = 
-    process.env.NEXT_PUBLIC_FIREBASE_CONFIG || 
-    process.env.VITE_FIREBASE_CONFIG || 
-    process.env.FIREBASE_CONFIG;
-
-  if (envConfig) {
-    try {
-      return JSON.parse(envConfig);
-    } catch (e) {
-      console.error("Fout bij parsen van FIREBASE_CONFIG env var:", e);
-    }
-  }
-
-  // Fallback voor de lokale preview omgeving
-  if (typeof __firebase_config !== 'undefined') {
-    return JSON.parse(__firebase_config);
-  }
-
-  return {};
+// --- FIREBASE CONFIGURATIE ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBdlKc-a_4Xt9MY_2TjcfkXT7bqJsDr8yY",
+  authDomain: "ropeskippingcontest.firebaseapp.com",
+  projectId: "ropeskippingcontest",
+  storageBucket: "ropeskippingcontest.firebasestorage.app",
+  messagingSenderId: "430066523717",
+  appId: "1:430066523717:web:eea53ced41773af66a4d2c",
 };
 
-const firebaseConfig = getFirebaseConfig();
+let app, auth, db;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
 
-// Initialiseer app enkel als er nog geen app is (voorkomt dubbele initialisatie bij hot reloads)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-v2';
-
+// --- MOGELIJKE ONDERDELEN ---
 const POSSIBLE_ONDERDELEN = [
-  'Speed', 'Endurance', 'Freestyle', 'Double under', 'Triple under', 'DD Speed'
+  'Speed',
+  'Endurance',
+  'Freestyle',
+  'Double under',
+  'Triple under'
 ];
 
-/**
- * HOOFDCOMPONENT: Navigatie tussen de 3 delen
- */
-export default function App() {
-  const [view, setView] = useState('selection'); // selection, live, beheer, display
+const App = () => {
   const [user, setUser] = useState(null);
-  const [compData, setCompData] = useState(null);
-  const [participants, setParticipants] = useState({});
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [view, setView] = useState('live'); 
+  const [activeTab, setActiveTab] = useState('speed');
+  const [skippers, setSkippers] = useState({});
+  const [heats, setHeats] = useState([]);
+  const [competitions, setCompetitions] = useState([]); // nieuw
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState(null); // voor beheer
+  const [participants, setParticipants] = useState({}); // deelnemers voor geselecteerde competitie
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [settings, setSettings] = useState({
+    currentSpeedHeat: 1,
+    currentFreestyleHeat: 1,
+    announcement: "Welkom!",
+    activeCompetitionId: null, // nieuw: id van actieve wedstrijd
+  });
 
-  // 1. Auth Initialisatie
+  const [importType, setImportType] = useState('speed');
+  const [csvInput, setCsvInput] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [status, setStatus] = useState({ type: null, msg: null });
+
+  // beheer: formulier state
+  const [newComp, setNewComp] = useState({ name: '', date: '', location: '', setActive: false });
+  const [compCsvInput, setCompCsvInput] = useState(''); // CSV voor deelnemers import binnen beheer
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Update klok elke seconde
   useEffect(() => {
-    const initAuth = async () => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
       try {
+        app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+        auth = getAuth(app);
+        db = getFirestore(app);
+
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) {
-        console.error("Auth error:", err);
+
+        onAuthStateChanged(auth, (u) => {
+          if (u) {
+            setUser(u);
+            setIsAuthReady(true);
+          }
+        });
+      } catch (e) {
+        console.error("Firebase Init Error", e);
       }
     };
-    initAuth();
-    return onAuthStateChanged(auth, setUser);
+    init();
   }, []);
 
-  // 2. Data Sync
   useEffect(() => {
-    if (!user) return;
+    if (!isAuthReady || !user || !db) return;
 
-    const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competition');
-    const partRef = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
+    const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    const skRef = collection(db, 'artifacts', appId, 'public', 'data', 'skippers');
+    const hRef = collection(db, 'artifacts', appId, 'public', 'data', 'heats');
+    const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions');
 
-    const unsubComp = onSnapshot(compRef, (doc) => {
-      if (doc.exists()) setCompData(doc.data());
-    }, (err) => console.error("Competition sync error:", err));
+    const unsubS = onSnapshot(sRef, async (d) => {
+      if (d.exists()) {
+        setSettings(d.data());
+      } else {
+        await setDoc(sRef, settings);
+      }
+    }, (err) => console.error("Settings error:", err));
 
-    const unsubPart = onSnapshot(partRef, (snap) => {
-      const p = {};
-      snap.forEach(d => p[d.id] = { id: d.id, ...d.data() });
-      setParticipants(p);
-    }, (err) => console.error("Participants sync error:", err));
+    const unsubSk = onSnapshot(skRef, s => {
+      const d = {}; s.forEach(doc => d[doc.id] = doc.data());
+      setSkippers(d);
+    }, (err) => console.error("Skippers error:", err));
 
-    return () => { unsubComp(); unsubPart(); };
-  }, [user]);
+    const unsubH = onSnapshot(hRef, s => {
+      setHeats(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.reeks - b.reeks));
+    }, (err) => console.error("Heats error:", err));
 
-  if (!user) return <div className="flex h-screen items-center justify-center font-bold text-slate-400">Verbinden met server...</div>;
+    const unsubC = onSnapshot(cRef, s => {
+      // competitie documenten bevatten: name, date, location, status, onderdelen
+      setCompetitions(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')));
+    }, (err) => console.error("Competitions error:", err));
 
-  // Render view gebaseerd op state
-  switch (view) {
-    case 'live':
-      return <LiveView compData={compData} participants={participants} onBack={() => setView('selection')} />;
-    case 'beheer':
-      return <BeheerView compData={compData} participants={participants} onBack={() => setView('selection')} />;
-    case 'display':
-      return <DisplayView compData={compData} participants={participants} onBack={() => setView('selection')} />;
-    default:
-      return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 space-y-8 text-slate-800">
-          <div className="text-center">
-            <h1 className="text-4xl font-black tracking-tight mb-2">ROPESCORE PRO</h1>
-            <p className="text-slate-500 uppercase tracking-widest text-sm font-bold">Wedstrijd Management Systeem</p>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
-            <MenuCard 
-              icon={<Play size={32} />} 
-              title="Live Overzicht" 
-              desc="Bekijk de huidige status van de wedstrijd in real-time."
-              onClick={() => setView('live')}
-              color="bg-blue-600"
-            />
-            <MenuCard 
-              icon={<Settings size={32} />} 
-              title="Beheer" 
-              desc="Configureer onderdelen, deelnemers en veld-indelingen."
-              onClick={() => setView('beheer')}
-              color="bg-slate-800"
-            />
-            <MenuCard 
-              icon={<Monitor size={32} />} 
-              title="Display" 
-              desc="Groot scherm weergave voor publiek en atleten."
-              onClick={() => setView('display')}
-              color="bg-emerald-600"
-            />
-          </div>
-        </div>
-      );
-  }
-}
+    return () => { unsubS(); unsubSk(); unsubH(); unsubC(); };
+  }, [isAuthReady, user]);
 
-function MenuCard({ icon, title, desc, onClick, color }) {
+  // luister naar participants subcollectie wanneer geselecteerde competitie verandert
+  useEffect(() => {
+    if (!isAuthReady || !user || !db) return;
+    if (!selectedCompetitionId) {
+      setParticipants({});
+      return;
+    }
+    const pRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants');
+    const unsubP = onSnapshot(pRef, s => {
+      const d = {};
+      s.forEach(doc => d[doc.id] = doc.data());
+      setParticipants(d);
+    }, err => console.error("Participants error:", err));
+    return () => unsubP();
+  }, [isAuthReady, user, selectedCompetitionId]);
+
+  // actieve competitie object (uit settings)
+  const activeCompetition = useMemo(() => {
+    return competitions.find(c => c.id === settings.activeCompetitionId) || null;
+  }, [competitions, settings]);
+
+  const currentHeat = useMemo(() => {
+    const list = heats.filter(h => h.type === activeTab);
+    const num = activeTab === 'speed' ? (settings.currentSpeedHeat || 1) : (settings.currentFreestyleHeat || 1);
+    return list.find(h => h.reeks === num) || null;
+  }, [heats, activeTab, settings]);
+
+  const timeDifferenceInfo = useMemo(() => {
+    if (!currentHeat?.uur || !currentHeat.uur.includes(':')) return null;
+
+    try {
+      const parts = currentHeat.uur.split(':');
+      const h = parseInt(parts[0]);
+      const m = parseInt(parts[1]);
+      if (isNaN(h) || isNaN(m)) return null;
+
+      const plannedTime = new Date(currentTime);
+      plannedTime.setHours(h, m, 0, 0);
+
+      const diffInMs = currentTime.getTime() - plannedTime.getTime();
+      const diffInMins = Math.floor(diffInMs / 60000);
+
+      return {
+        minutes: diffInMins,
+        isBehind: diffInMins > 0,
+        isAhead: diffInMins < 0,
+        label: diffInMins > 0 ? `+${diffInMins}` : `${diffInMins}`
+      };
+    } catch (e) {
+      return null;
+    }
+  }, [currentHeat, currentTime]);
+
+  // speedSlots: wanneer er een actieve competitie is, vullen we velden op basis van deelnemers die een startVeld/veldNr hebben of simpelweg show deelnemers
+  const speedSlots = useMemo(() => {
+    if (activeTab !== 'speed') return currentHeat?.slots || [];
+    // probeer eerst gebruik te maken van currentHeat.slots (bestaat mogelijk)
+    if (currentHeat?.slots?.length) {
+      const fullList = [];
+      for (let i = 1; i <= 10; i++) {
+        const found = currentHeat?.slots?.find(s => s.veldNr === i || s.veld === `Veld ${i}`);
+        fullList.push(found || { veld: `Veld ${i}`, skipperId: null, empty: true });
+      }
+      return fullList;
+    }
+    // fallback: vul met deelnemers uit actieve competitie die deelnemen aan speed
+    if (activeCompetition && Object.keys(participants).length) {
+      const partArr = Object.values(participants).filter(p => p.events?.includes('speed'));
+      const fullList = [];
+      for (let i = 1; i <= 10; i++) {
+        const p = partArr[i-1];
+        fullList.push(p ? { veld: `Veld ${i}`, skipperId: p.id, empty: false } : { veld: `Veld ${i}`, skipperId: null, empty: true });
+      }
+      return fullList;
+    }
+    // default
+    const defaultList = [];
+    for (let i = 1; i <= 10; i++) defaultList.push({ veld: `Veld ${i}`, skipperId: null, empty: true });
+    return defaultList;
+  }, [currentHeat, activeTab, activeCompetition, participants]);
+
+  const updateHeat = async (delta) => {
+    if (!db || !user) return;
+    const key = activeTab === 'speed' ? 'currentSpeedHeat' : 'currentFreestyleHeat';
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+    try {
+      const currentVal = settings[key] || 1;
+      await updateDoc(ref, { [key]: Math.max(1, currentVal + delta) });
+    } catch (e) { console.error(e); }
+  };
+
+  const finishHeat = async () => {
+    if (!currentHeat || !db || !user) return;
+    try {
+      const heatRef = doc(db, 'artifacts', appId, 'public', 'data', 'heats', currentHeat.id);
+      await updateDoc(heatRef, { status: 'finished' });
+      await updateHeat(1);
+    } catch (e) { console.error(e); }
+  };
+
+  // Competitie aanmaken (nu met onderdelen array)
+  const addCompetition = async ({ name, date, location, setActive=false }) => {
+    if (!name || !db || !user) return;
+    try {
+      const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions');
+      // voeg onderdelen toe als lege array zodat structuur consistent is
+      const docRef = await addDoc(cRef, { name, date, location, status: 'gepland', onderdelen: [], createdAt: new Date().toISOString() });
+      if (setActive) {
+        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+        await updateDoc(sRef, { activeCompetitionId: docRef.id });
+      }
+      setStatus({ type: 'success', msg: 'Competitie toegevoegd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // Stel actieve competitie in
+  const setActiveCompetition = async (competitionId) => {
+    if (!db || !user) return;
+    try {
+      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+      await updateDoc(sRef, { activeCompetitionId: competitionId });
+      // zet status van deze competitie op 'actief' en andere op 'gepland' indien gewenst
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { status: 'actief' });
+      setStatus({ type: 'success', msg: 'Actieve wedstrijd ingesteld' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // Wijzig status van competitie
+  const setCompetitionStatus = async (competitionId, newStatus) => {
+    if (!db || !user) return;
+    try {
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { status: newStatus });
+      setStatus({ type: 'success', msg: 'Status bijgewerkt' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // Verwijder competitie (en deelnemers subcollectie) - voorzichtig: hier verwijderen we alleen competitie-doc en deelnemers docs
+  const deleteCompetition = async (competitionId) => {
+    if (!db || !user) return;
+    try {
+      // verwijder deelnemers in subcollectie
+      const pRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants');
+      if (selectedCompetitionId === competitionId) {
+        for (const pid of Object.keys(participants)) {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', pid));
+        }
+      } else {
+        // Onzekerheid - probeer niets verder
+      }
+      // verwijder competitie-doc
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId));
+      setStatus({ type: 'success', msg: 'Competitie verwijderd' });
+      // als dit de actieve competitie was, clear settings.activeCompetitionId
+      if (settings.activeCompetitionId === competitionId) {
+        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
+        await updateDoc(sRef, { activeCompetitionId: null });
+      }
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // ONDERDELEN BEHEREN: add / remove / move
+  const addOnderdeelToCompetition = async (competitionId, onderdeel) => {
+    if (!competitionId || !onderdeel || !db || !user) return;
+    try {
+      const comp = competitions.find(c => c.id === competitionId) || {};
+      const existing = Array.isArray(comp.onderdelen) ? comp.onderdelen : [];
+      if (existing.includes(onderdeel)) {
+        setStatus({ type: 'error', msg: 'Onderdeel bestaat al' });
+        return;
+      }
+      const newList = [...existing, onderdeel];
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { onderdelen: newList });
+      setStatus({ type: 'success', msg: 'Onderdeel toegevoegd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  const removeOnderdeelFromCompetition = async (competitionId, index) => {
+    if (!competitionId || index == null || !db || !user) return;
+    try {
+      const comp = competitions.find(c => c.id === competitionId) || {};
+      const existing = Array.isArray(comp.onderdelen) ? comp.onderdelen : [];
+      if (index < 0 || index >= existing.length) return;
+      const newList = [...existing.slice(0, index), ...existing.slice(index + 1)];
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { onderdelen: newList });
+      setStatus({ type: 'success', msg: 'Onderdeel verwijderd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  const moveOnderdeelCompetition = async (competitionId, fromIndex, toIndex) => {
+    if (!competitionId || fromIndex == null || toIndex == null || !db || !user) return;
+    try {
+      const comp = competitions.find(c => c.id === competitionId) || {};
+      const existing = Array.isArray(comp.onderdelen) ? comp.onderdelen : [];
+      if (fromIndex < 0 || fromIndex >= existing.length || toIndex < 0 || toIndex >= existing.length) return;
+      const arr = [...existing];
+      const [item] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, item);
+      const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId);
+      await updateDoc(compRef, { onderdelen: arr });
+      setStatus({ type: 'success', msg: 'Volgorde bijgewerkt' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // CSV import deelnemers voor een competitie
+  const importParticipantsForCompetition = async (competitionId, csvText) => {
+    if (!competitionId || !csvText || !db || !user) return;
+    setIsProcessing(true);
+    try {
+      const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      const batch = writeBatch(db);
+      for (const row of rows) {
+        // verwacht CSV format (voorbeeld): naam,club,events (events gescheiden door ;)
+        const naam = row[0] || '';
+        const club = row[1] || '';
+        const eventsRaw = row[2] || '';
+        const events = eventsRaw.split(';').map(e => e.trim()).filter(e => e);
+        // generate id-safe
+        const pid = `p_${(naam + '_' + club).replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const pDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', pid);
+        batch.set(pDocRef, { id: pid, naam, club, events, createdAt: new Date().toISOString() });
+        // (optioneel) ook zetten in globale skippers
+        const skRef = doc(db, 'artifacts', appId, 'public', 'data', 'skippers', pid);
+        batch.set(skRef, { id: pid, naam, club }, { merge: true });
+      }
+      await batch.commit();
+      setStatus({ type: 'success', msg: 'Deelnemers geïmporteerd' });
+      // herlaad deelnemers via snapshot listener
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setIsProcessing(false);
+  };
+
+  // Verwijder deelnemer uit competitie
+  const removeParticipantFromCompetition = async (competitionId, participantId) => {
+    if (!competitionId || !participantId || !db || !user) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', participantId));
+      setStatus({ type: 'success', msg: 'Deelnemer verwijderd' });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  // schrappen uit onderdeel (remove event from participant.events)
+  const removeParticipantFromEvent = async (competitionId, participantId, eventName) => {
+    if (!competitionId || !participantId || !eventName || !db || !user) return;
+    try {
+      const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', competitionId, 'participants', participantId);
+      // We gebruiken arrayRemove om het event te verwijderen
+      await updateDoc(pRef, { events: arrayRemove(eventName) });
+      setStatus({ type: 'success', msg: `${eventName} verwijderd voor deelnemer` });
+    } catch (e) {
+      console.error(e);
+      setStatus({ type: 'error', msg: e.message });
+    }
+  };
+
+  const styles = {
+    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', color: '#000', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' },
+    header: { display: 'flex', justifyContent: 'space-between', padding: '0.5rem 1.5rem', borderBottom: '1px solid #eee', background: '#fff', alignItems: 'center' },
+    main: { flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+    card: { border: '1px solid #eee', borderRadius: '1rem', padding: '1rem', width: '100%', maxWidth: '900px', backgroundColor: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' },
+    displayOverlay: { 
+      position: 'fixed', 
+      inset: 0, 
+      backgroundColor: '#fff', 
+      zIndex: 1000, 
+      padding: '0.75rem 1.25rem', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      overflow: 'hidden',
+      boxSizing: 'border-box'
+    },
+    primaryButton: { padding: '0.6rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', backgroundColor: '#2563eb', color: '#fff', fontWeight: 900 },
+    outlineButton: { padding: '0.45rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #eee', background: '#fff', cursor: 'pointer' }
+  };
+
+  // helper voor toevoegen via modal
+  const handleAddCompetitionFromModal = async () => {
+    await addCompetition({ ...newComp });
+    setNewComp({ name: '', date: '', location: '', setActive: false });
+    setShowAddModal(false);
+  };
+
   return (
-    <button 
-      onClick={onClick}
-      className="flex flex-col items-center p-8 bg-white rounded-2xl shadow-sm border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all group"
-    >
-      <div className={`${color} text-white p-4 rounded-xl mb-4 group-hover:scale-110 transition-transform`}>
-        {icon}
-      </div>
-      <h3 className="text-xl font-bold text-slate-800">{title}</h3>
-      <p className="text-slate-500 text-sm mt-2 text-center">{desc}</p>
-    </button>
-  );
-}
-
-/**
- * DEEL 1: LIVE OVERZICHT
- */
-function LiveView({ compData, participants, onBack }) {
-  if (!compData) return <div className="p-10 text-center">Initialiseren...</div>;
-
-  return (
-    <div className="min-h-screen bg-white">
-      <header className="p-4 bg-blue-600 text-white flex justify-between items-center sticky top-0 z-10 shadow-lg">
-        <button onClick={onBack} className="flex items-center gap-2 font-bold hover:bg-blue-700 px-3 py-1 rounded-lg transition-colors"><ChevronLeft /> Terug</button>
-        <div className="text-center">
-          <div className="text-xs opacity-80 uppercase font-black tracking-widest">Nu bezig: {compData.currentOnderdeel}</div>
-          <div className="text-xl font-black italic">REEKS {compData.currentHeat}</div>
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontWeight: 900, fontSize: '1rem' }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></span>
+          <nav style={{ display: 'flex', gap: '0.25rem', background: '#f5f5f5', padding: '0.2rem', borderRadius: '0.5rem' }}>
+            <button onClick={() => setView('live')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'live' ? '#fff' : 'transparent' }}>Live</button>
+            <button onClick={() => setView('management')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'management' ? '#fff' : 'transparent' }}>Beheer</button>
+            <button onClick={() => setView('display')} style={{ padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, backgroundColor: view === 'display' ? '#fff' : 'transparent' }}>Display</button>
+          </nav>
         </div>
-        <div className="w-20"></div>
+        <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>{currentTime.toLocaleTimeString('nl-BE')}</div>
       </header>
 
-      <div className="p-4 space-y-4 max-w-2xl mx-auto mt-4">
-        {compData.slots?.map((s, idx) => {
-          const p = participants[s.skipperId];
-          return (
-            <div key={idx} className={`p-4 rounded-xl border-2 flex items-center justify-between ${s.empty ? 'bg-slate-50 border-slate-100 opacity-50' : 'bg-white border-blue-100 shadow-sm'}`}>
-              <div className="flex items-center gap-4">
-                <span className="text-2xl font-black text-blue-600 w-12 text-center">{s.veld}</span>
-                <div>
-                  <div className="font-bold text-lg leading-tight text-slate-800">{p?.naam || (s.empty ? 'VRIJ' : 'Laden...')}</div>
-                  <div className="text-sm text-slate-500 font-bold">{p?.club || '-'}</div>
-                </div>
-              </div>
-              {!s.empty && <Activity className="text-blue-500 animate-pulse" size={24} />}
+      <main style={styles.main}>
+        {view === 'live' && (
+          <div style={styles.card}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button onClick={() => setActiveTab('speed')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'speed' ? '#2563eb' : '#f3f4f6', color: activeTab === 'speed' ? '#fff' : '#000' }}>SPEED</button>
+              <button onClick={() => setActiveTab('freestyle')} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 800, cursor: 'pointer', backgroundColor: activeTab === 'freestyle' ? '#2563eb' : '#f3f4f6', color: activeTab === 'freestyle' ? '#fff' : '#000' }}>FREESTYLE</button>
             </div>
-          );
-        })}
-        {(!compData.slots || compData.slots.length === 0) && (
-          <div className="text-center p-12 text-slate-400 italic">Geen velden geconfigureerd voor deze reeks.</div>
+
+            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#999' }}>REEKS</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
+                <button onClick={() => updateHeat(-1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
+                <span style={{ fontSize: '3rem', fontWeight: 900 }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+                <button onClick={() => updateHeat(1)} style={{ background: '#f5f5f5', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer' }}><ChevronRight size={20}/></button>
+              </div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#666' }}>
+                Gepland: {currentHeat?.uur || "--:--"} {activeCompetition ? `— Wedstrijd: ${activeCompetition.name} (${activeCompetition.location || '-'}, ${activeCompetition.date || '-'})` : ''}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {speedSlots.map((s, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr', padding: '0.5rem 1rem', background: s.empty ? 'transparent' : '#f9f9f9', borderRadius: '0.6rem', border: '1px solid rgba(0,0,0,0.03)', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.7rem' }}>{s.veld}</span>
+                  <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                    { participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || (s.empty ? "" : "...") }
+                  </span>
+                  <span style={{ textAlign: 'right', color: '#999', fontSize: '0.75rem' }}>
+                    { participants[s.skipperId]?.club || skippers[s.skipperId]?.club || "" }
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={finishHeat} style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', borderRadius: '0.75rem', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+              <CheckCircle2 size={18}/> VOLTOOID
+            </button>
+          </div>
         )}
-      </div>
-    </div>
-  );
-}
 
-/**
- * DEEL 2: BEHEER DEEL
- */
-function BeheerView({ compData, participants, onBack }) {
-  const [newSkipper, setNewSkipper] = useState({ naam: '', club: '' });
-
-  const updateComp = async (updates) => {
-    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'competition');
-    await updateDoc(ref, updates);
-  };
-
-  const addParticipant = async () => {
-    if (!newSkipper.naam) return;
-    const ref = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
-    await addDoc(ref, newSkipper);
-    setNewSkipper({ naam: '', club: '' });
-  };
-
-  const nextHeat = () => {
-    updateComp({ currentHeat: (compData.currentHeat || 1) + 1 });
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-100 p-6 pb-24 text-slate-800">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex justify-between items-center">
-          <button onClick={onBack} className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:bg-slate-50"><ChevronLeft /></button>
-          <h2 className="text-2xl font-black text-slate-800 uppercase italic">Instellingen & Beheer</h2>
-          <div className="w-10"></div>
-        </div>
-
-        {/* Wedstrijd Status */}
-        <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Trophy size={16}/> Wedstrijd Status</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">ONDERDEEL</label>
-              <select 
-                value={compData?.currentOnderdeel || ''} 
-                onChange={(e) => updateComp({ currentOnderdeel: e.target.value })}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="">Kies onderdeel...</option>
-                {POSSIBLE_ONDERDELEN.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">HUIDIGE REEKS</label>
-              <div className="flex gap-2">
-                <input 
-                  type="number" 
-                  value={compData?.currentHeat || 0} 
-                  onChange={(e) => updateComp({ currentHeat: parseInt(e.target.value) || 0 })}
-                  className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                <button onClick={nextHeat} className="bg-blue-600 text-white px-4 rounded-xl font-bold shadow-md shadow-blue-200 hover:bg-blue-700 transition-colors">VOLGENDE</button>
+        {view === 'management' && (
+          <div style={styles.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <h2 style={{ fontWeight: 900, margin: 0, fontSize: '1.2rem' }}>Wedstrijden (Competities)</h2>
+                <div style={{ fontSize: '0.85rem', color: '#666' }}>Beheer je wedstrijden en deelnemers</div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button onClick={() => setShowAddModal(true)} style={styles.primaryButton}>+ Nieuwe wedstrijd</button>
+                <button onClick={() => { setSelectedCompetitionId(null); setCompCsvInput(''); }} style={styles.outlineButton}>Wis selectie</button>
               </div>
             </div>
-          </div>
-        </section>
 
-        {/* Deelnemers Beheer */}
-        <section className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Info size={16}/> Deelnemers Toevoegen</h3>
-          <div className="flex flex-col sm:flex-row gap-2 mb-6">
-            <input 
-              placeholder="Naam skipper..." 
-              value={newSkipper.naam}
-              onChange={(e) => setNewSkipper({...newSkipper, naam: e.target.value})}
-              className="flex-1 p-3 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-slate-400 outline-none"
-            />
-            <input 
-              placeholder="Club..." 
-              value={newSkipper.club}
-              onChange={(e) => setNewSkipper({...newSkipper, club: e.target.value})}
-              className="sm:w-40 p-3 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-slate-400 outline-none"
-            />
-            <button onClick={addParticipant} className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors">VOEG TOE</button>
-          </div>
-          
-          <div className="max-h-64 overflow-y-auto space-y-2 pr-2">
-            {Object.values(participants).length > 0 ? (
-              Object.values(participants).map(p => (
-                <div key={p.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg group">
-                  <span className="font-bold text-slate-700">{p.naam} <span className="text-slate-400 font-normal ml-2">({p.club})</span></span>
-                  <button 
-                    onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'participants', p.id))} 
-                    className="text-slate-300 hover:text-red-500 p-1 font-bold transition-colors"
-                  >
-                    Verwijder
-                  </button>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', justifyContent: 'center' }}>
+              <div style={{ flex: 1, maxWidth: '640px', border: '1px solid #f1f5f9', padding: '0.75rem', borderRadius: '0.8rem', background: '#fff' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', textAlign: 'center', fontWeight: 900 }}>Bestaan­de wedstrijden</h3>
+                <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {competitions.map(c => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem', borderRadius: '0.6rem', background: selectedCompetitionId === c.id ? '#f1f5ff' : '#fafafa', border: '1px solid #f3f4f6' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 900 }}>{c.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#666' }}>{c.date} — {c.location} <span style={{ marginLeft: '0.5rem', fontWeight: 900, color: c.status === 'actief' ? '#10b981' : '#94a3b8' }}>{c.status}</span></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button onClick={() => { setSelectedCompetitionId(c.id); }} style={styles.outlineButton}>Select</button>
+                        <button onClick={() => setActiveCompetition(c.id)} style={styles.outlineButton}>Maak actief</button>
+                        <button onClick={() => setCompetitionStatus(c.id, c.status === 'gepland' ? 'actief' : (c.status === 'actief' ? 'beëindigd' : 'gepland'))} style={styles.outlineButton}>Status</button>
+                        <button onClick={() => deleteCompetition(c.id)} style={{ padding: '0.45rem 0.8rem', borderRadius: '0.4rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                      </div>
+                    </div>
+                  ))}
+                  {competitions.length === 0 && <div style={{ color: '#666', padding: '0.5rem', textAlign: 'center' }}>Geen wedstrijden gevonden</div>}
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-slate-400 italic">Nog geen deelnemers in de lijst.</div>
+              </div>
+
+              <div style={{ width: '360px', border: '1px solid #f1f5f9', padding: '0.75rem', borderRadius: '0.8rem', background: '#fff' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontWeight: 900 }}>Geselecteerde wedstrijd</h3>
+                {!selectedCompetitionId && <div style={{ color: '#666', marginBottom: '0.5rem' }}>Selecteer een wedstrijd uit de lijst om deelnemers en onderdelen te beheren.</div>}
+                {selectedCompetitionId && (
+                  <>
+                    <div style={{ fontWeight: 900 }}>{competitions.find(c => c.id === selectedCompetitionId)?.name || '...'}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>
+                      {competitions.find(c => c.id === selectedCompetitionId)?.date} — {competitions.find(c => c.id === selectedCompetitionId)?.location}
+                    </div>
+
+                    {/* Onderdelen beheer */}
+                    <div style={{ marginBottom: '0.6rem' }}>
+                      <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>Onderdelen</div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <select id="select-onderdeel" style={{ flex: 1, padding: '0.45rem', borderRadius: '0.4rem', border: '1px solid #eee' }} defaultValue="">
+                          <option value="" disabled>Voeg onderdeel toe…</option>
+                          {POSSIBLE_ONDERDELEN.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <button
+                          onClick={() => {
+                            const sel = document.getElementById('select-onderdeel');
+                            if (!sel) return;
+                            const value = sel.value;
+                            if (!value) {
+                              setStatus({ type: 'error', msg: 'Selecteer een onderdeel' });
+                              return;
+                            }
+                            addOnderdeelToCompetition(selectedCompetitionId, value);
+                            sel.value = '';
+                          }}
+                          style={{ ...styles.primaryButton, padding: '0.45rem 0.8rem' }}
+                        >
+                          Voeg toe
+                        </button>
+                      </div>
+
+                      <div style={{ border: '1px solid #f3f4f6', borderRadius: '0.5rem', padding: '0.5rem', background: '#fafafa' }}>
+                        {(competitions.find(c => c.id === selectedCompetitionId)?.onderdelen || []).length === 0 && (
+                          <div style={{ color: '#666', padding: '0.5rem' }}>Geen onderdelen toegevoegd</div>
+                        )}
+
+                        {(competitions.find(c => c.id === selectedCompetitionId)?.onderdelen || []).map((od, idx, arr) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem', borderBottom: idx !== arr.length - 1 ? '1px solid #eee' : 'none' }}>
+                            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                              <div style={{ fontWeight: 900 }}>{idx + 1}.</div>
+                              <div style={{ fontWeight: 800 }}>{od}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.3rem' }}>
+                              <button onClick={() => moveOnderdeelCompetition(selectedCompetitionId, idx, idx - 1)} disabled={idx === 0} style={styles.outlineButton}>↑</button>
+                              <button onClick={() => moveOnderdeelCompetition(selectedCompetitionId, idx, idx + 1)} disabled={idx === arr.length - 1} style={styles.outlineButton}>↓</button>
+                              <button onClick={() => removeOnderdeelFromCompetition(selectedCompetitionId, idx)} style={{ padding: '0.35rem 0.5rem', borderRadius: '0.35rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>Import deelnemers (CSV)</div>
+                    <textarea placeholder="CSV: naam,club,events(sep ;)" value={compCsvInput} onChange={e => setCompCsvInput(e.target.value)} style={{ width: '100%', height: '100px', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <button onClick={() => { importParticipantsForCompetition(selectedCompetitionId, compCsvInput); setCompCsvInput(''); }} disabled={isProcessing} style={{ marginTop: '0.4rem', padding: '0.6rem', width: '100%', borderRadius: '0.5rem', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 900 }}>
+                      Importeer deelnemers
+                    </button>
+
+                    <hr style={{ margin: '0.75rem 0' }} />
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <div style={{ fontWeight: 900 }}>Deelnemers overzicht</div>
+                      <div style={{ fontSize: '0.85rem', color: '#666' }}>{Object.keys(participants).length} deelnemers</div>
+                    </div>
+
+                    <div style={{ maxHeight: '230px', overflowY: 'auto', borderTop: '1px solid #f3f4f6' }}>
+                      {Object.values(participants).map(p => (
+                        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 900 }}>{p.naam}</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666' }}>{p.club} — { (p.events || []).join(', ') }</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            {(p.events || []).map(ev => (
+                              <button key={ev} onClick={() => removeParticipantFromEvent(selectedCompetitionId, p.id, ev)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #eee', background: '#fff', cursor: 'pointer' }}>{ev}</button>
+                            ))}
+                            <button onClick={() => removeParticipantFromCompetition(selectedCompetitionId, p.id)} style={{ padding: '0.25rem 0.35rem', borderRadius: '0.35rem', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Verwijder</button>
+                          </div>
+                        </div>
+                      ))}
+                      {Object.keys(participants).length === 0 && <div style={{ color: '#666', padding: '0.5rem' }}>Geen deelnemers</div>}
+                    </div>
+                  </>
+                )}
+
+                {status.msg && <div style={{ marginTop: '0.6rem', color: status.type === 'error' ? '#dc2626' : '#10b981' }}>{status.msg}</div>}
+              </div>
+            </div>
+
+            {/* Add Competition Modal */}
+            {showAddModal && (
+              <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', zIndex: 1200 }}>
+                <div style={{ width: '520px', background: '#fff', borderRadius: '0.75rem', padding: '1rem', boxShadow: '0 10px 30px rgba(0,0,0,0.15)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>Nieuwe wedstrijd toevoegen</div>
+                    <button onClick={() => setShowAddModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 900 }}>✕</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <input placeholder="Naam" value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <input placeholder="Datum (YYYY-MM-DD)" value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <input placeholder="Locatie" value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid #eee' }} />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input type="checkbox" checked={newComp.setActive} onChange={e => setNewComp({...newComp, setActive: e.target.checked})} /> Stel actief
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <button onClick={handleAddCompetitionFromModal} style={{ ...styles.primaryButton, flex: 1 }}>Toevoegen</button>
+                      <button onClick={() => setShowAddModal(false)} style={{ ...styles.outlineButton, flex: 1 }}>Annuleer</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
-        </section>
+        )}
 
-        <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-blue-800 text-sm">
-          <strong>Tip:</strong> Alle wijzigingen die je hier maakt zijn onmiddellijk zichtbaar op de <strong>Live</strong> en <strong>Display</strong> schermen voor alle gebruikers.
-        </div>
-      </div>
-    </div>
-  );
-}
+        {view === 'display' && (
+          <div style={styles.displayOverlay}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+              <div>
+                <h1 style={{ fontSize: '1.8rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>{currentHeat?.onderdeel?.toUpperCase() || (activeTab === 'speed' ? "SPEED" : "FREESTYLE")}</h1>
+                <div style={{ color: '#2563eb', fontWeight: 900, fontSize: '0.8rem' }}>ROPESKIPPING LIVE</div>
+                {activeCompetition && <div style={{ marginTop: '0.25rem', fontSize: '0.9rem', fontWeight: 800 }}>{activeCompetition.name} — {activeCompetition.date} — {activeCompetition.location}</div>}
+              </div>
 
-/**
- * DEEL 3: DISPLAY DEEL
- */
-function DisplayView({ compData, participants, onBack }) {
-  if (!compData) return <div className="h-screen bg-black text-white flex items-center justify-center font-black text-4xl italic animate-pulse">Laden...</div>;
-
-  return (
-    <div className="h-screen bg-slate-950 text-white overflow-hidden flex flex-col p-8">
-      {/* Header */}
-      <div className="flex justify-between items-end border-b-8 border-blue-600 pb-8 mb-10">
-        <div>
-          <h2 className="text-3xl font-black text-blue-500 uppercase italic tracking-tighter mb-2">ROPESCORE PRO DISPLAY</h2>
-          <h1 className="text-8xl font-black tracking-tight leading-none uppercase">{compData.currentOnderdeel || 'Wachten...'}</h1>
-        </div>
-        <div className="text-right">
-          <div className="text-5xl font-black text-slate-500 uppercase italic mb-1">REEKS</div>
-          <div className="text-[12rem] font-black leading-[0.8]">{compData.currentHeat || '-'}</div>
-        </div>
-      </div>
-
-      {/* Grid voor velden */}
-      <div className="flex-1 grid grid-cols-2 gap-10">
-        {compData.slots?.map((s, idx) => {
-          const p = participants[s.skipperId];
-          return (
-            <div key={idx} className={`p-10 rounded-[2.5rem] flex items-center gap-14 transition-all ${s.empty ? 'bg-slate-900/40 border-4 border-dashed border-slate-800 opacity-40' : 'bg-slate-900 border-b-[12px] border-blue-700 shadow-2xl shadow-blue-900/20'}`}>
-              <div className="text-9xl font-black text-blue-600 opacity-90 min-w-[160px] text-center">{s.veld}</div>
-              <div className="overflow-hidden">
-                <div className="text-6xl font-black whitespace-nowrap overflow-hidden text-ellipsis uppercase tracking-tight mb-3">
-                  {p?.naam || (s.empty ? '' : '...')}
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <div style={{ textAlign: 'right', backgroundColor: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#64748b' }}>DEBUG GEPLAND</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>{currentHeat?.uur || "GEEN DATA"}</div>
                 </div>
-                <div className="text-4xl font-bold text-slate-500 uppercase tracking-wide">
-                  {p?.club || ''}
+
+                <div style={{ textAlign: 'right', backgroundColor: '#000', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, lineHeight: 1 }}>{currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+                  <div style={{ fontSize: '0.6rem', fontWeight: 800, opacity: 0.7 }}>LIVE TIJD</div>
                 </div>
               </div>
             </div>
-          );
-        })}
-      </div>
 
-      {/* Navigatie knopje (vrijwel onzichtbaar voor publiek) */}
-      <button 
-        onClick={onBack} 
-        className="fixed bottom-4 right-4 text-slate-800 hover:text-slate-600 transition-colors p-2"
-      >
-        <Settings size={24} />
-      </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.4rem 1rem', borderRadius: '0.6rem', marginBottom: '0.5rem', border: '1px solid #e2e8f0' }}>
+               <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#64748b' }}>REEKS</span>
+               <span style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1, color: '#0f172a' }}>{activeTab === 'speed' ? settings.currentSpeedHeat : settings.currentFreestyleHeat}</span>
+               {timeDifferenceInfo && (
+                  <div style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 900, backgroundColor: timeDifferenceInfo.isBehind ? '#fee2e2' : '#e6fffa', color: timeDifferenceInfo.isBehind ? '#dc2626' : '#065f46' }}>
+                    {timeDifferenceInfo.label}m vertraging
+                  </div>
+               )}
+            </div>
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem', overflow: 'hidden' }}>
+              {speedSlots.map((s, i) => (
+                <div key={i} style={{ 
+                  flex: 1, 
+                  display: 'grid', 
+                  gridTemplateColumns: '80px 1.5fr 1fr', 
+                  alignItems: 'center', 
+                  padding: '0 1rem', 
+                  borderRadius: '0.5rem', 
+                  border: '1px solid #f1f5f9',
+                  backgroundColor: s.empty ? 'rgba(0,0,0,0.02)' : '#fff',
+                  opacity: s.empty ? 0.3 : 1,
+                  boxShadow: s.empty ? 'none' : '0 1px 2px rgba(0,0,0,0.02)'
+                }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#2563eb' }}>{s.veld}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.naam || skippers[s.skipperId]?.naam || (s.empty ? '' : '...')}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{participants[s.skipperId]?.club || skippers[s.skipperId]?.club || ''}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setView('live')} style={{ position: 'absolute', top: '0.25rem', left: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.6rem', border: 'none', background: '#f1f5f9', borderRadius: '0.4rem', cursor: 'pointer' }}>Terug</button>
+          </div>
+        )}
+      </main>
     </div>
   );
-}
+};
+
+export default App;
