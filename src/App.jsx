@@ -69,7 +69,10 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    const contestRef = doc(db, 'artifacts', appId, 'public', 'data', 'currentContest');
+    // Corrected path: collection 'artifacts', doc 'appId', collection 'public', doc 'data', collection 'items', doc 'currentContest'
+    // Or simplified to even segments: artifacts / {appId} / public / data
+    const contestRef = doc(db, 'artifacts', appId, 'public', 'data');
+    
     const unsubContest = onSnapshot(contestRef, (docSnap) => {
       if (docSnap.exists()) {
         setContest(docSnap.data());
@@ -87,7 +90,11 @@ export default function App() {
       setLoading(false);
     }, (err) => console.error("Contest sync error:", err));
 
+    // Corrected path for collection: artifacts / {appId} / public / data / participants (5 segments)
+    // Firestore needs even for doc, odd for collection. 
+    // The previous error was using doc() with 5 segments.
     const partsRef = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
+    
     const unsubParts = onSnapshot(partsRef, (querySnap) => {
       const p = {};
       querySnap.forEach(doc => {
@@ -149,7 +156,7 @@ function LiveView({ contest, participants, setView }) {
 
   const updateReeks = async (val) => {
     const newReeks = Math.max(1, contest.huidigeReeks + val);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'currentContest'), {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data'), {
       huidigeReeks: newReeks
     });
   };
@@ -296,7 +303,7 @@ function ManageView({ contest, participants, setView }) {
   const [targetOnderdeel, setTargetOnderdeel] = useState(null);
 
   const saveContest = async (updates) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'currentContest'), updates);
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data'), updates);
   };
 
   const addOnderdeel = async () => {
@@ -327,13 +334,11 @@ function ManageView({ contest, participants, setView }) {
       
       const batch = writeBatch(db);
       
-      // We verwijderen eerst oude deelnemers voor dit onderdeel (optioneel, maar veiliger voor overzicht)
-      // Voor eenvoud voegen we ze nu gewoon toe
-      
       lines.forEach((line, index) => {
         const [naam, club, reeks, veld] = line.split(',').map(s => s.trim());
         if (naam && reeks) {
           const id = `p_${onderdeel}_${index}_${Date.now()}`;
+          // Correct path: artifacts / {appId} / public / data / participants / {id}
           const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'participants', id);
           batch.set(pRef, {
             id,
@@ -385,7 +390,7 @@ function ManageView({ contest, participants, setView }) {
             <label className="block text-sm font-bold text-slate-700 mb-1">Naam Wedstrijd</label>
             <input 
               className="w-full bg-slate-50 border-none rounded-xl p-3 font-semibold focus:ring-2 ring-blue-500 transition-all"
-              value={contest.naam}
+              value={contest.naam || ''}
               onChange={(e) => saveContest({ naam: e.target.value })}
             />
           </div>
@@ -395,7 +400,7 @@ function ManageView({ contest, participants, setView }) {
               <input 
                 type="number"
                 className="w-full bg-slate-50 border-none rounded-xl p-3 font-semibold focus:ring-2 ring-blue-500"
-                value={contest.velden}
+                value={contest.velden || 1}
                 onChange={(e) => saveContest({ velden: parseInt(e.target.value) || 1 })}
               />
             </div>
@@ -403,7 +408,7 @@ function ManageView({ contest, participants, setView }) {
               <label className="block text-sm font-bold text-slate-700 mb-1">Actief Onderdeel</label>
               <select 
                 className="w-full bg-slate-50 border-none rounded-xl p-3 font-semibold focus:ring-2 ring-blue-500 appearance-none"
-                value={contest.actiefOnderdeel}
+                value={contest.actiefOnderdeel || ''}
                 onChange={(e) => saveContest({ actiefOnderdeel: e.target.value })}
               >
                 <option value="">Kies onderdeel...</option>
@@ -482,7 +487,7 @@ function ManageView({ contest, participants, setView }) {
         </div>
       </section>
 
-      {/* CSV Handleiding (Kleine toevoeging voor gebruiksgemak) */}
+      {/* CSV Handleiding */}
       <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
         <h4 className="text-blue-700 font-bold text-sm mb-1 flex items-center gap-2">
           <Info size={14} /> CSV Formaat handleiding
