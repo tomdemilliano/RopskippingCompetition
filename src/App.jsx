@@ -7,11 +7,11 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, Plus, X, Calendar, MapPin, Users, Activity
+  Trash2, Upload, Plus, X, Calendar, MapPin, Users, Activity, Coffee
 } from 'lucide-react';
 
 /**
- * CONFIGURATIE & INITIALISATIE - BEHOUDEN VOLGENS JOUW INSTRUCTIES
+ * CONFIGURATIE & INITIALISATIE - BEHOUDEN (Environment Variables)
  */
 const getFirebaseConfig = () => {
   const rawConfig = import.meta.env.VITE_FIREBASE_CONFIG || import.meta.env.NEXT_PUBLIC_FIREBASE_CONFIG;
@@ -44,7 +44,6 @@ const App = () => {
   const [newComp, setNewComp] = useState({ name: '', date: '', location: '', events: [] });
   const [csvInput, setCsvInput] = useState('');
 
-  // Firebase Init
   useEffect(() => {
     const init = async () => {
       try {
@@ -60,7 +59,6 @@ const App = () => {
     init();
   }, []);
 
-  // Sync Data
   useEffect(() => {
     if (!isAuthReady || !db) return;
     const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition');
@@ -87,32 +85,43 @@ const App = () => {
   };
 
   const handleCsvUpload = async () => {
-    if (!csvInput || !showUploadModal) return;
+    if (!csvInput || !selectedCompetitionId || !showUploadModal) return;
     const batch = writeBatch(db);
     const rows = csvInput.split('\n').filter(r => r.trim());
     const event = showUploadModal;
-    const isFreestyle = event === 'Freestyle';
+    const eventKey = event.replace(/\s/g, '');
 
-    rows.forEach((row) => {
+    rows.forEach((row, index) => {
+      if (index === 0 && row.toLowerCase().includes('reeks')) return; // skip header
+
       const columns = row.split(',').map(s => s.trim());
       
-      if (isFreestyle) {
-        // Freestyle logica: reeks, naam, club, ...
-        const [reeks, naam, club] = columns;
-        if (!naam) return;
-        const pid = `p_${(naam + club).replace(/\s/g, '_').toLowerCase()}`;
+      if (event === 'Freestyle') {
+        // Structuur: reeks, uur, veld, club, skipper
+        const [reeks, uur, veld, club, skipper] = columns;
+        if (!reeks) return;
+
+        const isPause = (club?.toLowerCase() === 'pauze' || !skipper);
+        const pid = isPause ? `pause_${reeks}` : `p_${(skipper + club).replace(/\s/g, '_').toLowerCase()}`;
+        
         const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants', pid);
+        
         batch.set(pRef, {
-          id: pid, naam, club,
+          id: pid,
+          naam: isPause ? 'PAUZE' : skipper,
+          club: isPause ? '' : club,
+          isPause: isPause,
           events: arrayUnion(event),
-          [`reeks_${event.replace(/\s/g, '')}`]: reeks,
+          [`reeks_${eventKey}`]: reeks,
+          [`uur_${eventKey}`]: uur,
+          [`veld_${eventKey}`]: veld
         }, { merge: true });
+
       } else {
         // Speed/Endurance/DU/TU logica: reeks, onderdeel, uur, veld1_club, veld1_skipper, ...
         const reeks = columns[0];
         const uur = columns[2];
         
-        // Loop over velden (vanaf index 3, telkens 2 kolommen: club & skipper)
         for (let i = 3; i < columns.length; i += 2) {
           const club = columns[i];
           const naam = columns[i+1];
@@ -123,11 +132,11 @@ const App = () => {
             const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants', pid);
             
             batch.set(pRef, {
-              id: pid, naam, club,
+              id: pid, naam, club, isPause: false,
               events: arrayUnion(event),
-              [`reeks_${event.replace(/\s/g, '')}`]: reeks,
-              [`veld_${event.replace(/\s/g, '')}`]: veldNummer,
-              [`uur_${event.replace(/\s/g, '')}`]: uur
+              [`reeks_${eventKey}`]: reeks,
+              [`veld_${eventKey}`]: veldNummer,
+              [`uur_${eventKey}`]: uur
             }, { merge: true });
           }
         }
@@ -143,13 +152,13 @@ const App = () => {
     const pRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants', pId);
     if (eventName) {
       await updateDoc(pRef, { events: arrayRemove(eventName) });
-    } else if (window.confirm("Deelnemer volledig schrappen?")) {
+    } else if (window.confirm("Dit record (deelnemer of pauze) volledig schrappen?")) {
       await deleteDoc(pRef);
     }
   };
 
   const styles = {
-    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f4f7f9', color: '#334155', fontFamily: 'inherit' },
+    container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f4f7f9', color: '#334155' },
     header: { display: 'flex', justifyContent: 'space-between', padding: '1rem 2rem', background: '#fff', borderBottom: '1px solid #e2e8f0', alignItems: 'center' },
     card: { background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' },
     primaryBtn: { padding: '0.6rem 1.2rem', borderRadius: '8px', border: 'none', cursor: 'pointer', backgroundColor: '#2563eb', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' },
@@ -174,7 +183,6 @@ const App = () => {
       <main style={{ flex: 1, padding: '2rem', overflowY: 'auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '2rem', maxWidth: '1600px', margin: '0 auto' }}>
           
-          {/* Sidebar: Wedstrijden */}
           <aside>
             <button onClick={() => setShowAddCompModal(true)} style={{ ...styles.primaryBtn, width: '100%', marginBottom: '1rem', justifyContent: 'center' }}>
               <Plus size={20} /> Nieuwe Wedstrijd
@@ -187,18 +195,13 @@ const App = () => {
                   backgroundColor: selectedCompetitionId === c.id ? '#f0f7ff' : '#fff'
                 }}>
                   <div style={{ fontWeight: 800 }}>{c.name}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem' }}>
-                    <Calendar size={12}/> {c.date}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <MapPin size={12}/> {c.location}
-                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.4rem' }}><Calendar size={12}/> {c.date}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}><MapPin size={12}/> {c.location}</div>
                 </div>
               ))}
             </div>
           </aside>
 
-          {/* Content: Details & Deelnemers */}
           <section>
             {selectedComp ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -210,18 +213,13 @@ const App = () => {
                       {settings.activeCompetitionId === selectedComp.id ? 'Huidige Actieve Wedstrijd' : 'Stel in als Actief'}
                     </button>
                   </div>
-
                   <h3 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '1rem' }}>Beschikbare Onderdelen</h3>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     {POSSIBLE_ONDERDELEN.map(ond => {
                       const isActive = selectedComp.events?.includes(ond);
                       return (
                         <button key={ond} onClick={() => toggleEventInComp(ond)}
-                          style={{ ...styles.secondaryBtn, 
-                            backgroundColor: isActive ? '#2563eb' : '#fff', 
-                            color: isActive ? '#fff' : '#475569',
-                            borderColor: isActive ? '#2563eb' : '#cbd5e1' 
-                          }}>
+                          style={{ ...styles.secondaryBtn, backgroundColor: isActive ? '#2563eb' : '#fff', color: isActive ? '#fff' : '#475569' }}>
                           {isActive ? '✓ ' : '+ '} {ond}
                         </button>
                       );
@@ -229,12 +227,12 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* Overzicht per actief onderdeel */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
                   {selectedComp.events?.map(ond => {
-                    const ondParts = Object.values(participants).filter(p => p.events?.includes(ond));
-                    const keyName = ond.replace(/\s/g, '');
-                    const reeksen = new Set(ondParts.map(p => p[`reeks_${keyName}`])).size;
+                    const ondParts = Object.values(participants).filter(p => p.events?.includes(ond) && !p.isPause);
+                    const ondPauses = Object.values(participants).filter(p => p.events?.includes(ond) && p.isPause);
+                    const eventKey = ond.replace(/\s/g, '');
+                    const reeksen = new Set(Object.values(participants).filter(p => p.events?.includes(ond)).map(p => p[`reeks_${eventKey}`])).size;
                     
                     return (
                       <div key={ond} style={styles.card}>
@@ -250,51 +248,49 @@ const App = () => {
                             <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{ondParts.length}</div>
                           </div>
                           <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800 }}>REEKSEN</div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800 }}>TOTAAL REEKSEN</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{reeksen}</div>
                           </div>
                         </div>
+                        {ondPauses.length > 0 && <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#2563eb', fontWeight: 700 }}>Bevat {ondPauses.length} pauzes</div>}
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Tabel met alle deelnemers en hun onderdelen */}
                 <div style={styles.card}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    <h3 style={{ margin: 0, fontWeight: 900 }}>Deelnemerslijst</h3>
-                    <div style={styles.badge}><Users size={14}/> {Object.keys(participants).length} skippers</div>
-                  </div>
+                  <h3 style={{ margin: '0 0 1.5rem 0', fontWeight: 900 }}>Overzicht Deelnemers & Planning</h3>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b', borderBottom: '2px solid #f1f5f9' }}>
-                        <th style={{ padding: '1rem' }}>NAAM</th>
+                        <th style={{ padding: '1rem' }}>NAAM / TYPE</th>
                         <th style={{ padding: '1rem' }}>CLUB</th>
-                        <th style={{ padding: '1rem' }}>INGESCHREVEN ONDERDELEN</th>
+                        <th style={{ padding: '1rem' }}>ONDERDELEN & REEKSEN</th>
                         <th style={{ padding: '1rem', textAlign: 'right' }}>ACTIES</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.values(participants).map(p => (
-                        <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc' }}>
-                          <td style={{ padding: '1rem', fontWeight: 700 }}>{p.naam}</td>
+                      {Object.values(participants).sort((a,b) => a.naam.localeCompare(b.naam)).map(p => (
+                        <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc', backgroundColor: p.isPause ? '#fffbeb' : 'transparent' }}>
+                          <td style={{ padding: '1rem', fontWeight: 700 }}>
+                            {p.isPause ? <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#b45309' }}><Coffee size={14}/> PAUZE</span> : p.naam}
+                          </td>
                           <td style={{ padding: '1rem', color: '#64748b' }}>{p.club}</td>
                           <td style={{ padding: '1rem' }}>
                             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              {p.events?.map(ev => (
-                                <span key={ev} style={styles.badge}>
-                                  {ev}
-                                  <button onClick={() => removeParticipant(p.id, ev)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }}>
-                                    <X size={12} strokeWidth={3}/>
-                                  </button>
-                                </span>
-                              ))}
+                              {p.events?.map(ev => {
+                                const key = ev.replace(/\s/g, '');
+                                return (
+                                  <span key={ev} style={{ ...styles.badge, color: p.isPause ? '#b45309' : '#1e293b' }}>
+                                    {ev}: R{p[`reeks_${key}`]} {p[`veld_${key}`] ? `| ${p[`veld_${key}`]}` : ''}
+                                    <button onClick={() => removeParticipant(p.id, ev)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }}><X size={12}/></button>
+                                  </span>
+                                );
+                              })}
                             </div>
                           </td>
                           <td style={{ padding: '1rem', textAlign: 'right' }}>
-                            <button onClick={() => removeParticipant(p.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>
-                              <Trash2 size={18} />
-                            </button>
+                            <button onClick={() => removeParticipant(p.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={18} /></button>
                           </td>
                         </tr>
                       ))}
@@ -305,7 +301,7 @@ const App = () => {
             ) : (
               <div style={{ ...styles.card, textAlign: 'center', padding: '8rem 2rem', color: '#94a3b8' }}>
                 <Activity size={48} style={{ marginBottom: '1rem', opacity: 0.5 }}/>
-                <div>Selecteer een wedstrijd in de zijbalk om de deelnemers en onderdelen te beheren.</div>
+                <div>Selecteer een wedstrijd om te beheren.</div>
               </div>
             )}
           </section>
@@ -316,22 +312,16 @@ const App = () => {
       {showAddCompModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '450px' }}>
-            <h2 style={{ marginTop: 0, fontWeight: 900 }}>Nieuwe Wedstrijd Toevoegen</h2>
-            <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>Naam Wedstrijd</label>
-            <input style={styles.input} placeholder="bijv. Provinciaal Kampioenschap" onChange={e => setNewComp({...newComp, name: e.target.value})} />
-            
-            <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>Datum</label>
+            <h2 style={{ marginTop: 0, fontWeight: 900 }}>Nieuwe Wedstrijd</h2>
+            <input style={styles.input} placeholder="Naam Wedstrijd" onChange={e => setNewComp({...newComp, name: e.target.value})} />
             <input type="date" style={styles.input} onChange={e => setNewComp({...newComp, date: e.target.value})} />
-            
-            <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>Locatie</label>
-            <input style={styles.input} placeholder="bijv. Sporthal De Pinte" onChange={e => setNewComp({...newComp, location: e.target.value})} />
-            
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            <input style={styles.input} placeholder="Locatie" onChange={e => setNewComp({...newComp, location: e.target.value})} />
+            <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.primaryBtn, flex: 1, justifyContent: 'center' }} onClick={async () => {
                 if(!newComp.name) return;
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), { ...newComp, createdAt: new Date().toISOString() });
                 setShowAddCompModal(false);
-              }}>Wedstrijd Opslaan</button>
+              }}>Opslaan</button>
               <button style={{ ...styles.secondaryBtn, flex: 1 }} onClick={() => setShowAddCompModal(false)}>Annuleren</button>
             </div>
           </div>
@@ -342,25 +332,21 @@ const App = () => {
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '90%', maxWidth: '900px' }}>
-            <h2 style={{ marginTop: 0, fontWeight: 900 }}>CSV Import: {showUploadModal}</h2>
+            <h2 style={{ marginTop: 0, fontWeight: 900 }}>Import: {showUploadModal}</h2>
             <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
               {showUploadModal === 'Freestyle' 
-                ? "Formaat: reeks, naam, club" 
-                : "Formaat: reeks, onderdeel, uur, veld1_club, veld1_skipper, veld2_club, veld2_skipper, ..."}
+                ? "Formaat: reeks, uur, veld, club, skipper (Pauze: vul 'Pauze' in bij club of laat skipper leeg)" 
+                : "Formaat: reeks, onderdeel, uur, veld1_club, veld1_skipper, ..."}
             </p>
             <textarea 
-              style={{ ...styles.input, height: '350px', fontFamily: 'monospace', fontSize: '0.75rem', lineHeight: '1.4' }} 
-              placeholder="Plak hier je CSV data..."
+              style={{ ...styles.input, height: '350px', fontFamily: 'monospace', fontSize: '0.75rem' }} 
+              placeholder="Plak CSV data hier..."
               value={csvInput}
               onChange={e => setCsvInput(e.target.value)}
             />
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button style={{ ...styles.primaryBtn, flex: 1, justifyContent: 'center' }} onClick={handleCsvUpload}>
-                Importeer Deelnemers
-              </button>
-              <button style={{ ...styles.secondaryBtn, flex: 1 }} onClick={() => { setShowUploadModal(null); setCsvInput(''); }}>
-                Sluiten
-              </button>
+              <button style={{ ...styles.primaryBtn, flex: 1, justifyContent: 'center' }} onClick={handleCsvUpload}>Start Import</button>
+              <button style={{ ...styles.secondaryBtn, flex: 1 }} onClick={() => { setShowUploadModal(null); setCsvInput(''); }}>Sluiten</button>
             </div>
           </div>
         </div>
