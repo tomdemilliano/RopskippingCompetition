@@ -21,33 +21,7 @@ import {
 };
 */
 
-/**
- * CONFIGURATIE & INITIALISATIE
- * Haalt configuratie op uit Environment Variables (Vercel/Vite/Next.js)
- */
-const firebaseConfig = () => {
-  // Check voor verschillende mogelijke env namen afhankelijk van je framework
-  const envConfig = 
-    process.env.NEXT_PUBLIC_FIREBASE_CONFIG || 
-    process.env.VITE_FIREBASE_CONFIG || 
-    process.env.FIREBASE_CONFIG;
-
-  if (envConfig) {
-    try {
-      return JSON.parse(envConfig);
-    } catch (e) {
-      console.error("Fout bij parsen van FIREBASE_CONFIG env var:", e);
-    }
-  }
-
-  // Fallback voor de lokale preview omgeving
-  if (typeof __firebase_config !== 'undefined') {
-    return JSON.parse(__firebase_config);
-  }
-
-  return {};
-};
-
+const firebaseConfig = process.env.VITE_FIREBASE_CONFIG2;
 
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
