@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -45,17 +45,14 @@ const App = () => {
   const [settings, setSettings] = useState({ activeCompetitionId: null });
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modals
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(null);
   
-  // Data States
   const [newComp, setNewComp] = useState({ name: '', date: '', location: '', type: 'A Masters', events: COMPETITION_TYPES['A Masters'], status: 'open', eventOrder: {} });
   const [editCompData, setEditCompData] = useState({ name: '', date: '', location: '', type: '' });
   const [csvInput, setCsvInput] = useState('');
 
-  // --- Initialisatie ---
   useEffect(() => {
     const init = async () => {
       try {
@@ -69,7 +66,6 @@ const App = () => {
     init();
   }, []);
 
-  // --- Data Fetching ---
   useEffect(() => {
     if (!isAuthReady || !db) return;
     onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), (d) => d.exists() && setSettings(d.data()));
@@ -94,7 +90,6 @@ const App = () => {
 
   const selectedComp = competitions.find(c => c.id === selectedCompetitionId);
 
-  // --- Helpers ---
   const getCompDataStatus = (compId) => {
     const comp = competitions.find(c => c.id === compId);
     const parts = allParticipantsCounts[compId] || [];
@@ -116,12 +111,13 @@ const App = () => {
     ).sort((a, b) => (a.naam || '').localeCompare(b.naam || ''));
   }, [participants, searchTerm]);
 
-  // --- Handlers ---
   const handleUploadCsv = async () => {
     if (!csvInput || !showUploadModal) return;
     const eventName = showUploadModal;
     const lines = csvInput.split('\n');
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    if (lines.length < 2) return;
+
+    const headers = lines[0].split(',').map(h => h.trim());
     const batch = writeBatch(db);
     const currentParts = Object.values(participants);
 
@@ -131,24 +127,42 @@ const App = () => {
       const row = {};
       headers.forEach((h, idx) => row[h] = values[idx]);
 
-      const naam = row.naam || row.name;
-      const club = row.club;
-      const reeks = row.reeks || row.heat;
-      if (!naam) return;
+      const reeks = row['reeks'];
+      const uur = row['uur'];
+      
+      // Zoek alle velden (Club_veldX en Skipper_veldX)
+      for (let i = 1; i <= 10; i++) {
+        const clubKey = `Club_veld${i}`;
+        const skipperKey = `Skipper_veld${i}`;
+        
+        if (row[skipperKey] && row[skipperKey] !== '') {
+          const naam = row[skipperKey];
+          const club = row[clubKey] || '';
+          
+          const existing = currentParts.find(p => p.naam === naam);
+          const eventKey = `reeks_${eventName.replace(/\s/g, '')}`;
+          const detailKey = `detail_${eventName.replace(/\s/g, '')}`;
 
-      const existing = currentParts.find(p => p.naam === naam);
-      const eventKey = `reeks_${eventName.replace(/\s/g, '')}`;
+          const eventData = {
+            events: Array.from(new Set([...(existing?.events || []), eventName])),
+            [eventKey]: reeks || '',
+            [detailKey]: {
+              uur: uur || '',
+              veld: i,
+              club: club
+            }
+          };
 
-      if (existing) {
-        batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), {
-          events: Array.from(new Set([...(existing.events || []), eventName])),
-          [eventKey]: reeks || ''
-        });
-      } else {
-        const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
-        batch.set(newRef, { naam, club: club || '', events: [eventName], [eventKey]: reeks || '' });
+          if (existing) {
+            batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
+          } else {
+            const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
+            batch.set(newRef, { naam, club, ...eventData });
+          }
+        }
       }
     });
+
     await batch.commit();
     setCsvInput('');
     setShowUploadModal(null);
@@ -192,7 +206,6 @@ const App = () => {
     }
   };
 
-  // --- Styles ---
   const styles = {
     mainWrapper: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif' },
     header: { height: '60px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 1.5rem', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
@@ -203,7 +216,8 @@ const App = () => {
     btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
     btnSecondary: { background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' },
     input: { width: '100%', padding: '0.6rem', marginBottom: '1rem', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' },
-    modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }
+    modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+    csvExample: { background: '#f8fafc', padding: '0.5rem', borderRadius: '4px', fontSize: '0.65rem', color: '#475569', marginBottom: '0.5rem', border: '1px dashed #cbd5e1', overflowX: 'auto', whiteSpace: 'nowrap' }
   };
 
   return (
@@ -217,7 +231,6 @@ const App = () => {
       </header>
 
       <div style={styles.layoutGrid}>
-        {/* KOLOM 1: WEDSTRIJDEN */}
         <aside style={styles.column}>
           <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe</button>
           {competitions.map(c => {
@@ -240,11 +253,19 @@ const App = () => {
           })}
         </aside>
 
-        {/* KOLOM 2: ONDERDELEN */}
         <aside style={{ ...styles.column, backgroundColor: '#f8fafc' }}>
           <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold' }}>ONDERDELEN</div>
           {selectedComp ? sortedEvents.map((ond, idx) => {
-            const count = Object.values(participants).filter(p => p.events?.includes(ond)).length;
+            const partsInEvent = Object.values(participants).filter(p => p.events?.includes(ond));
+            const count = partsInEvent.length;
+            
+            // Bereken aantal reeksen en velden
+            const reeksen = new Set(partsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
+            const maxVeld = partsInEvent.reduce((max, p) => {
+                const veld = p[`detail_${ond.replace(/\s/g, '')}`]?.veld || 0;
+                return veld > max ? veld : max;
+            }, 0);
+
             return (
               <div key={ond} style={{ ...styles.card, borderLeft: `4px solid ${count > 0 ? '#10b981' : '#f59e0b'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -254,9 +275,14 @@ const App = () => {
                     <button onClick={() => moveEvent(ond, 'down')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer' }} disabled={idx === sortedEvents.length - 1}><ChevronDown size={14}/></button>
                   </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
-                  <span style={{ fontSize: '0.65rem' }}>{count} skippers</span>
-                  <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px' }} onClick={() => setShowUploadModal(ond)}>
+                
+                <div style={{ fontSize: '0.65rem', color: '#64748b', margin: '4px 0' }}>
+                  {reeksen.size} reeksen | {maxVeld || '-'} velden
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>{count} skippers</span>
+                  <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowUploadModal(ond)}>
                     <Upload size={10} style={{ marginRight: '4px' }}/> CSV
                   </button>
                 </div>
@@ -265,7 +291,6 @@ const App = () => {
           }) : <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#94a3b8' }}>Selecteer wedstrijd</div>}
         </aside>
 
-        {/* KOLOM 3: TABEL */}
         <main style={styles.contentArea}>
           {selectedComp ? (
             <>
@@ -314,7 +339,7 @@ const App = () => {
                           <td style={{ padding: '0.75rem' }}>
                             <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
                               {sortedEvents.filter(ev => p.events?.includes(ev)).map(ev => (
-                                <span key={ev} style={{ fontSize: '0.6rem', background: '#f1f5f9', padding: '2px 4px', borderRadius: '4px' }}>{ev.charAt(0)}</span>
+                                <span key={ev} title={`${ev} (Reeks ${p['reeks_'+ev.replace(/\s/g, '')]})`} style={{ fontSize: '0.6rem', background: '#f1f5f9', padding: '2px 4px', borderRadius: '4px' }}>{ev.charAt(0)}</span>
                               ))}
                             </div>
                           </td>
@@ -338,9 +363,31 @@ const App = () => {
       {/* --- Modals --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
-          <div style={{ ...styles.card, width: '500px' }}>
-            <h3 style={{ marginTop: 0 }}>Deelnemers laden voor: {showUploadModal}</h3>
-            <textarea style={{ ...styles.input, height: '200px', fontFamily: 'monospace' }} value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder="naam,club,reeks" />
+          <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Laden voor: {showUploadModal}</h3>
+              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowUploadModal(null)} />
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.3rem', display: 'flex', alignItems: 'center' }}>
+                <Info size={14} style={{ marginRight: '4px' }} /> Verplichte CSV Structuur:
+              </div>
+              <div style={styles.csvExample}>
+                reeks,onderdeel,uur,Club_veld1,Skipper_veld1,Club_veld2,Skipper_veld2,...,Club_veld10,Skipper_veld10
+              </div>
+              <div style={{ ...styles.csvExample, background: '#fff', borderStyle: 'solid', color: '#94a3b8' }}>
+                1,{showUploadModal},09:00,Club A,Janssen P.,Club B,Peeters L.,...
+              </div>
+            </div>
+
+            <textarea 
+              style={{ ...styles.input, height: '250px', fontFamily: 'monospace', fontSize: '0.75rem' }} 
+              value={csvInput} 
+              onChange={e => setCsvInput(e.target.value)} 
+              placeholder="Plak hier de CSV inhoud (inclusief headers)..." 
+            />
+            
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUploadCsv}>Importeren</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowUploadModal(null)}>Annuleren</button>
