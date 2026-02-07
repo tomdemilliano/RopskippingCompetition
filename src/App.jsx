@@ -44,10 +44,13 @@ const App = () => {
   const [allParticipantsCounts, setAllParticipantsCounts] = useState({});
   const [settings, setSettings] = useState({ activeCompetitionId: null });
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Modal States
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(null);
   
+  // Form States
   const [newComp, setNewComp] = useState({ name: '', date: '', location: '', type: 'A Masters', events: COMPETITION_TYPES['A Masters'], status: 'open', eventOrder: {} });
   const [editCompData, setEditCompData] = useState({ name: '', date: '', location: '', type: '' });
 
@@ -102,9 +105,23 @@ const App = () => {
     return [...selectedComp.events].sort((a, b) => (order[a] || 0) - (order[b] || 0));
   }, [selectedComp]);
 
+  // Actions
+  const handleCreateComp = async () => {
+    if (!newComp.name) return alert("Naam is verplicht");
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), newComp);
+    setShowAddCompModal(false);
+    setNewComp({ name: '', date: '', location: '', type: 'A Masters', events: COMPETITION_TYPES['A Masters'], status: 'open', eventOrder: {} });
+  };
+
+  const handleUpdateComp = async () => {
+    const updatedData = { ...editCompData, events: COMPETITION_TYPES[editCompData.type] };
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id), updatedData);
+    setShowEditCompModal(false);
+  };
+
   const handleDeleteComp = async () => {
     if (!selectedComp) return;
-    if (window.confirm(`Weet je zeker dat je de wedstrijd "${selectedComp.name}" en ALLE deelnemers wilt verwijderen?`)) {
+    if (window.confirm(`Weet je zeker dat je "${selectedComp.name}" wilt verwijderen?`)) {
       const batch = writeBatch(db);
       const pSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
       pSnap.forEach(d => batch.delete(d.ref));
@@ -205,7 +222,7 @@ const App = () => {
           }) : <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#94a3b8' }}>Selecteer wedstrijd</div>}
         </aside>
 
-        {/* KOLOM 3: DEELNEMERS GRID */}
+        {/* KOLOM 3: TABEL */}
         <main style={styles.contentArea}>
           {selectedComp ? (
             <>
@@ -216,7 +233,10 @@ const App = () => {
                     <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{selectedComp.type} | {selectedComp.location}</p>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button style={styles.btnSecondary} onClick={() => setShowEditCompModal(true)}><Edit2 size={16}/></button>
+                    <button style={styles.btnSecondary} onClick={() => {
+                        setEditCompData({ name: selectedComp.name, date: selectedComp.date, location: selectedComp.location, type: selectedComp.type });
+                        setShowEditCompModal(true);
+                    }}><Edit2 size={16}/></button>
                     <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={handleDeleteComp}><Trash2 size={16}/></button>
                     <button style={{ ...styles.btnPrimary, background: settings.activeCompetitionId === selectedComp.id ? '#10b981' : '#2563eb' }} 
                       onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: selectedComp.id })}>
@@ -269,7 +289,68 @@ const App = () => {
           ) : <div style={{ textAlign: 'center', padding: '10rem', color: '#94a3b8' }}>Selecteer een wedstrijd aan de linkerkant.</div>}
         </main>
       </div>
-      {/* Modals voor Add/Edit blijven analoog aan voorgaande versies */}
+
+      {/* MODAL: NIEUWE WEDSTRIJD */}
+      {showAddCompModal && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.card, width: '450px' }}>
+            <h3 style={{ marginTop: 0 }}>Nieuwe Wedstrijd</h3>
+            <label style={{ fontSize: '0.8rem' }}>Naam</label>
+            <input style={styles.input} value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} placeholder="Naam" />
+            
+            <label style={{ fontSize: '0.8rem' }}>Type Wedstrijd</label>
+            <select style={styles.input} value={newComp.type} onChange={e => setNewComp({...newComp, type: e.target.value, events: COMPETITION_TYPES[e.target.value]})}>
+              {Object.keys(COMPETITION_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.8rem' }}>Datum</label>
+                <input type="date" style={styles.input} value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem' }}>Locatie</label>
+                <input style={styles.input} value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} placeholder="Stad" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleCreateComp}>Aanmaken</button>
+              <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowAddCompModal(false)}>Annuleren</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: WEDSTRIJD AANPASSEN */}
+      {showEditCompModal && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.card, width: '450px' }}>
+            <h3 style={{ marginTop: 0 }}>Wedstrijd Aanpassen</h3>
+            <label style={{ fontSize: '0.8rem' }}>Naam</label>
+            <input style={styles.input} value={editCompData.name} onChange={e => setEditCompData({...editCompData, name: e.target.value})} />
+            
+            <label style={{ fontSize: '0.8rem' }}>Type Wedstrijd</label>
+            <select style={styles.input} value={editCompData.type} onChange={e => setEditCompData({...editCompData, type: e.target.value})}>
+              {Object.keys(COMPETITION_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.8rem' }}>Datum</label>
+                <input type="date" style={styles.input} value={editCompData.date} onChange={e => setEditCompData({...editCompData, date: e.target.value})} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem' }}>Locatie</label>
+                <input style={styles.input} value={editCompData.location} onChange={e => setEditCompData({...editCompData, location: e.target.value})} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUpdateComp}>Opslaan</button>
+              <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowEditCompModal(false)}>Annuleren</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
