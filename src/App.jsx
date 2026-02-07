@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, Plus, X, Calendar, MapPin, Users, Activity, Coffee, Search, CheckCircle2, AlertCircle, Archive, Star
+  Trash2, Upload, Plus, X, Calendar, MapPin, Users, Activity, Coffee, Search, CheckCircle2, AlertCircle, Archive, Star, Edit2
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -37,8 +37,10 @@ const App = () => {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddCompModal, setShowAddCompModal] = useState(false);
+  const [showEditCompModal, setShowEditCompModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(null);
   const [newComp, setNewComp] = useState({ name: '', date: '', location: '', events: [], status: 'open', eventOrder: {} });
+  const [editCompData, setEditCompData] = useState({ name: '', date: '', location: '' });
   const [csvInput, setCsvInput] = useState('');
 
   // Firebase Init
@@ -69,7 +71,7 @@ const App = () => {
     if (!isAuthReady || !selectedCompetitionId) { setParticipants({}); return; }
     return onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants'), s => {
       const d = {}; s.forEach(doc => d[doc.id] = doc.data());
-      setParticipants(d);
+      d && setParticipants(d);
     });
   }, [selectedCompetitionId, isAuthReady]);
 
@@ -77,10 +79,35 @@ const App = () => {
     const term = searchTerm.toLowerCase();
     return Object.values(participants).filter(p => 
       p.naam?.toLowerCase().includes(term) || p.club?.toLowerCase().includes(term)
-    ).sort((a, b) => a.naam.localeCompare(b.naam));
+    ).sort((a, b) => (a.naam || "").localeCompare(b.naam || ""));
   }, [participants, searchTerm]);
 
   const selectedComp = competitions.find(c => c.id === selectedCompetitionId);
+
+  // Open edit modal with current values
+  const handleOpenEdit = () => {
+    if (selectedComp) {
+      setEditCompData({
+        name: selectedComp.name || '',
+        date: selectedComp.date || '',
+        location: selectedComp.location || ''
+      });
+      setShowEditCompModal(true);
+    }
+  };
+
+  const handleUpdateCompetition = async () => {
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id), {
+        name: editCompData.name,
+        date: editCompData.date,
+        location: editCompData.location
+      });
+      setShowEditCompModal(false);
+    } catch (e) {
+      console.error("Fout bij bijwerken:", e);
+    }
+  };
 
   const getStatus = (c) => {
     if (c.status === 'finished') return { label: 'AFGELOPEN', color: '#64748b' };
@@ -103,7 +130,9 @@ const App = () => {
     card: { background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '1rem' },
     tableWrapper: { background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' },
     btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
-    btnSecondary: { background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' }
+    btnSecondary: { background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' },
+    modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+    input: { width: '100%', padding: '0.5rem', marginBottom: '1rem', borderRadius: '4px', border: '1px solid #cbd5e1' }
   };
 
   return (
@@ -117,7 +146,6 @@ const App = () => {
       </header>
 
       <div style={styles.layoutGrid}>
-        {/* SIDEBAR */}
         <aside style={styles.sidebar}>
           <button style={{ ...styles.btnPrimary, width: '100%', marginBottom: '1rem' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe Wedstrijd</button>
           {competitions.map(c => {
@@ -141,15 +169,17 @@ const App = () => {
           })}
         </aside>
 
-        {/* MAIN CONTENT */}
         <main style={styles.contentArea}>
           {selectedComp ? (
             <>
-              {/* Header Card */}
               <div style={styles.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ margin: 0 }}>{selectedComp.name}</h2>
+                  <div>
+                    <h2 style={{ margin: 0 }}>{selectedComp.name}</h2>
+                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>{selectedComp.date} • {selectedComp.location}</div>
+                  </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button style={styles.btnSecondary} onClick={handleOpenEdit} title="Bewerken"><Edit2 size={16}/></button>
                     <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={() => { /* Delete logic */ }}><Trash2 size={16}/></button>
                     <button 
                       style={{ ...styles.btnPrimary, opacity: getStatus(selectedComp).canActivate ? 1 : 0.5 }}
@@ -162,7 +192,6 @@ const App = () => {
                 </div>
               </div>
 
-              {/* Onderdelen Balk (Compacter & Horizontaal) */}
               <div style={styles.eventStrip}>
                 {POSSIBLE_ONDERDELEN.map(ond => {
                   const isActive = selectedComp.events?.includes(ond);
@@ -183,85 +212,4 @@ const App = () => {
                         {isActive && <div style={{ fontSize: '0.65rem', color: '#64748b' }}>{pCount} skippers • {rCount} reeksen</div>}
                       </div>
                       {isActive && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid #eee', paddingLeft: '8px' }}>
-                          <span style={{ fontSize: '0.6rem', fontWeight: 'bold' }}>#</span>
-                          <input type="number" style={{ width: '30px', fontSize: '0.75rem', textAlign: 'center' }} 
-                            value={selectedComp.eventOrder?.[ond] || ''} 
-                            onChange={(e) => updateEventOrder(ond, e.target.value)} 
-                          />
-                          <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px' }} onClick={() => setShowUploadModal(ond)}><Upload size={12}/></button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Deelnemers Tabel */}
-              <div style={styles.tableWrapper}>
-                <div style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '6px', width: '300px' }}>
-                    <Search size={14} color="#64748b" />
-                    <input style={{ border: 'none', background: 'none', marginLeft: '0.5rem', outline: 'none', fontSize: '0.85rem', width: '100%' }} 
-                      placeholder="Zoek op naam of club..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>{filteredParticipants.length} Deelnemers</div>
-                </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead style={{ position: 'sticky', top: 0, background: '#fff', boxShadow: '0 1px 0 #eee' }}>
-                      <tr style={{ textAlign: 'left', fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>
-                        <th style={{ padding: '0.75rem' }}>Naam</th>
-                        <th style={{ padding: '0.75rem' }}>Club</th>
-                        <th style={{ padding: '0.75rem' }}>Planning</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'right' }}>Actie</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredParticipants.map(p => (
-                        <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc' }}>
-                          <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', fontWeight: 'bold' }}>{p.isPause ? '☕ PAUZE' : p.naam}</td>
-                          <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', color: '#64748b' }}>{p.club}</td>
-                          <td style={{ padding: '0.6rem 0.75rem' }}>
-                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                              {p.events?.map(ev => (
-                                <span key={ev} style={{ fontSize: '0.6rem', background: '#f1f5f9', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' }}>
-                                  {ev.charAt(0)}: R{p[`reeks_${ev.replace(/\s/g, '')}`]}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
-                            <button style={{ color: '#ef4444', border: 'none', background: 'none' }} onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id))}><X size={14}/></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={{ ...styles.card, textAlign: 'center', padding: '10rem' }}>Selecteer een wedstrijd in het menu links.</div>
-          )}
-        </main>
-      </div>
-
-      {/* MODALS (Verkort voor overzicht) */}
-      {showUploadModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ ...styles.card, width: '600px' }}>
-            <h3>Import {showUploadModal}</h3>
-            <textarea style={{ width: '100%', height: '200px' }} value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder="Plak CSV..." />
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-              <button style={styles.btnPrimary} onClick={() => { /* CSV Logic */ }}>Importeer</button>
-              <button style={styles.btnSecondary} onClick={() => setShowUploadModal(null)}>Sluiten</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default App;
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid #eee',
