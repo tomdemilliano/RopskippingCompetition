@@ -34,6 +34,12 @@ const COMPETITION_TYPES = {
   'mini Teams': ['SR Speed Relay', 'DD Speed Relay', 'SR Team Freestyle', 'DD Team Freestyle']
 };
 
+// Hulpmiddel om te checken of het een speciaal freestyle-onderdeel is
+const isFreestyleType = (eventName) => {
+  const specialTypes = ['Freestyle', 'SR2', 'SR4', 'DD3', 'DD4', 'SR Team Freestyle', 'DD Team Freestyle'];
+  return specialTypes.includes(eventName);
+};
+
 const App = () => {
   const [user, setUser] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -114,6 +120,7 @@ const App = () => {
   const handleUploadCsv = async () => {
     if (!csvInput || !showUploadModal) return;
     const eventName = showUploadModal;
+    const isFreestyle = isFreestyleType(eventName);
     const lines = csvInput.split('\n');
     if (lines.length < 2) return;
 
@@ -127,30 +134,23 @@ const App = () => {
       const row = {};
       headers.forEach((h, idx) => row[h] = values[idx]);
 
-      const reeks = row['reeks'];
-      const uur = row['uur'];
-      
-      // Zoek alle velden (Club_veldX en Skipper_veldX)
-      for (let i = 1; i <= 10; i++) {
-        const clubKey = `Club_veld${i}`;
-        const skipperKey = `Skipper_veld${i}`;
-        
-        if (row[skipperKey] && row[skipperKey] !== '') {
-          const naam = row[skipperKey];
-          const club = row[clubKey] || '';
-          
-          const existing = currentParts.find(p => p.naam === naam);
-          const eventKey = `reeks_${eventName.replace(/\s/g, '')}`;
-          const detailKey = `detail_${eventName.replace(/\s/g, '')}`;
+      const eventKey = `reeks_${eventName.replace(/\s/g, '')}`;
+      const detailKey = `detail_${eventName.replace(/\s/g, '')}`;
 
+      if (isFreestyle) {
+        // Structuur: reeks, uur, veld, club, skipper
+        const naam = row['skipper'];
+        const club = row['club'] || '';
+        const reeks = row['reeks'] || '';
+        const uur = row['uur'] || '';
+        const veld = parseInt(row['veld']) || 1;
+
+        if (naam) {
+          const existing = currentParts.find(p => p.naam === naam);
           const eventData = {
             events: Array.from(new Set([...(existing?.events || []), eventName])),
-            [eventKey]: reeks || '',
-            [detailKey]: {
-              uur: uur || '',
-              veld: i,
-              club: club
-            }
+            [eventKey]: reeks,
+            [detailKey]: { uur, veld, club }
           };
 
           if (existing) {
@@ -158,6 +158,38 @@ const App = () => {
           } else {
             const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
             batch.set(newRef, { naam, club, ...eventData });
+          }
+        }
+      } else {
+        // Standaard structuur met 10 velden
+        const reeks = row['reeks'];
+        const uur = row['uur'];
+        
+        for (let i = 1; i <= 10; i++) {
+          const clubKey = `Club_veld${i}`;
+          const skipperKey = `Skipper_veld${i}`;
+          
+          if (row[skipperKey] && row[skipperKey] !== '') {
+            const naam = row[skipperKey];
+            const club = row[clubKey] || '';
+            
+            const existing = currentParts.find(p => p.naam === naam);
+            const eventData = {
+              events: Array.from(new Set([...(existing?.events || []), eventName])),
+              [eventKey]: reeks || '',
+              [detailKey]: {
+                uur: uur || '',
+                veld: i,
+                club: club
+              }
+            };
+
+            if (existing) {
+              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
+            } else {
+              const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
+              batch.set(newRef, { naam, club, ...eventData });
+            }
           }
         }
       }
@@ -258,6 +290,7 @@ const App = () => {
           {selectedComp ? sortedEvents.map((ond, idx) => {
             const partsInEvent = Object.values(participants).filter(p => p.events?.includes(ond));
             const count = partsInEvent.length;
+            const isSpecial = isFreestyleType(ond);
             
             // Bereken aantal reeksen en velden
             const reeksen = new Set(partsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
@@ -277,7 +310,7 @@ const App = () => {
                 </div>
                 
                 <div style={{ fontSize: '0.65rem', color: '#64748b', margin: '4px 0' }}>
-                  {reeksen.size} reeksen | {maxVeld || '-'} velden
+                  {reeksen.size} reeksen {!isSpecial && `| ${maxVeld || '-'} velden`}
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', alignItems: 'center' }}>
@@ -374,10 +407,14 @@ const App = () => {
                 <Info size={14} style={{ marginRight: '4px' }} /> Verplichte CSV Structuur:
               </div>
               <div style={styles.csvExample}>
-                reeks,onderdeel,uur,Club_veld1,Skipper_veld1,Club_veld2,Skipper_veld2,...,Club_veld10,Skipper_veld10
+                {isFreestyleType(showUploadModal) 
+                  ? "reeks, uur, veld, club, skipper"
+                  : "reeks,onderdeel,uur,Club_veld1,Skipper_veld1,Club_veld2,Skipper_veld2,...,Club_veld10,Skipper_veld10"}
               </div>
               <div style={{ ...styles.csvExample, background: '#fff', borderStyle: 'solid', color: '#94a3b8' }}>
-                1,{showUploadModal},09:00,Club A,Janssen P.,Club B,Peeters L.,...
+                {isFreestyleType(showUploadModal)
+                  ? "1,09:00,1,Club A,Janssen P."
+                  : `1,${showUploadModal},09:00,Club A,Janssen P.,Club B,Peeters L.,...`}
               </div>
             </div>
 
