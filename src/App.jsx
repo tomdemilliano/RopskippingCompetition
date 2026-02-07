@@ -212,4 +212,117 @@ const App = () => {
                         {isActive && <div style={{ fontSize: '0.65rem', color: '#64748b' }}>{pCount} skippers • {rCount} reeksen</div>}
                       </div>
                       {isActive && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid #eee',
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid #eee', paddingLeft: '8px' }}>
+                          <span style={{ fontSize: '0.6rem', fontWeight: 'bold' }}>#</span>
+                          <input type="number" style={{ width: '30px', fontSize: '0.75rem', textAlign: 'center' }} 
+                            value={selectedComp.eventOrder?.[ond] || ''} 
+                            onChange={(e) => updateEventOrder(ond, e.target.value)} 
+                          />
+                          <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px' }} onClick={() => setShowUploadModal(ond)}><Upload size={12}/></button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={styles.tableWrapper}>
+                <div style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '6px', width: '300px' }}>
+                    <Search size={14} color="#64748b" />
+                    <input style={{ border: 'none', background: 'none', marginLeft: '0.5rem', outline: 'none', fontSize: '0.85rem', width: '100%' }} 
+                      placeholder="Zoek op naam of club..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>{filteredParticipants.length} Deelnemers</div>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#fff', boxShadow: '0 1px 0 #eee' }}>
+                      <tr style={{ textAlign: 'left', fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '0.75rem' }}>Naam</th>
+                        <th style={{ padding: '0.75rem' }}>Club</th>
+                        <th style={{ padding: '0.75rem' }}>Planning</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'right' }}>Actie</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredParticipants.map(p => (
+                        <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', fontWeight: 'bold' }}>{p.isPause ? '☕ PAUZE' : p.naam}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', color: '#64748b' }}>{p.club}</td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {p.events?.map(ev => (
+                                <span key={ev} style={{ fontSize: '0.6rem', background: '#f1f5f9', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                  {ev.charAt(0)}: R{p[`reeks_${ev.replace(/\s/g, '')}`]}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
+                            <button style={{ color: '#ef4444', border: 'none', background: 'none' }} onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id))}><X size={14}/></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ ...styles.card, textAlign: 'center', padding: '10rem' }}>Selecteer een wedstrijd in het menu links.</div>
+          )}
+        </main>
+      </div>
+
+      {/* EDIT MODAL */}
+      {showEditCompModal && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.card, width: '400px' }}>
+            <h3 style={{ marginTop: 0 }}>Wedstrijd Bewerken</h3>
+            <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Naam</label>
+            <input 
+              style={styles.input} 
+              value={editCompData.name} 
+              onChange={e => setEditCompData({...editCompData, name: e.target.value})}
+            />
+            <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Datum</label>
+            <input 
+              style={styles.input} 
+              type="text"
+              placeholder="bijv. 12 Okt 2024"
+              value={editCompData.date} 
+              onChange={e => setEditCompData({...editCompData, date: e.target.value})}
+            />
+            <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Locatie</label>
+            <input 
+              style={styles.input} 
+              value={editCompData.location} 
+              onChange={e => setEditCompData({...editCompData, location: e.target.value})}
+            />
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUpdateCompetition}>Opslaan</button>
+              <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowEditCompModal(false)}>Annuleren</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UPLOAD MODAL */}
+      {showUploadModal && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.card, width: '600px' }}>
+            <h3>Import {showUploadModal}</h3>
+            <textarea style={{ width: '100%', height: '200px', padding: '0.5rem' }} value={csvInput} onChange={e => setCsvInput(e.target.value)} placeholder="Plak CSV..." />
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button style={styles.btnPrimary} onClick={() => { /* CSV Logic */ }}>Importeer</button>
+              <button style={styles.btnSecondary} onClick={() => setShowUploadModal(null)}>Sluiten</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
