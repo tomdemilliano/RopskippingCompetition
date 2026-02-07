@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, deleteDoc, arrayRemove, arrayUnion, addDoc, getDocs
+  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, deleteDoc, arrayRemove, arrayUnion, addDoc, getDocs, query
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged 
@@ -24,7 +24,6 @@ const firebaseConfig = getFirebaseConfig();
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'ropescore-pro-v1';
 
-// Definitie van types en bijbehorende onderdelen
 const COMPETITION_TYPES = {
   'A Masters': ['Speed', 'Endurance', 'Freestyle', 'Triple under'],
   'B/C Masters': ['Speed', 'Endurance', 'Freestyle'],
@@ -53,7 +52,6 @@ const App = () => {
   const [editCompData, setEditCompData] = useState({ name: '', date: '', location: '', type: '' });
   const [csvInput, setCsvInput] = useState('');
 
-  // Firebase Init
   useEffect(() => {
     const init = async () => {
       try {
@@ -67,7 +65,6 @@ const App = () => {
     init();
   }, []);
 
-  // Sync Competitions
   useEffect(() => {
     if (!isAuthReady || !db) return;
     onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), (d) => d.exists() && setSettings(d.data()));
@@ -76,7 +73,6 @@ const App = () => {
     });
   }, [isAuthReady]);
 
-  // Sync Participants
   useEffect(() => {
     if (!isAuthReady || !selectedCompetitionId) { setParticipants({}); return; }
     return onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedCompetitionId, 'participants'), s => {
@@ -94,6 +90,42 @@ const App = () => {
 
   const selectedComp = competitions.find(c => c.id === selectedCompetitionId);
 
+  // LOGICA VOOR VERWIJDEREN
+  const handleDeleteComp = async () => {
+    if (!selectedComp) return;
+    
+    const confirmDelete = window.confirm(`Weet je zeker dat je de wedstrijd "${selectedComp.name}" en ALLE bijbehorende deelnemers wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`);
+    
+    if (confirmDelete) {
+      try {
+        const batch = writeBatch(db);
+        
+        // 1. Haal alle deelnemers op van deze wedstrijd
+        const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants');
+        const participantsSnap = await getDocs(participantsRef);
+        
+        // 2. Voeg elke deelnemer toe aan de batch om te verwijderen
+        participantsSnap.forEach((participantDoc) => {
+          batch.delete(participantDoc.ref);
+        });
+        
+        // 3. Voeg de wedstrijd zelf toe aan de batch
+        const compRef = doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id);
+        batch.delete(compRef);
+        
+        // 4. Voer de batch uit
+        await batch.commit();
+        
+        // 5. Reset selectie
+        setSelectedCompetitionId(null);
+        alert('Wedstrijd succesvol verwijderd.');
+      } catch (e) {
+        console.error("Fout bij verwijderen:", e);
+        alert('Er is een fout opgetreden bij het verwijderen.');
+      }
+    }
+  };
+
   const handleEditClick = () => {
     setEditCompData({
       name: selectedComp.name,
@@ -107,7 +139,7 @@ const App = () => {
   const handleUpdateComp = async () => {
     const updatedData = {
       ...editCompData,
-      events: COMPETITION_TYPES[editCompData.type] // Update onderdelen op basis van type
+      events: COMPETITION_TYPES[editCompData.type]
     };
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id), updatedData);
     setShowEditCompModal(false);
@@ -116,12 +148,6 @@ const App = () => {
   const handleCreateComp = async () => {
     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), newComp);
     setShowAddCompModal(false);
-  };
-
-  const getStatus = (c) => {
-    if (c.status === 'finished') return { label: 'AFGELOPEN', color: '#64748b' };
-    if (!c.events || c.events.length === 0) return { label: 'LEEG', color: '#ef4444', canActivate: false };
-    return { label: 'KLAAR', color: '#10b981', canActivate: true };
   };
 
   const updateEventOrder = async (eventName, order) => {
@@ -183,8 +209,8 @@ const App = () => {
                     <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{selectedComp.date} | {selectedComp.location}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button style={{ ...styles.btnSecondary, color: '#2563eb' }} onClick={handleEditClick}><Edit2 size={16}/></button>
-                    <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={() => { /* Delete */ }}><Trash2 size={16}/></button>
+                    <button style={{ ...styles.btnSecondary, color: '#2563eb' }} onClick={handleEditClick} title="Bewerken"><Edit2 size={16}/></button>
+                    <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={handleDeleteComp} title="Verwijderen"><Trash2 size={16}/></button>
                     <button 
                       style={styles.btnPrimary} 
                       onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: selectedComp.id })}
@@ -195,7 +221,6 @@ const App = () => {
                 </div>
               </div>
 
-              {/* Dynamische Onderdelen Balk op basis van type */}
               <div style={styles.eventStrip}>
                 {selectedComp.events?.map(ond => {
                   const pCount = Object.values(participants).filter(p => p.events?.includes(ond) && !p.isPause).length;
@@ -215,15 +240,46 @@ const App = () => {
                 })}
               </div>
 
-              {/* Tabel */}
               <div style={styles.tableWrapper}>
                 <div style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '6px', width: '300px' }}>
                     <Search size={14} color="#64748b" />
                     <input style={{ border: 'none', background: 'none', marginLeft: '0.5rem', outline: 'none' }} placeholder="Zoek op naam of club..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                   </div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>{filteredParticipants.length} Deelnemers</div>
                 </div>
-                {/* Tabel content... (ongewijzigd) */}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#fff' }}>
+                      <tr style={{ textAlign: 'left', fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '0.75rem' }}>Naam</th>
+                        <th style={{ padding: '0.75rem' }}>Club</th>
+                        <th style={{ padding: '0.75rem' }}>Planning</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'right' }}>Actie</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredParticipants.map(p => (
+                        <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', fontWeight: 'bold' }}>{p.isPause ? '☕ PAUZE' : p.naam}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', color: '#64748b' }}>{p.club}</td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {p.events?.map(ev => (
+                                <span key={ev} style={{ fontSize: '0.6rem', background: '#f1f5f9', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                  {ev.charAt(0)}: R{p[`reeks_${ev.replace(/\s/g, '')}`]}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
+                            <button style={{ color: '#ef4444', border: 'none', background: 'none' }} onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id))}><X size={14}/></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </>
           ) : <div style={{ ...styles.card, textAlign: 'center', padding: '10rem' }}>Selecteer een wedstrijd.</div>}
@@ -237,21 +293,13 @@ const App = () => {
             <h3>Nieuwe Wedstrijd</h3>
             <label style={{ fontSize: '0.8rem' }}>Naam</label>
             <input style={styles.input} value={newComp.name} onChange={e => setNewComp({...newComp, name: e.target.value})} />
-            
             <label style={{ fontSize: '0.8rem' }}>Type Wedstrijd</label>
             <select style={styles.input} value={newComp.type} onChange={e => setNewComp({...newComp, type: e.target.value, events: COMPETITION_TYPES[e.target.value]})}>
               {Object.keys(COMPETITION_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem' }}>Datum</label>
-                <input type="date" style={styles.input} value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem' }}>Locatie</label>
-                <input style={styles.input} value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} />
-              </div>
+              <div><label style={{ fontSize: '0.8rem' }}>Datum</label><input type="date" style={styles.input} value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} /></div>
+              <div><label style={{ fontSize: '0.8rem' }}>Locatie</label><input style={styles.input} value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} /></div>
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleCreateComp}>Aanmaken</button>
@@ -268,21 +316,13 @@ const App = () => {
             <h3 style={{ marginTop: 0 }}>Wedstrijd Aanpassen</h3>
             <label style={{ fontSize: '0.8rem' }}>Naam</label>
             <input style={styles.input} value={editCompData.name} onChange={e => setEditCompData({...editCompData, name: e.target.value})} />
-            
             <label style={{ fontSize: '0.8rem' }}>Type Wedstrijd</label>
             <select style={styles.input} value={editCompData.type} onChange={e => setEditCompData({...editCompData, type: e.target.value})}>
               {Object.keys(COMPETITION_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem' }}>Datum</label>
-                <input type="date" style={styles.input} value={editCompData.date} onChange={e => setEditCompData({...editCompData, date: e.target.value})} />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem' }}>Locatie</label>
-                <input style={styles.input} value={editCompData.location} onChange={e => setEditCompData({...editCompData, location: e.target.value})} />
-              </div>
+              <div><label style={{ fontSize: '0.8rem' }}>Datum</label><input type="date" style={styles.input} value={editCompData.date} onChange={e => setEditCompData({...editCompData, date: e.target.value})} /></div>
+              <div><label style={{ fontSize: '0.8rem' }}>Locatie</label><input style={styles.input} value={editCompData.location} onChange={e => setEditCompData({...editCompData, location: e.target.value})} /></div>
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUpdateComp}>Opslaan</button>
