@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -50,6 +50,10 @@ const App = () => {
   const [settings, setSettings] = useState({ activeCompetitionId: null });
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Live State
+  const [activeEvent, setActiveEvent] = useState(null);
+  const [activeReeks, setActiveReeks] = useState(1);
+
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(null);
@@ -75,7 +79,15 @@ const App = () => {
 
   useEffect(() => {
     if (!isAuthReady || !db) return;
-    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), (d) => d.exists() && setSettings(d.data()));
+    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), (d) => {
+        if(d.exists()) {
+            const s = d.data();
+            setSettings(s);
+            if (s.activeCompetitionId && !selectedCompetitionId) {
+                setSelectedCompetitionId(s.activeCompetitionId);
+            }
+        }
+    });
     onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), s => {
       const comps = s.docs.map(d => ({ id: d.id, ...d.data() }));
       setCompetitions(comps);
@@ -112,12 +124,58 @@ const App = () => {
     return [...selectedComp.events].sort((a, b) => (order[a] || 0) - (order[b] || 0));
   }, [selectedComp]);
 
+  useEffect(() => {
+    if (sortedEvents.length > 0 && !activeEvent) {
+        setActiveEvent(sortedEvents[0]);
+    }
+  }, [sortedEvents]);
+
   const filteredParticipants = useMemo(() => {
     return Object.values(participants).filter(p => 
       p.naam?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       p.club?.toLowerCase().includes(searchTerm.toLowerCase())
     ).sort((a, b) => (a.naam || '').localeCompare(b.naam || ''));
   }, [participants, searchTerm]);
+
+  // LIVE LOGIC
+  const liveParticipants = useMemo(() => {
+    if (!activeEvent) return [];
+    const eventKey = `reeks_${activeEvent.replace(/\s/g, '')}`;
+    return Object.values(participants)
+      .filter(p => p.events?.includes(activeEvent) && p.status !== 'geschrapt' && p.eventStatus?.[activeEvent] !== 'geschrapt')
+      .sort((a, b) => {
+        const ra = parseInt(a[eventKey]) || 0;
+        const rb = parseInt(b[eventKey]) || 0;
+        if (ra !== rb) return ra - rb;
+        return (a[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || 0) - (b[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || 0);
+      });
+  }, [participants, activeEvent]);
+
+  const reeksenInEvent = useMemo(() => {
+    const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
+    const r = [...new Set(liveParticipants.map(p => parseInt(p[eventKey])).filter(Boolean))];
+    return r.sort((a, b) => a - b);
+  }, [liveParticipants, activeEvent]);
+
+  const currentReeksData = useMemo(() => {
+    const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
+    return liveParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
+  }, [liveParticipants, activeReeks, activeEvent]);
+
+  const handleFinishReeks = async () => {
+    const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
+    if (nextIdx < reeksenInEvent.length) {
+        setActiveReeks(reeksenInEvent[nextIdx]);
+    } else {
+        const eventIdx = sortedEvents.indexOf(activeEvent) + 1;
+        if (eventIdx < sortedEvents.length) {
+            setActiveEvent(sortedEvents[eventIdx]);
+            setActiveReeks(1);
+        } else {
+            alert("Alle onderdelen zijn voltooid!");
+        }
+    }
+  };
 
   const handleStartCompetition = async (compId) => {
     if (activeCompExists) {
@@ -312,20 +370,16 @@ const App = () => {
     modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
     csvExample: { background: '#f8fafc', padding: '0.5rem', borderRadius: '4px', fontSize: '0.65rem', color: '#475569', marginBottom: '0.5rem', border: '1px dashed #cbd5e1', overflowX: 'auto', whiteSpace: 'nowrap' },
     badgeLive: { background: '#ef4444', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 900, animation: 'pulse 2s infinite' },
-    badgeDone: { background: '#94a3b8', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 900 }
+    badgeDone: { background: '#94a3b8', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 900 },
+    
+    liveGrid: { display: 'grid', gridTemplateColumns: '300px 1fr', height: '100%', overflow: 'hidden' },
+    liveLeft: { background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
+    liveContent: { padding: '2rem', overflowY: 'auto', background: '#f8fafc' },
+    reeksNav: { display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem', background: '#fff', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
   };
 
-  return (
-    <div style={styles.mainWrapper}>
-      <header style={styles.header}>
-        <div style={{ fontWeight: 900 }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button style={styles.btnSecondary} onClick={() => setView('management')}>Beheer</button>
-          <button style={styles.btnSecondary} onClick={() => setView('live')}>Live</button>
-        </div>
-      </header>
-
-      <div style={styles.layoutGrid}>
+  const renderManagement = () => (
+    <div style={styles.layoutGrid}>
         <aside style={styles.column}>
           <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem', justifyContent: 'center' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe wedstrijd</button>
           {competitions.map(c => {
@@ -519,7 +573,118 @@ const App = () => {
             </>
           ) : <div style={{ textAlign: 'center', padding: '10rem', color: '#94a3b8' }}>Selecteer een wedstrijd aan de linkerkant.</div>}
         </main>
-      </div>
+    </div>
+  );
+
+  const renderLive = () => {
+    if (!selectedComp) return <div style={{ textAlign: 'center', padding: '5rem' }}>Geen actieve wedstrijd geselecteerd in beheer.</div>;
+    const isFreestyle = isFreestyleType(activeEvent);
+    const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
+    const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
+
+    return (
+        <div style={styles.liveGrid}>
+            <div style={styles.liveLeft}>
+                <div style={{ padding: '1.5rem', borderBottom: '1px solid #eee', fontWeight: 'bold', color: '#64748b' }}>ONDERDELEN</div>
+                {sortedEvents.map(ev => (
+                    <div key={ev} 
+                        onClick={() => { setActiveEvent(ev); setActiveReeks(1); }}
+                        style={{ 
+                            padding: '1rem 1.5rem', cursor: 'pointer', borderBottom: '1px solid #f8fafc',
+                            background: activeEvent === ev ? '#f0f7ff' : '#fff',
+                            color: activeEvent === ev ? '#2563eb' : '#475569',
+                            fontWeight: activeEvent === ev ? 'bold' : 'normal',
+                            borderLeft: activeEvent === ev ? '4px solid #2563eb' : '4px solid transparent'
+                        }}>
+                        {ev}
+                    </div>
+                ))}
+            </div>
+
+            <div style={styles.liveContent}>
+                <div style={styles.reeksNav}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
+                        <button style={styles.btnSecondary} onClick={() => setActiveReeks(activeReeks + 1)}><ChevronRight/></button>
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 'bold' }}>HUIDIGE REEKS</span>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{activeEvent} - Reeks {activeReeks}</div>
+                    </div>
+                    <button style={{ ...styles.btnPrimary, background: '#10b981', height: '50px', padding: '0 1.5rem' }} onClick={handleFinishReeks}>
+                        <FastForward size={20}/> Markeer reeks als voltooid
+                    </button>
+                </div>
+
+                {isFreestyle ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                        <div style={{ background: '#2563eb', color: '#fff', padding: '3rem', borderRadius: '20px', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(37, 99, 235, 0.4)' }}>
+                            <div style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                <Mic2 size={24}/> NU AAN DE BEURT
+                            </div>
+                            <div style={{ fontSize: '4.5rem', fontWeight: 900, lineHeight: 1 }}>{currentReeksData[0]?.naam || '---'}</div>
+                            <div style={{ fontSize: '2rem', marginTop: '1rem', opacity: 0.9 }}>{currentReeksData[0]?.club}</div>
+                            {currentReeksData[0] && (
+                                <div style={{ display: 'inline-block', background: 'rgba(255,255,255,0.2)', padding: '0.5rem 1.5rem', borderRadius: '100px', marginTop: '1.5rem', fontWeight: 'bold' }}>
+                                    Veld {currentReeksData[0][`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || 1}
+                                </div>
+                            )}
+                        </div>
+
+                        {nextSkipper && (
+                            <div style={{ background: '#fff', border: '2px dashed #cbd5e1', padding: '2rem', borderRadius: '20px', opacity: 0.7 }}>
+                                <div style={{ color: '#64748b', fontWeight: 'bold', marginBottom: '0.5rem' }}>VOLGENDE AAN DE BEURT (KLAARHOUDEN)</div>
+                                <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#1e293b' }}>{nextSkipper.naam}</div>
+                                <div style={{ fontSize: '1.2rem', color: '#64748b' }}>{nextSkipper.club}</div>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                        {[...Array(10)].map((_, i) => {
+                            const veldNum = i + 1;
+                            const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
+                            return (
+                                <div key={veldNum} style={{ 
+                                    background: p ? '#fff' : '#f1f5f9', 
+                                    padding: '1.5rem', 
+                                    borderRadius: '12px', 
+                                    border: p ? '1px solid #e2e8f0' : '1px dashed #cbd5e1',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1rem'
+                                }}>
+                                    <div style={{ background: p ? '#2563eb' : '#94a3b8', color: '#fff', width: '40px', height: '40px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem' }}>
+                                        {veldNum}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 900, fontSize: '1.1rem', color: p ? '#1e293b' : '#94a3b8' }}>
+                                            {p ? p.naam : 'LEEG'}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{p?.club || 'Geen skipper'}</div>
+                                    </div>
+                                    {p?.aanwezig && <CheckCircle size={20} color="#10b981" />}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+  };
+
+  return (
+    <div style={styles.mainWrapper}>
+      <header style={styles.header}>
+        <div style={{ fontWeight: 900 }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button style={{ ...styles.btnSecondary, background: view === 'management' ? '#2563eb' : '#fff', color: view === 'management' ? '#fff' : '#475569' }} onClick={() => setView('management')}>Beheer</button>
+          <button style={{ ...styles.btnSecondary, background: view === 'live' ? '#2563eb' : '#fff', color: view === 'live' ? '#fff' : '#475569' }} onClick={() => setView('live')}>Live</button>
+        </div>
+      </header>
+
+      {view === 'management' ? renderManagement() : renderLive()}
 
       <style>{`
         @keyframes pulse {
@@ -568,15 +733,6 @@ const App = () => {
               <h3 style={{ margin: 0 }}>Deelnemer aanpassen</h3>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowEditParticipantModal(null)} />
             </div>
-            {editParticipantData.status === 'geschrapt' && (
-              <div style={{ background: '#fee2e2', border: '1px solid #fecaca', padding: '0.75rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>Geschrapt.</span>
-                <button style={styles.btnSuccess} onClick={() => {
-                    const newES = {}; editParticipantData.events?.forEach(ev => newES[ev] = 'actief');
-                    setEditParticipantData({ ...editParticipantData, status: 'actief', eventStatus: newES });
-                  }}>Herstellen</button>
-              </div>
-            )}
             <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Naam</label>
             <input style={styles.input} value={editParticipantData.naam} onChange={e => setEditParticipantData({...editParticipantData, naam: e.target.value})} />
             <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Club</label>
