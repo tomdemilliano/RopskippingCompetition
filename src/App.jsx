@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -467,7 +467,7 @@ const App = () => {
 
       {showEditParticipantModal && editParticipantData && (
         <div style={styles.modalOverlay}>
-          <div style={{ ...styles.card, width: '500px' }}>
+          <div style={{ ...styles.card, width: '550px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0 }}>Deelnemer aanpassen</h3>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowEditParticipantModal(null)} />
@@ -481,27 +481,39 @@ const App = () => {
 
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Onderdelen & Deelname</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
                 {editParticipantData.events?.map(ev => {
                   const isGeschrapt = editParticipantData.eventStatus?.[ev] === 'geschrapt';
+                  const details = editParticipantData[`detail_${ev.replace(/\s/g, '')}`] || {};
+                  
                   return (
                     <div key={ev} style={{ 
                       display: 'flex', 
                       justifyContent: 'space-between', 
                       alignItems: 'center',
-                      padding: '0.5rem',
+                      padding: '0.6rem',
                       borderRadius: '4px',
                       background: isGeschrapt ? '#f8fafc' : '#fff',
                       border: '1px solid #f1f5f9'
                     }}>
-                      <span style={{ 
-                        fontSize: '0.85rem', 
-                        textDecoration: isGeschrapt ? 'line-through' : 'none',
-                        color: isGeschrapt ? '#94a3b8' : '#1e293b',
-                        fontWeight: isGeschrapt ? 'normal' : '500'
-                      }}>
-                        {ev} {isGeschrapt && <span style={{ fontSize: '0.7rem', color: '#ef4444', fontStyle: 'italic', marginLeft: '5px' }}>(Geschrapt)</span>}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ 
+                          fontSize: '0.85rem', 
+                          textDecoration: isGeschrapt ? 'line-through' : 'none',
+                          color: isGeschrapt ? '#94a3b8' : '#1e293b',
+                          fontWeight: 'bold'
+                        }}>
+                          {ev} {isGeschrapt && <span style={{ fontSize: '0.7rem', color: '#ef4444', fontStyle: 'italic', fontWeight: 'normal' }}>(Geschrapt)</span>}
+                        </span>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '2px', color: isGeschrapt ? '#cbd5e1' : '#64748b', fontSize: '0.75rem' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <Clock size={12}/> {details.uur || '--:--'}
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <MapPin size={12}/> Veld {details.veld || '?'}
+                          </span>
+                        </div>
+                      </div>
                       {isGeschrapt ? (
                         <button style={styles.btnSuccess} onClick={() => toggleEventStatus(ev)}>
                           <RotateCcw size={12} style={{marginRight: '4px'}}/> Activeer
