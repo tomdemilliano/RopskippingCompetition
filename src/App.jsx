@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -157,7 +157,7 @@ const App = () => {
             batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
           } else {
             const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
-            batch.set(newRef, { naam, club, ...eventData });
+            batch.set(newRef, { naam, club, ...eventData, status: 'actief' });
           }
         }
       } else {
@@ -187,7 +187,7 @@ const App = () => {
               batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
             } else {
               const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
-              batch.set(newRef, { naam, club, ...eventData });
+              batch.set(newRef, { naam, club, ...eventData, status: 'actief' });
             }
           }
         }
@@ -230,11 +230,35 @@ const App = () => {
     setShowEditParticipantModal(null);
   };
 
+  // Soft delete / restore van een deelnemer
+  const toggleParticipantGlobalStatus = async (participantId, currentStatus) => {
+    const newStatus = currentStatus === 'geschrapt' ? 'actief' : 'geschrapt';
+    const p = participants[participantId];
+    if (!p) return;
+
+    const newEventStatus = {};
+    if (p.events) {
+      p.events.forEach(ev => {
+        newEventStatus[ev] = newStatus;
+      });
+    }
+
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', participantId), {
+      status: newStatus,
+      eventStatus: newEventStatus
+    });
+  };
+
   const toggleEventStatus = (eventName) => {
     const currentStatus = editParticipantData.eventStatus || {};
     const newStatus = currentStatus[eventName] === 'geschrapt' ? 'actief' : 'geschrapt';
+    
+    // Als we een onderdeel activeren, moet de deelnemer zelf ook op actief staan
+    const globalStatus = newStatus === 'actief' ? 'actief' : editParticipantData.status;
+
     setEditParticipantData({
       ...editParticipantData,
+      status: globalStatus,
       eventStatus: { ...currentStatus, [eventName]: newStatus }
     });
   };
@@ -305,7 +329,7 @@ const App = () => {
         <aside style={{ ...styles.column, backgroundColor: '#f8fafc' }}>
           <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold' }}>ONDERDELEN</div>
           {selectedComp ? sortedEvents.map((ond, idx) => {
-            const partsInEvent = Object.values(participants).filter(p => p.events?.includes(ond));
+            const partsInEvent = Object.values(participants).filter(p => p.events?.includes(ond) && p.eventStatus?.[ond] !== 'geschrapt');
             const count = partsInEvent.length;
             const isSpecial = isFreestyleType(ond);
             
@@ -381,46 +405,52 @@ const App = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredParticipants.map(p => (
-                        <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc' }}>
-                          <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>{p.naam}</td>
-                          <td style={{ padding: '0.75rem', color: '#64748b' }}>{p.club}</td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                              {sortedEvents.filter(ev => p.events?.includes(ev)).map(ev => {
-                                const isGeschrapt = p.eventStatus?.[ev] === 'geschrapt';
-                                return (
-                                  <span key={ev} 
-                                    title={`${ev} (Reeks ${p['reeks_'+ev.replace(/\s/g, '')]}) ${isGeschrapt ? '- GESCHRAPT' : ''}`} 
-                                    style={{ 
-                                      fontSize: '0.6rem', 
-                                      background: isGeschrapt ? '#fee2e2' : '#f1f5f9', 
-                                      color: isGeschrapt ? '#ef4444' : '#475569',
-                                      textDecoration: isGeschrapt ? 'line-through' : 'none',
-                                      padding: '2px 4px', 
-                                      borderRadius: '4px' 
-                                    }}>
-                                    {ev.charAt(0)}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                            <button style={{ border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer', marginRight: '8px' }}
-                              onClick={() => {
-                                setEditParticipantData({ ...p });
-                                setShowEditParticipantModal(true);
-                              }}>
-                              <Edit2 size={16}/>
-                            </button>
-                            <button style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer' }} 
-                              onClick={() => { if(window.confirm('Deelnemer definitief verwijderen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id)) }}>
-                              <X size={16}/>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredParticipants.map(p => {
+                        const isGlobalGeschrapt = p.status === 'geschrapt';
+                        return (
+                          <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc', opacity: isGlobalGeschrapt ? 0.5 : 1 }}>
+                            <td style={{ padding: '0.75rem', fontWeight: 'bold', textDecoration: isGlobalGeschrapt ? 'line-through' : 'none' }}>{p.naam}</td>
+                            <td style={{ padding: '0.75rem', color: '#64748b' }}>{p.club}</td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+                                {sortedEvents.filter(ev => p.events?.includes(ev)).map(ev => {
+                                  const isGeschrapt = p.eventStatus?.[ev] === 'geschrapt' || isGlobalGeschrapt;
+                                  return (
+                                    <span key={ev} 
+                                      title={`${ev} (Reeks ${p['reeks_'+ev.replace(/\s/g, '')]}) ${isGeschrapt ? '- GESCHRAPT' : ''}`} 
+                                      style={{ 
+                                        fontSize: '0.6rem', 
+                                        background: isGeschrapt ? '#fee2e2' : '#f1f5f9', 
+                                        color: isGeschrapt ? '#ef4444' : '#475569',
+                                        textDecoration: isGeschrapt ? 'line-through' : 'none',
+                                        padding: '2px 4px', 
+                                        borderRadius: '4px' 
+                                      }}>
+                                      {ev.charAt(0)}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                              <button style={{ border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer', marginRight: '8px' }}
+                                onClick={() => {
+                                  setEditParticipantData({ ...p });
+                                  setShowEditParticipantModal(true);
+                                }}>
+                                <Edit2 size={16}/>
+                              </button>
+                              <button 
+                                style={{ border: 'none', background: 'none', color: isGlobalGeschrapt ? '#10b981' : '#ef4444', cursor: 'pointer' }} 
+                                onClick={() => toggleParticipantGlobalStatus(p.id, p.status)}
+                                title={isGlobalGeschrapt ? "Deelnemer herstellen" : "Deelnemer schrappen"}
+                              >
+                                {isGlobalGeschrapt ? <RotateCcw size={16}/> : <UserMinus size={16}/>}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -472,6 +502,22 @@ const App = () => {
               <h3 style={{ margin: 0 }}>Deelnemer aanpassen</h3>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowEditParticipantModal(null)} />
             </div>
+
+            {editParticipantData.status === 'geschrapt' && (
+              <div style={{ background: '#fee2e2', border: '1px solid #fecaca', padding: '0.75rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>Deze deelnemer is momenteel volledig geschrapt.</span>
+                <button 
+                  style={styles.btnSuccess} 
+                  onClick={() => {
+                    const newEventStatus = {};
+                    editParticipantData.events?.forEach(ev => newEventStatus[ev] = 'actief');
+                    setEditParticipantData({ ...editParticipantData, status: 'actief', eventStatus: newEventStatus });
+                  }}
+                >
+                  <RotateCcw size={14} style={{marginRight: '4px'}}/> Alles herstellen
+                </button>
+              </div>
+            )}
 
             <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Naam</label>
             <input style={styles.input} value={editParticipantData.naam} onChange={e => setEditParticipantData({...editParticipantData, naam: e.target.value})} />
