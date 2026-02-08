@@ -135,6 +135,12 @@ const App = () => {
     }
   };
 
+  const handleToggleAttendance = async (pId, current) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', pId), {
+      aanwezig: !current
+    });
+  };
+
   const handleUploadCsv = async () => {
     if (!csvInput || !showUploadModal) return;
     const eventName = showUploadModal;
@@ -174,7 +180,7 @@ const App = () => {
             batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
           } else {
             const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
-            batch.set(newRef, { naam, club, ...eventData, status: 'actief' });
+            batch.set(newRef, { naam, club, ...eventData, status: 'actief', aanwezig: false });
           }
         }
       } else {
@@ -204,7 +210,7 @@ const App = () => {
               batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
             } else {
               const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
-              batch.set(newRef, { naam, club, ...eventData, status: 'actief' });
+              batch.set(newRef, { naam, club, ...eventData, status: 'actief', aanwezig: false });
             }
           }
         }
@@ -452,7 +458,11 @@ const App = () => {
                       {filteredParticipants.map(p => {
                         const isGlobalGeschrapt = p.status === 'geschrapt';
                         return (
-                          <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc', opacity: isGlobalGeschrapt ? 0.5 : 1 }}>
+                          <tr key={p.id} style={{ 
+                            borderBottom: '1px solid #f8fafc', 
+                            opacity: isGlobalGeschrapt ? 0.5 : 1,
+                            borderLeft: p.aanwezig ? '4px solid #10b981' : '4px solid transparent'
+                          }}>
                             <td style={{ padding: '0.75rem', fontWeight: 'bold', textDecoration: isGlobalGeschrapt ? 'line-through' : 'none' }}>{p.naam}</td>
                             <td style={{ padding: '0.75rem', color: '#64748b' }}>{p.club}</td>
                             <td style={{ padding: '0.75rem' }}>
@@ -477,6 +487,13 @@ const App = () => {
                               </div>
                             </td>
                             <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                              <button 
+                                style={{ border: 'none', background: 'none', color: p.aanwezig ? '#10b981' : '#cbd5e1', cursor: 'pointer', marginRight: '8px' }}
+                                onClick={() => handleToggleAttendance(p.id, p.aanwezig)}
+                                title={p.aanwezig ? "Afmelden" : "Aanmelden"}
+                              >
+                                <CheckCircle size={18}/>
+                              </button>
                               <button style={{ border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer', marginRight: '8px' }}
                                 onClick={() => {
                                   setEditParticipantData({ ...p });
