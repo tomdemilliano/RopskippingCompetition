@@ -264,7 +264,7 @@ const App = () => {
 
       <div style={styles.layoutGrid}>
         <aside style={styles.column}>
-          <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe</button>
+          <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe wedstrijd</button>
           {competitions.map(c => {
             const isSelected = selectedCompetitionId === c.id;
             const isActive = settings.activeCompetitionId === c.id;
