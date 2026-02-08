@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -96,6 +96,7 @@ const App = () => {
   }, [selectedCompetitionId, isAuthReady]);
 
   const selectedComp = competitions.find(c => c.id === selectedCompetitionId);
+  const activeCompExists = competitions.some(c => c.status === 'bezig');
 
   const getCompDataStatus = (compId) => {
     const comp = competitions.find(c => c.id === compId);
@@ -117,6 +118,22 @@ const App = () => {
       p.club?.toLowerCase().includes(searchTerm.toLowerCase())
     ).sort((a, b) => (a.naam || '').localeCompare(b.naam || ''));
   }, [participants, searchTerm]);
+
+  const handleStartCompetition = async (compId) => {
+    if (activeCompExists) {
+        alert("Er is al een wedstrijd bezig. Beëindig deze eerst.");
+        return;
+    }
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', compId), { status: 'bezig' });
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: compId });
+  };
+
+  const handleEndCompetition = async (compId) => {
+    if (window.confirm("Weet je zeker dat je deze wedstrijd wilt beëindigen?")) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', compId), { status: 'beëindigd' });
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: null });
+    }
+  };
 
   const handleUploadCsv = async () => {
     if (!csvInput || !showUploadModal) return;
@@ -281,13 +298,15 @@ const App = () => {
     column: { background: '#fff', borderRight: '1px solid #e2e8f0', overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' },
     contentArea: { padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' },
     card: { background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '0.75rem' },
-    btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+    btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' },
     btnSecondary: { background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' },
     btnDanger: { background: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' },
     btnSuccess: { background: '#f0fdf4', color: '#10b981', border: '1px solid #bbf7d0', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' },
     input: { width: '100%', padding: '0.6rem', marginBottom: '1rem', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' },
     modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-    csvExample: { background: '#f8fafc', padding: '0.5rem', borderRadius: '4px', fontSize: '0.65rem', color: '#475569', marginBottom: '0.5rem', border: '1px dashed #cbd5e1', overflowX: 'auto', whiteSpace: 'nowrap' }
+    csvExample: { background: '#f8fafc', padding: '0.5rem', borderRadius: '4px', fontSize: '0.65rem', color: '#475569', marginBottom: '0.5rem', border: '1px dashed #cbd5e1', overflowX: 'auto', whiteSpace: 'nowrap' },
+    badgeLive: { background: '#ef4444', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 900, animation: 'pulse 2s infinite' },
+    badgeDone: { background: '#94a3b8', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 900 }
   };
 
   return (
@@ -302,21 +321,29 @@ const App = () => {
 
       <div style={styles.layoutGrid}>
         <aside style={styles.column}>
-          <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe wedstrijd</button>
+          <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem', justifyContent: 'center' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe wedstrijd</button>
           {competitions.map(c => {
             const isSelected = selectedCompetitionId === c.id;
-            const isActive = settings.activeCompetitionId === c.id;
-            const status = getCompDataStatus(c.id);
+            const isBezig = c.status === 'bezig';
+            const isDone = c.status === 'beëindigd';
+            const statusData = getCompDataStatus(c.id);
+            
             return (
               <div key={c.id} onClick={() => setSelectedCompetitionId(c.id)} style={{
-                padding: '0.75rem', borderRadius: '8px', cursor: 'pointer',
-                border: '2px solid', borderColor: isActive ? '#10b981' : (isSelected ? '#2563eb' : 'transparent'),
-                backgroundColor: isActive ? '#f0fdf4' : (isSelected ? '#f0f7ff' : '#fff')
+                padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', position: 'relative',
+                border: '2px solid', 
+                borderColor: isBezig ? '#ef4444' : (isSelected ? '#2563eb' : 'transparent'),
+                backgroundColor: isDone ? '#f8fafc' : (isSelected ? '#f0f7ff' : '#fff'),
+                opacity: isDone ? 0.7 : 1
               }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{c.name}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{c.name}</div>
+                    {isBezig && <span style={styles.badgeLive}>LIVE</span>}
+                    {isDone && <span style={styles.badgeDone}>BEËINDIGD</span>}
+                </div>
                 <div style={{ fontSize: '0.6rem', color: '#64748b' }}>{c.type}</div>
-                <div style={{ fontSize: '0.6rem', color: status.isComplete ? '#10b981' : '#f59e0b', marginTop: '4px', fontWeight: 'bold' }}>
-                  {status.isComplete ? '✓ Data Compleet' : `! ${status.missingCount} leeg`}
+                <div style={{ fontSize: '0.6rem', color: statusData.isComplete ? '#10b981' : '#f59e0b', marginTop: '4px', fontWeight: 'bold' }}>
+                  {statusData.isComplete ? '✓ Data Compleet' : `! ${statusData.missingCount} leeg`}
                 </div>
               </div>
             );
@@ -326,16 +353,13 @@ const App = () => {
         <aside style={{ ...styles.column, backgroundColor: '#f8fafc' }}>
           <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold' }}>ONDERDELEN</div>
           {selectedComp ? sortedEvents.map((ond, idx) => {
-            // AANGEPASTE TELLER: Filtert op globale status én onderdeel-status
             const activePartsInEvent = Object.values(participants).filter(p => 
                 p.events?.includes(ond) && 
                 p.status !== 'geschrapt' && 
                 p.eventStatus?.[ond] !== 'geschrapt'
             );
-            
             const count = activePartsInEvent.length;
             const isSpecial = isFreestyleType(ond);
-            
             const reeksen = new Set(activePartsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
             const maxVeld = activePartsInEvent.reduce((max, p) => {
                 const veld = p[`detail_${ond.replace(/\s/g, '')}`]?.veld || 0;
@@ -351,11 +375,9 @@ const App = () => {
                     <button onClick={() => moveEvent(ond, 'down')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer' }} disabled={idx === sortedEvents.length - 1}><ChevronDown size={14}/></button>
                   </div>
                 </div>
-                
                 <div style={{ fontSize: '0.65rem', color: '#64748b', margin: '4px 0' }}>
                   {reeksen.size} reeksen {!isSpecial && `| ${maxVeld || '-'} velden`}
                 </div>
-
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>{count} actieve skippers</span>
                   <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowUploadModal(ond)}>
@@ -373,7 +395,10 @@ const App = () => {
               <div style={styles.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <h2 style={{ margin: 0 }}>{selectedComp.name}</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h2 style={{ margin: 0 }}>{selectedComp.name}</h2>
+                        {selectedComp.status === 'bezig' && <span style={styles.badgeLive}>LIVE</span>}
+                    </div>
                     <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{selectedComp.type} | {selectedComp.location}</p>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -382,10 +407,26 @@ const App = () => {
                       setShowEditCompModal(true);
                     }}><Edit2 size={16}/></button>
                     <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={handleDeleteComp}><Trash2 size={16}/></button>
-                    <button style={{ ...styles.btnPrimary, background: settings.activeCompetitionId === selectedComp.id ? '#10b981' : '#2563eb' }} 
-                      onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: selectedComp.id })}>
-                      {settings.activeCompetitionId === selectedComp.id ? 'Live Actief' : 'Activeer Live'}
-                    </button>
+                    
+                    {selectedComp.status === 'bezig' ? (
+                        <button style={{ ...styles.btnPrimary, background: '#ef4444' }} onClick={() => handleEndCompetition(selectedComp.id)}>
+                            <Square size={16}/> Beëindig wedstrijd
+                        </button>
+                    ) : (
+                        <button 
+                            disabled={activeCompExists || selectedComp.status === 'beëindigd'} 
+                            style={{ 
+                                ...styles.btnPrimary, 
+                                background: selectedComp.status === 'beëindigd' ? '#94a3b8' : '#10b981',
+                                cursor: (activeCompExists || selectedComp.status === 'beëindigd') ? 'not-allowed' : 'pointer',
+                                opacity: (activeCompExists || selectedComp.status === 'beëindigd') ? 0.6 : 1
+                            }} 
+                            onClick={() => handleStartCompetition(selectedComp.id)}
+                        >
+                            {selectedComp.status === 'beëindigd' ? <Check size={16}/> : <Play size={16}/>}
+                            {selectedComp.status === 'beëindigd' ? 'Wedstrijd voltooid' : 'Start wedstrijd'}
+                        </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -463,6 +504,15 @@ const App = () => {
         </main>
       </div>
 
+      <style>{`
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0); }
+        }
+      `}</style>
+
+      {/* --- Modals (ongewijzigd) --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
@@ -470,7 +520,6 @@ const App = () => {
               <h3 style={{ margin: 0 }}>Laden voor: {showUploadModal}</h3>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowUploadModal(null)} />
             </div>
-            
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.3rem', display: 'flex', alignItems: 'center' }}>
                 <Info size={14} style={{ marginRight: '4px' }} /> Verplichte CSV Structuur:
@@ -481,16 +530,14 @@ const App = () => {
                   : "reeks,onderdeel,uur,Club_veld1,Skipper_veld1,Club_veld2,Skipper_veld2,...,Club_veld10,Skipper_veld10"}
               </div>
             </div>
-
             <textarea 
               style={{ ...styles.input, height: '250px', fontFamily: 'monospace', fontSize: '0.75rem' }} 
               value={csvInput} 
               onChange={e => setCsvInput(e.target.value)} 
               placeholder="Plak hier de CSV inhoud (inclusief headers)..." 
             />
-            
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUploadCsv}>Importeren</button>
+              <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleUploadCsv}>Importeren</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowUploadModal(null)}>Annuleren</button>
             </div>
           </div>
@@ -504,81 +551,44 @@ const App = () => {
               <h3 style={{ margin: 0 }}>Deelnemer aanpassen</h3>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowEditParticipantModal(null)} />
             </div>
-
             {editParticipantData.status === 'geschrapt' && (
               <div style={{ background: '#fee2e2', border: '1px solid #fecaca', padding: '0.75rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>Deze deelnemer is momenteel volledig geschrapt.</span>
-                <button 
-                  style={styles.btnSuccess} 
-                  onClick={() => {
-                    const newEventStatus = {};
-                    editParticipantData.events?.forEach(ev => newEventStatus[ev] = 'actief');
-                    setEditParticipantData({ ...editParticipantData, status: 'actief', eventStatus: newEventStatus });
-                  }}
-                >
-                  <RotateCcw size={14} style={{marginRight: '4px'}}/> Alles herstellen
-                </button>
+                <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>Geschrapt.</span>
+                <button style={styles.btnSuccess} onClick={() => {
+                    const newES = {}; editParticipantData.events?.forEach(ev => newES[ev] = 'actief');
+                    setEditParticipantData({ ...editParticipantData, status: 'actief', eventStatus: newES });
+                  }}>Herstellen</button>
               </div>
             )}
-
             <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Naam</label>
             <input style={styles.input} value={editParticipantData.naam} onChange={e => setEditParticipantData({...editParticipantData, naam: e.target.value})} />
-            
             <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Club</label>
             <input style={styles.input} value={editParticipantData.club} onChange={e => setEditParticipantData({...editParticipantData, club: e.target.value})} />
-
             <div style={{ marginBottom: '1rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Onderdelen & Deelname</label>
+              <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Onderdelen</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
                 {editParticipantData.events?.map(ev => {
-                  const isGeschrapt = editParticipantData.eventStatus?.[ev] === 'geschrapt';
-                  const details = editParticipantData[`detail_${ev.replace(/\s/g, '')}`] || {};
-                  
+                  const isG = editParticipantData.eventStatus?.[ev] === 'geschrapt';
+                  const d = editParticipantData[`detail_${ev.replace(/\s/g, '')}`] || {};
                   return (
-                    <div key={ev} style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      padding: '0.6rem',
-                      borderRadius: '4px',
-                      background: isGeschrapt ? '#f8fafc' : '#fff',
-                      border: '1px solid #f1f5f9'
-                    }}>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ 
-                          fontSize: '0.85rem', 
-                          textDecoration: isGeschrapt ? 'line-through' : 'none',
-                          color: isGeschrapt ? '#94a3b8' : '#1e293b',
-                          fontWeight: 'bold'
-                        }}>
-                          {ev} {isGeschrapt && <span style={{ fontSize: '0.7rem', color: '#ef4444', fontStyle: 'italic', fontWeight: 'normal' }}>(Geschrapt)</span>}
-                        </span>
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '2px', color: isGeschrapt ? '#cbd5e1' : '#64748b', fontSize: '0.75rem' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            <Clock size={12}/> {details.uur || '--:--'}
-                          </span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            <MapPin size={12}/> Veld {details.veld || '?'}
-                          </span>
+                    <div key={ev} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem', borderRadius: '4px', background: isG ? '#f8fafc' : '#fff', border: '1px solid #f1f5f9' }}>
+                      <div>
+                        <span style={{ fontSize: '0.85rem', textDecoration: isG ? 'line-through' : 'none', fontWeight: 'bold' }}>{ev}</span>
+                        <div style={{ display: 'flex', gap: '10px', color: '#64748b', fontSize: '0.75rem' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={12}/> {d.uur || '--:--'}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={12}/> Veld {d.veld || '?'}</span>
                         </div>
                       </div>
-                      {isGeschrapt ? (
-                        <button style={styles.btnSuccess} onClick={() => toggleEventStatus(ev)}>
-                          <RotateCcw size={12} style={{marginRight: '4px'}}/> Activeer
-                        </button>
-                      ) : (
-                        <button style={styles.btnDanger} onClick={() => toggleEventStatus(ev)}>
-                          <Trash2 size={12} style={{marginRight: '4px'}}/> Schrappen
-                        </button>
-                      )}
+                      <button style={isG ? styles.btnSuccess : styles.btnDanger} onClick={() => toggleEventStatus(ev)}>
+                        {isG ? <RotateCcw size={12}/> : <Trash2 size={12}/>}
+                      </button>
                     </div>
                   );
                 })}
               </div>
             </div>
-
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUpdateParticipant}>Opslaan</button>
+              <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleUpdateParticipant}>Opslaan</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowEditParticipantModal(null)}>Annuleren</button>
             </div>
           </div>
@@ -600,7 +610,7 @@ const App = () => {
               <input style={styles.input} value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} placeholder="Locatie" />
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleCreateComp}>Aanmaken</button>
+              <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleCreateComp}>Aanmaken</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowAddCompModal(false)}>Annuleren</button>
             </div>
           </div>
@@ -622,7 +632,7 @@ const App = () => {
               <input style={styles.input} value={editCompData.location} onChange={e => setEditCompData({...editCompData, location: e.target.value})} />
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUpdateComp}>Opslaan</button>
+              <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleUpdateComp}>Opslaan</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowEditCompModal(false)}>Annuleren</button>
             </div>
           </div>
