@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward, Flag
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -54,7 +54,7 @@ const App = () => {
   // Live State
   const [activeEvent, setActiveEvent] = useState(null);
   const [activeReeks, setActiveReeks] = useState(1);
-  const [finishedReeksen, setFinishedReeksen] = useState({}); // Structuur: { 'Speed': [1, 2], 'Endurance': [1] }
+  const [finishedReeksen, setFinishedReeksen] = useState({});
 
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
@@ -185,13 +185,11 @@ const App = () => {
   }, [plannedTime, currentTime]);
 
   const handleFinishReeks = () => {
-    // Sla op dat deze reeks klaar is voor dit onderdeel
     setFinishedReeksen(prev => ({
         ...prev,
         [activeEvent]: [...(prev[activeEvent] || []), activeReeks]
     }));
 
-    // Ga naar de volgende reeks
     const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
     if (nextIdx < reeksenInEvent.length) {
         setActiveReeks(reeksenInEvent[nextIdx]);
@@ -613,6 +611,8 @@ const renderLive = () => {
     const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
     
     const totaalReeksen = reeksenInEvent.length;
+    const isEersteReeks = activeReeks === reeksenInEvent[0];
+    const isLaatsteReeks = activeReeks === reeksenInEvent[reeksenInEvent.length - 1];
     const isReeksKlaar = finishedReeksen[activeEvent]?.includes(activeReeks);
 
     return (
@@ -642,21 +642,36 @@ const renderLive = () => {
 
             <div style={styles.liveContent}>
                 {!isFreestyle ? (
-                  /* SPEED LAYOUT - COMPACT EN DUIDELIJK */
+                  /* SPEED LAYOUT */
                   <>
                   <div style={{...styles.reeksNav, minHeight: '80px'}}>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
+                          <button 
+                            disabled={isEersteReeks}
+                            style={{ ...styles.btnSecondary, opacity: isEersteReeks ? 0.3 : 1, cursor: isEersteReeks ? 'not-allowed' : 'pointer' }} 
+                            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) - 1])}
+                          >
+                            <ChevronLeft/>
+                          </button>
                           
                           <div style={{ textAlign: 'center', minWidth: '150px' }}>
-                              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: isReeksKlaar ? '#10b981' : '#1e293b' }}>
-                                Reeks {activeReeks} 
-                                <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: isReeksKlaar ? '#10b981' : '#1e293b' }}>
+                                    Reeks {activeReeks} 
+                                    <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
+                                </div>
+                                {isLaatsteReeks && <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><Flag size={10}/> LAATSTE REEKS</span>}
                               </div>
                               <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>Gepland: {plannedTime || '--:--'}</div>
                           </div>
 
-                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.min(totaalReeksen, activeReeks + 1))}><ChevronRight/></button>
+                          <button 
+                            disabled={isLaatsteReeks}
+                            style={{ ...styles.btnSecondary, opacity: isLaatsteReeks ? 0.3 : 1, cursor: isLaatsteReeks ? 'not-allowed' : 'pointer' }} 
+                            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) + 1])}
+                          >
+                            <ChevronRight/>
+                          </button>
                       </div>
 
                       <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
@@ -680,7 +695,7 @@ const renderLive = () => {
                         </div>
                       ) : (
                         <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.7rem 1.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
-                            <ChevronLeft size={20} style={{ marginRight: '4px' }}/> Reeks klaar
+                            Reeks klaar <ChevronRight size={20} style={{ marginLeft: '4px' }}/>
                         </button>
                       )}
                   </div>
@@ -691,7 +706,7 @@ const renderLive = () => {
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
                             return (
                                 <div key={veldNum} style={{ 
-                                    background: isReeksKlaar ? '#f8fafc' : (p ? '#fff' : 'transparent'), 
+                                    background: isReeksKlaar ? '#f1f5f9' : (p ? '#fff' : 'transparent'), 
                                     padding: '0.6rem 1rem', 
                                     borderRadius: '10px', 
                                     border: p ? (isReeksKlaar ? '1px solid #e2e8f0' : '1px solid #cbd5e1') : '1px dashed #cbd5e1',
@@ -699,7 +714,7 @@ const renderLive = () => {
                                     alignItems: 'center',
                                     gap: '1rem',
                                     height: '60px',
-                                    opacity: isReeksKlaar ? 0.7 : 1,
+                                    opacity: isReeksKlaar ? 0.6 : 1,
                                     transition: 'all 0.3s ease'
                                 }}>
                                     <div style={{ 
