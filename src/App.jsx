@@ -230,7 +230,6 @@ const App = () => {
     setShowEditParticipantModal(null);
   };
 
-  // Soft delete / restore van een deelnemer
   const toggleParticipantGlobalStatus = async (participantId, currentStatus) => {
     const newStatus = currentStatus === 'geschrapt' ? 'actief' : 'geschrapt';
     const p = participants[participantId];
@@ -252,8 +251,6 @@ const App = () => {
   const toggleEventStatus = (eventName) => {
     const currentStatus = editParticipantData.eventStatus || {};
     const newStatus = currentStatus[eventName] === 'geschrapt' ? 'actief' : 'geschrapt';
-    
-    // Als we een onderdeel activeren, moet de deelnemer zelf ook op actief staan
     const globalStatus = newStatus === 'actief' ? 'actief' : editParticipantData.status;
 
     setEditParticipantData({
@@ -329,12 +326,18 @@ const App = () => {
         <aside style={{ ...styles.column, backgroundColor: '#f8fafc' }}>
           <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold' }}>ONDERDELEN</div>
           {selectedComp ? sortedEvents.map((ond, idx) => {
-            const partsInEvent = Object.values(participants).filter(p => p.events?.includes(ond) && p.eventStatus?.[ond] !== 'geschrapt');
-            const count = partsInEvent.length;
+            // AANGEPASTE TELLER: Filtert op globale status én onderdeel-status
+            const activePartsInEvent = Object.values(participants).filter(p => 
+                p.events?.includes(ond) && 
+                p.status !== 'geschrapt' && 
+                p.eventStatus?.[ond] !== 'geschrapt'
+            );
+            
+            const count = activePartsInEvent.length;
             const isSpecial = isFreestyleType(ond);
             
-            const reeksen = new Set(partsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
-            const maxVeld = partsInEvent.reduce((max, p) => {
+            const reeksen = new Set(activePartsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
+            const maxVeld = activePartsInEvent.reduce((max, p) => {
                 const veld = p[`detail_${ond.replace(/\s/g, '')}`]?.veld || 0;
                 return veld > max ? veld : max;
             }, 0);
@@ -354,7 +357,7 @@ const App = () => {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>{count} skippers</span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>{count} actieve skippers</span>
                   <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowUploadModal(ond)}>
                     <Upload size={10} style={{ marginRight: '4px' }}/> CSV
                   </button>
@@ -460,7 +463,6 @@ const App = () => {
         </main>
       </div>
 
-      {/* --- Modals --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
