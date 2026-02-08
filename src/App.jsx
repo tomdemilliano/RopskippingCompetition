@@ -598,11 +598,14 @@ const App = () => {
     </div>
   );
 
-  const renderLive = () => {
+const renderLive = () => {
     if (!selectedComp) return <div style={{ textAlign: 'center', padding: '5rem' }}>Geen actieve wedstrijd geselecteerd in beheer.</div>;
     const isFreestyle = isFreestyleType(activeEvent);
     const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
     const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
+    
+    // Bereken totaal aantal reeksen voor dit onderdeel
+    const totaalReeksen = reeksenInEvent.length;
 
     return (
         <div style={styles.liveGrid}>
@@ -630,39 +633,80 @@ const App = () => {
             </div>
 
             <div style={styles.liveContent}>
-                <div style={styles.reeksNav}>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
-                        <button style={styles.btnSecondary} onClick={() => setActiveReeks(activeReeks + 1)}><ChevronRight/></button>
-                    </div>
-                    
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{activeEvent} - Reeks {activeReeks}</div>
-                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '4px' }}>
-                            <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
-                                Gepland: {plannedTime || '--:--'}
-                            </div>
-                            {timeDiff !== null && (
-                                <div style={{ 
-                                    fontSize: '0.85rem', 
-                                    fontWeight: 'bold', 
-                                    padding: '2px 8px', 
-                                    borderRadius: '4px',
-                                    background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
-                                    color: timeDiff > 5 ? '#ef4444' : '#10b981'
-                                }}>
-                                    {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                {/* Aangepaste Navigatie voor Speed-onderdelen */}
+                {!isFreestyle ? (
+                  <div style={{ ...styles.reeksNav, justifyContent: 'space-between', padding: '1.5rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
+                      </div>
+                      
+                      <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '1px' }}>{activeEvent}</div>
+                          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#2563eb', marginTop: '4px' }}>
+                            Reeks {activeReeks} <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1rem' }}>van {totaalReeksen}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '8px' }}>
+                              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
+                                  Gepland: {plannedTime || '--:--'}
+                              </div>
+                              {timeDiff !== null && (
+                                  <div style={{ 
+                                      fontSize: '0.85rem', 
+                                      fontWeight: 'bold', 
+                                      padding: '2px 8px', 
+                                      borderRadius: '4px',
+                                      background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
+                                      color: timeDiff > 5 ? '#ef4444' : '#10b981'
+                                  }}>
+                                      {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+                                  </div>
+                              )}
+                          </div>
+                      </div>
 
-                    <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0 1rem', width: 'auto' }} onClick={handleFinishReeks}>
-                        <FastForward size={18}/> Volgende Reeks
-                    </button>
-                </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button style={{ ...styles.btnPrimary, background: '#10b981' }} onClick={handleFinishReeks}>
+                            <FastForward size={18} style={{ marginRight: '8px' }}/> Volgende
+                        </button>
+                      </div>
+                  </div>
+                ) : (
+                  /* Originele Navigatie voor Freestyle-onderdelen */
+                  <div style={styles.reeksNav}>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
+                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(activeReeks + 1)}><ChevronRight/></button>
+                      </div>
+                      
+                      <div style={{ flex: 1, textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{activeEvent} - Reeks {activeReeks}</div>
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '4px' }}>
+                              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
+                                  Gepland: {plannedTime || '--:--'}
+                              </div>
+                              {timeDiff !== null && (
+                                  <div style={{ 
+                                      fontSize: '0.85rem', 
+                                      fontWeight: 'bold', 
+                                      padding: '2px 8px', 
+                                      borderRadius: '4px',
+                                      background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
+                                      color: timeDiff > 5 ? '#ef4444' : '#10b981'
+                                  }}>
+                                      {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+
+                      <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0 1rem', width: 'auto' }} onClick={handleFinishReeks}>
+                          <FastForward size={18}/> Volgende Reeks
+                      </button>
+                  </div>
+                )}
 
                 {isFreestyle ? (
+                    /* Freestyle layout behouden */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                         <div style={{ background: '#2563eb', color: '#fff', padding: '3rem', borderRadius: '20px', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(37, 99, 235, 0.4)' }}>
                             <div style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -686,6 +730,7 @@ const App = () => {
                         )}
                     </div>
                 ) : (
+                    /* Speed layout behouden */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {[...Array(10)].map((_, i) => {
                             const veldNum = i + 1;
