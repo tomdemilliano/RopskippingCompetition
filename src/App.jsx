@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward, ArrowLeft
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -54,7 +54,7 @@ const App = () => {
   // Live State
   const [activeEvent, setActiveEvent] = useState(null);
   const [activeReeks, setActiveReeks] = useState(1);
-  const [finishedReeksen, setFinishedReeksen] = useState({}); // { 'Speed': [1, 2], 'Endurance': [1] }
+  const [finishedReeksen, setFinishedReeksen] = useState({}); // Structuur: { 'Speed': [1, 2], 'Endurance': [1] }
 
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
@@ -184,13 +184,14 @@ const App = () => {
     return Math.floor(diffMs / 60000);
   }, [plannedTime, currentTime]);
 
-  const handleFinishReeks = async () => {
-    // Markeer huidige reeks als klaar
+  const handleFinishReeks = () => {
+    // Sla op dat deze reeks klaar is voor dit onderdeel
     setFinishedReeksen(prev => ({
         ...prev,
         [activeEvent]: [...(prev[activeEvent] || []), activeReeks]
     }));
 
+    // Ga naar de volgende reeks
     const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
     if (nextIdx < reeksenInEvent.length) {
         setActiveReeks(reeksenInEvent[nextIdx]);
@@ -612,7 +613,7 @@ const renderLive = () => {
     const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
     
     const totaalReeksen = reeksenInEvent.length;
-    const isReeksDone = finishedReeksen[activeEvent]?.includes(activeReeks);
+    const isReeksKlaar = finishedReeksen[activeEvent]?.includes(activeReeks);
 
     return (
         <div style={styles.liveGrid}>
@@ -641,30 +642,25 @@ const renderLive = () => {
 
             <div style={styles.liveContent}>
                 {!isFreestyle ? (
-                  /* COMPACT SPEED LAYOUT */
+                  /* SPEED LAYOUT - COMPACT EN DUIDELIJK */
                   <>
-                  <div style={styles.reeksNav}>
+                  <div style={{...styles.reeksNav, minHeight: '80px'}}>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                           <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
                           
                           <div style={{ textAlign: 'center', minWidth: '150px' }}>
-                              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: isReeksKlaar ? '#10b981' : '#1e293b' }}>
                                 Reeks {activeReeks} 
-                                {isReeksDone && <CheckCircle size={20} color="#10b981" fill="#f0fdf4" />}
-                                <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.1rem' }}>/ {totaalReeksen}</span>
+                                <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
                               </div>
-                              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '4px' }}>
-                                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                                      Gepland: {plannedTime || '--:--'}
-                                  </div>
-                              </div>
+                              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>Gepland: {plannedTime || '--:--'}</div>
                           </div>
 
                           <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.min(totaalReeksen, activeReeks + 1))}><ChevronRight/></button>
                       </div>
 
                       <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                         {timeDiff !== null && (
+                         {timeDiff !== null && !isReeksKlaar && (
                               <div style={{ 
                                   fontSize: '0.8rem', 
                                   fontWeight: 'bold', 
@@ -673,14 +669,20 @@ const renderLive = () => {
                                   background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
                                   color: timeDiff > 5 ? '#ef4444' : '#10b981'
                               }}>
-                                  Vertraging: {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+                                  {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
                               </div>
                           )}
                       </div>
                       
-                      <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.5rem 1.5rem' }} onClick={handleFinishReeks}>
-                          <ChevronLeft size={18} style={{ marginRight: '4px' }}/> <Check size={18} style={{ marginRight: '8px' }}/> Reeks klaar
-                      </button>
+                      {isReeksKlaar ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.6rem 1.2rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
+                           <CheckCircle size={24} /> REEKS VOLTOOID
+                        </div>
+                      ) : (
+                        <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.7rem 1.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
+                            <ChevronLeft size={20} style={{ marginRight: '4px' }}/> Reeks klaar
+                        </button>
+                      )}
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
@@ -689,26 +691,28 @@ const renderLive = () => {
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
                             return (
                                 <div key={veldNum} style={{ 
-                                    background: p ? '#fff' : 'transparent', 
+                                    background: isReeksKlaar ? '#f8fafc' : (p ? '#fff' : 'transparent'), 
                                     padding: '0.6rem 1rem', 
                                     borderRadius: '10px', 
-                                    border: p ? '1px solid #e2e8f0' : '1px dashed #cbd5e1',
+                                    border: p ? (isReeksKlaar ? '1px solid #e2e8f0' : '1px solid #cbd5e1') : '1px dashed #cbd5e1',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '1rem',
-                                    height: '55px'
+                                    height: '60px',
+                                    opacity: isReeksKlaar ? 0.7 : 1,
+                                    transition: 'all 0.3s ease'
                                 }}>
                                     <div style={{ 
-                                        background: p ? '#2563eb' : '#cbd5e1', 
+                                        background: p ? (isReeksKlaar ? '#94a3b8' : '#2563eb') : '#cbd5e1', 
                                         color: '#fff', 
-                                        width: '28px', 
-                                        height: '28px', 
-                                        borderRadius: '6px', 
+                                        width: '32px', 
+                                        height: '32px', 
+                                        borderRadius: '8px', 
                                         display: 'flex', 
                                         alignItems: 'center', 
                                         justifyContent: 'center', 
                                         fontWeight: 'bold', 
-                                        fontSize: '0.9rem', 
+                                        fontSize: '1rem', 
                                         flexShrink: 0 
                                     }}>
                                         {veldNum}
@@ -716,24 +720,24 @@ const renderLive = () => {
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
                                         <div style={{ 
                                             fontWeight: 800, 
-                                            fontSize: '1rem', 
-                                            color: p ? '#1e293b' : '#cbd5e1',
+                                            fontSize: '1.1rem', 
+                                            color: p ? (isReeksKlaar ? '#64748b' : '#1e293b') : '#cbd5e1',
                                             whiteSpace: 'nowrap',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis'
                                         }}>
                                             {p ? p.naam : '---'}
                                         </div>
-                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{p?.club || ''}</div>
+                                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{p?.club || ''}</div>
                                     </div>
-                                    {p?.aanwezig && <CheckCircle size={18} color="#10b981" />}
+                                    {p?.aanwezig && <CheckCircle size={20} color={isReeksKlaar ? '#94a3b8' : '#10b981'} />}
                                 </div>
                             );
                         })}
                     </div>
                   </>
                 ) : (
-                  /* FREESTYLE LAYOUT (Ongewijzigd) */
+                  /* FREESTYLE LAYOUT - ONGEWIJZIGD */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                       <div style={styles.reeksNav}>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -814,7 +818,7 @@ const renderLive = () => {
         }
       `}</style>
 
-      {/* --- Modals --- */}
+      {/* --- Modals (Ongewijzigd) --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
