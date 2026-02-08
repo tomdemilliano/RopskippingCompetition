@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -34,7 +34,6 @@ const COMPETITION_TYPES = {
   'mini Teams': ['SR Speed Relay', 'DD Speed Relay', 'SR Team Freestyle', 'DD Team Freestyle']
 };
 
-// Hulpmiddel om te checken of het een speciaal freestyle-onderdeel is
 const isFreestyleType = (eventName) => {
   const specialTypes = ['Freestyle', 'SR2', 'SR4', 'DD3', 'DD4', 'SR Team Freestyle', 'DD Team Freestyle'];
   return specialTypes.includes(eventName);
@@ -54,9 +53,11 @@ const App = () => {
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(null);
+  const [showEditParticipantModal, setShowEditParticipantModal] = useState(null);
   
   const [newComp, setNewComp] = useState({ name: '', date: '', location: '', type: 'A Masters', events: COMPETITION_TYPES['A Masters'], status: 'open', eventOrder: {} });
   const [editCompData, setEditCompData] = useState({ name: '', date: '', location: '', type: '' });
+  const [editParticipantData, setEditParticipantData] = useState(null);
   const [csvInput, setCsvInput] = useState('');
 
   useEffect(() => {
@@ -138,7 +139,6 @@ const App = () => {
       const detailKey = `detail_${eventName.replace(/\s/g, '')}`;
 
       if (isFreestyle) {
-        // Structuur: reeks, uur, veld, club, skipper
         const naam = row['skipper'];
         const club = row['club'] || '';
         const reeks = row['reeks'] || '';
@@ -161,7 +161,6 @@ const App = () => {
           }
         }
       } else {
-        // Standaard structuur met 10 velden
         const reeks = row['reeks'];
         const uur = row['uur'];
         
@@ -224,6 +223,22 @@ const App = () => {
     }
   };
 
+  const handleUpdateParticipant = async () => {
+    if (!editParticipantData) return;
+    const { id, ...data } = editParticipantData;
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', id), data);
+    setShowEditParticipantModal(null);
+  };
+
+  const toggleEventStatus = (eventName) => {
+    const currentStatus = editParticipantData.eventStatus || {};
+    const newStatus = currentStatus[eventName] === 'geschrapt' ? 'actief' : 'geschrapt';
+    setEditParticipantData({
+      ...editParticipantData,
+      eventStatus: { ...currentStatus, [eventName]: newStatus }
+    });
+  };
+
   const moveEvent = async (eventName, direction) => {
     const newOrder = { ...(selectedComp.eventOrder || {}) };
     sortedEvents.forEach((ev, idx) => { if (newOrder[ev] === undefined) newOrder[ev] = idx; });
@@ -247,6 +262,8 @@ const App = () => {
     card: { background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '0.75rem' },
     btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
     btnSecondary: { background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' },
+    btnDanger: { background: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' },
+    btnSuccess: { background: '#f0fdf4', color: '#10b981', border: '1px solid #bbf7d0', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' },
     input: { width: '100%', padding: '0.6rem', marginBottom: '1rem', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' },
     modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
     csvExample: { background: '#f8fafc', padding: '0.5rem', borderRadius: '4px', fontSize: '0.65rem', color: '#475569', marginBottom: '0.5rem', border: '1px dashed #cbd5e1', overflowX: 'auto', whiteSpace: 'nowrap' }
@@ -292,7 +309,6 @@ const App = () => {
             const count = partsInEvent.length;
             const isSpecial = isFreestyleType(ond);
             
-            // Bereken aantal reeksen en velden
             const reeksen = new Set(partsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
             const maxVeld = partsInEvent.reduce((max, p) => {
                 const veld = p[`detail_${ond.replace(/\s/g, '')}`]?.veld || 0;
@@ -371,14 +387,35 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#64748b' }}>{p.club}</td>
                           <td style={{ padding: '0.75rem' }}>
                             <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                              {sortedEvents.filter(ev => p.events?.includes(ev)).map(ev => (
-                                <span key={ev} title={`${ev} (Reeks ${p['reeks_'+ev.replace(/\s/g, '')]})`} style={{ fontSize: '0.6rem', background: '#f1f5f9', padding: '2px 4px', borderRadius: '4px' }}>{ev.charAt(0)}</span>
-                              ))}
+                              {sortedEvents.filter(ev => p.events?.includes(ev)).map(ev => {
+                                const isGeschrapt = p.eventStatus?.[ev] === 'geschrapt';
+                                return (
+                                  <span key={ev} 
+                                    title={`${ev} (Reeks ${p['reeks_'+ev.replace(/\s/g, '')]}) ${isGeschrapt ? '- GESCHRAPT' : ''}`} 
+                                    style={{ 
+                                      fontSize: '0.6rem', 
+                                      background: isGeschrapt ? '#fee2e2' : '#f1f5f9', 
+                                      color: isGeschrapt ? '#ef4444' : '#475569',
+                                      textDecoration: isGeschrapt ? 'line-through' : 'none',
+                                      padding: '2px 4px', 
+                                      borderRadius: '4px' 
+                                    }}>
+                                    {ev.charAt(0)}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                            <button style={{ border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer', marginRight: '8px' }}
+                              onClick={() => {
+                                setEditParticipantData({ ...p });
+                                setShowEditParticipantModal(true);
+                              }}>
+                              <Edit2 size={16}/>
+                            </button>
                             <button style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer' }} 
-                              onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id))}>
+                              onClick={() => { if(window.confirm('Deelnemer definitief verwijderen?')) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', p.id)) }}>
                               <X size={16}/>
                             </button>
                           </td>
@@ -411,11 +448,6 @@ const App = () => {
                   ? "reeks, uur, veld, club, skipper"
                   : "reeks,onderdeel,uur,Club_veld1,Skipper_veld1,Club_veld2,Skipper_veld2,...,Club_veld10,Skipper_veld10"}
               </div>
-              <div style={{ ...styles.csvExample, background: '#fff', borderStyle: 'solid', color: '#94a3b8' }}>
-                {isFreestyleType(showUploadModal)
-                  ? "1,09:00,1,Club A,Janssen P."
-                  : `1,${showUploadModal},09:00,Club A,Janssen P.,Club B,Peeters L.,...`}
-              </div>
             </div>
 
             <textarea 
@@ -428,6 +460,66 @@ const App = () => {
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUploadCsv}>Importeren</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowUploadModal(null)}>Annuleren</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditParticipantModal && editParticipantData && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.card, width: '500px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Deelnemer aanpassen</h3>
+              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowEditParticipantModal(null)} />
+            </div>
+
+            <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Naam</label>
+            <input style={styles.input} value={editParticipantData.naam} onChange={e => setEditParticipantData({...editParticipantData, naam: e.target.value})} />
+            
+            <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Club</label>
+            <input style={styles.input} value={editParticipantData.club} onChange={e => setEditParticipantData({...editParticipantData, club: e.target.value})} />
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Onderdelen & Deelname</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                {editParticipantData.events?.map(ev => {
+                  const isGeschrapt = editParticipantData.eventStatus?.[ev] === 'geschrapt';
+                  return (
+                    <div key={ev} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      padding: '0.5rem',
+                      borderRadius: '4px',
+                      background: isGeschrapt ? '#f8fafc' : '#fff',
+                      border: '1px solid #f1f5f9'
+                    }}>
+                      <span style={{ 
+                        fontSize: '0.85rem', 
+                        textDecoration: isGeschrapt ? 'line-through' : 'none',
+                        color: isGeschrapt ? '#94a3b8' : '#1e293b',
+                        fontWeight: isGeschrapt ? 'normal' : '500'
+                      }}>
+                        {ev} {isGeschrapt && <span style={{ fontSize: '0.7rem', color: '#ef4444', fontStyle: 'italic', marginLeft: '5px' }}>(Geschrapt)</span>}
+                      </span>
+                      {isGeschrapt ? (
+                        <button style={styles.btnSuccess} onClick={() => toggleEventStatus(ev)}>
+                          <RotateCcw size={12} style={{marginRight: '4px'}}/> Activeer
+                        </button>
+                      ) : (
+                        <button style={styles.btnDanger} onClick={() => toggleEventStatus(ev)}>
+                          <Trash2 size={12} style={{marginRight: '4px'}}/> Schrappen
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button style={{ ...styles.btnPrimary, flex: 1 }} onClick={handleUpdateParticipant}>Opslaan</button>
+              <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowEditParticipantModal(null)}>Annuleren</button>
             </div>
           </div>
         </div>
