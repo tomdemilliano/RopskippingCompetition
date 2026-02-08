@@ -604,7 +604,6 @@ const renderLive = () => {
     const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
     const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
     
-    // Bereken totaal aantal reeksen voor dit onderdeel
     const totaalReeksen = reeksenInEvent.length;
 
     return (
@@ -633,45 +632,47 @@ const renderLive = () => {
             </div>
 
             <div style={styles.liveContent}>
-                {/* Aangepaste Navigatie voor Speed-onderdelen */}
+                {/* Aangepaste Header voor Speed-onderdelen */}
                 {!isFreestyle ? (
-                  <div style={{ ...styles.reeksNav, justifyContent: 'space-between', padding: '1.5rem' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ ...styles.reeksNav, flexDirection: 'column', gap: '1rem', padding: '1.5rem 1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                           <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
+                          
+                          <div style={{ textAlign: 'center' }}>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b' }}>
+                                Reeks {activeReeks} <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.1rem' }}>/ {totaalReeksen}</span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '4px' }}>
+                                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                      Gepland: {plannedTime || '--:--'}
+                                  </div>
+                                  {timeDiff !== null && (
+                                      <div style={{ 
+                                          fontSize: '0.75rem', 
+                                          fontWeight: 'bold', 
+                                          padding: '1px 6px', 
+                                          borderRadius: '4px',
+                                          background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
+                                          color: timeDiff > 5 ? '#ef4444' : '#10b981'
+                                      }}>
+                                          {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+
+                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(activeReeks + 1)}><ChevronRight/></button>
                       </div>
                       
-                      <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '1px' }}>{activeEvent}</div>
-                          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#2563eb', marginTop: '4px' }}>
-                            Reeks {activeReeks} <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1rem' }}>van {totaalReeksen}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '8px' }}>
-                              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
-                                  Gepland: {plannedTime || '--:--'}
-                              </div>
-                              {timeDiff !== null && (
-                                  <div style={{ 
-                                      fontSize: '0.85rem', 
-                                      fontWeight: 'bold', 
-                                      padding: '2px 8px', 
-                                      borderRadius: '4px',
-                                      background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
-                                      color: timeDiff > 5 ? '#ef4444' : '#10b981'
-                                  }}>
-                                      {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
-                                  </div>
-                              )}
-                          </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button style={{ ...styles.btnPrimary, background: '#10b981' }} onClick={handleFinishReeks}>
-                            <FastForward size={18} style={{ marginRight: '8px' }}/> Volgende
+                      {/* Gecentreerde "Reeks klaar" knop onderaan het frame */}
+                      <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+                        <button style={{ ...styles.btnPrimary, background: '#10b981', width: 'auto', padding: '0.5rem 2rem' }} onClick={handleFinishReeks}>
+                            <Check size={18} style={{ marginRight: '8px' }}/> Reeks klaar
                         </button>
                       </div>
                   </div>
                 ) : (
-                  /* Originele Navigatie voor Freestyle-onderdelen */
+                  /* Originele Navigatie voor Freestyle (Ongewijzigd) */
                   <div style={styles.reeksNav}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
@@ -730,31 +731,51 @@ const renderLive = () => {
                         )}
                     </div>
                 ) : (
-                    /* Speed layout behouden */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    /* Compacter Speed layout */
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '0.4rem' }}>
                         {[...Array(10)].map((_, i) => {
                             const veldNum = i + 1;
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
                             return (
                                 <div key={veldNum} style={{ 
-                                    background: p ? '#fff' : '#f1f5f9', 
-                                    padding: '0.75rem 1.5rem', 
-                                    borderRadius: '8px', 
-                                    border: p ? '1px solid #e2e8f0' : '1px dashed #cbd5e1',
+                                    background: p ? '#fff' : '#f8fafc', 
+                                    padding: '0.5rem 1rem', 
+                                    borderRadius: '6px', 
+                                    border: p ? '1px solid #e2e8f0' : '1px dashed #e2e8f0',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '1.5rem'
+                                    gap: '1rem',
+                                    height: '45px' // Vaste hoogte voor compactheid
                                 }}>
-                                    <div style={{ background: p ? '#2563eb' : '#94a3b8', color: '#fff', width: '32px', height: '32px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1rem', flexShrink: 0 }}>
+                                    <div style={{ 
+                                        background: p ? '#2563eb' : '#cbd5e1', 
+                                        color: '#fff', 
+                                        width: '24px', 
+                                        height: '24px', 
+                                        borderRadius: '4px', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        fontWeight: 'bold', 
+                                        fontSize: '0.8rem', 
+                                        flexShrink: 0 
+                                    }}>
                                         {veldNum}
                                     </div>
-                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <div style={{ fontWeight: 800, fontSize: '1.2rem', color: p ? '#1e293b' : '#94a3b8' }}>
+                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', overflow: 'hidden' }}>
+                                        <div style={{ 
+                                            fontWeight: 700, 
+                                            fontSize: '1rem', 
+                                            color: p ? '#1e293b' : '#cbd5e1',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                        }}>
                                             {p ? p.naam : '---'}
                                         </div>
-                                        <div style={{ fontSize: '1rem', color: '#64748b', fontStyle: 'italic' }}>{p?.club || ''}</div>
+                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', marginLeft: '8px' }}>{p?.club || ''}</div>
                                     </div>
-                                    {p?.aanwezig && <CheckCircle size={20} color="#10b981" />}
+                                    {p?.aanwezig && <CheckCircle size={16} color="#10b981" />}
                                 </div>
                             );
                         })}
