@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward, ArrowRight
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward, ArrowLeft
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -54,7 +54,7 @@ const App = () => {
   // Live State
   const [activeEvent, setActiveEvent] = useState(null);
   const [activeReeks, setActiveReeks] = useState(1);
-  const [isFinishedVisual, setIsFinishedVisual] = useState(false);
+  const [finishedReeksen, setFinishedReeksen] = useState({}); // { 'Speed': [1, 2], 'Endurance': [1] }
 
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
@@ -185,23 +185,24 @@ const App = () => {
   }, [plannedTime, currentTime]);
 
   const handleFinishReeks = async () => {
-    setIsFinishedVisual(true);
-    
-    setTimeout(() => {
-      const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
-      if (nextIdx < reeksenInEvent.length) {
-          setActiveReeks(reeksenInEvent[nextIdx]);
-      } else {
-          const eventIdx = sortedEvents.indexOf(activeEvent) + 1;
-          if (eventIdx < sortedEvents.length) {
-              setActiveEvent(sortedEvents[eventIdx]);
-              setActiveReeks(1);
-          } else {
-              alert("Alle onderdelen zijn voltooid!");
-          }
-      }
-      setIsFinishedVisual(false);
-    }, 400);
+    // Markeer huidige reeks als klaar
+    setFinishedReeksen(prev => ({
+        ...prev,
+        [activeEvent]: [...(prev[activeEvent] || []), activeReeks]
+    }));
+
+    const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
+    if (nextIdx < reeksenInEvent.length) {
+        setActiveReeks(reeksenInEvent[nextIdx]);
+    } else {
+        const eventIdx = sortedEvents.indexOf(activeEvent) + 1;
+        if (eventIdx < sortedEvents.length) {
+            setActiveEvent(sortedEvents[eventIdx]);
+            setActiveReeks(1);
+        } else {
+            alert("Alle onderdelen zijn voltooid!");
+        }
+    }
   };
 
   const handleStartCompetition = async (compId) => {
@@ -389,7 +390,7 @@ const App = () => {
     column: { background: '#fff', borderRight: '1px solid #e2e8f0', overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' },
     contentArea: { padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' },
     card: { background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '0.75rem' },
-    btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' },
+    btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' },
     btnSecondary: { background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' },
     btnDanger: { background: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' },
     btnSuccess: { background: '#f0fdf4', color: '#10b981', border: '1px solid #bbf7d0', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' },
@@ -401,7 +402,7 @@ const App = () => {
     
     liveGrid: { display: 'grid', gridTemplateColumns: '300px 1fr', height: '100%', overflow: 'hidden' },
     liveLeft: { background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
-    liveContent: { padding: '1.5rem', overflowY: 'auto', background: '#f8fafc', display: 'flex', flexDirection: 'column' },
+    liveContent: { padding: '1.5rem', overflowY: 'auto', background: '#f8fafc' },
     reeksNav: { display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', background: '#fff', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
     timerBox: { background: '#1e293b', color: '#10b981', padding: '0.5rem 1rem', borderRadius: '8px', fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 'bold' }
   };
@@ -611,6 +612,7 @@ const renderLive = () => {
     const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
     
     const totaalReeksen = reeksenInEvent.length;
+    const isReeksDone = finishedReeksen[activeEvent]?.includes(activeReeks);
 
     return (
         <div style={styles.liveGrid}>
@@ -639,111 +641,99 @@ const renderLive = () => {
 
             <div style={styles.liveContent}>
                 {!isFreestyle ? (
-                  /* SPEED LAYOUT - COMPACTER VOOR 10 VELDEN */
+                  /* COMPACT SPEED LAYOUT */
                   <>
-                  <div style={{ ...styles.reeksNav, padding: '0.8rem 1.5rem', gap: '2rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <button style={{...styles.btnSecondary, padding: '0.4rem'}} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft size={20}/></button>
-                          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b', minWidth: '120px', textAlign: 'center' }}>
-                            Reeks {activeReeks} <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1rem' }}>/ {totaalReeksen}</span>
+                  <div style={styles.reeksNav}>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
+                          
+                          <div style={{ textAlign: 'center', minWidth: '150px' }}>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                Reeks {activeReeks} 
+                                {isReeksDone && <CheckCircle size={20} color="#10b981" fill="#f0fdf4" />}
+                                <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.1rem' }}>/ {totaalReeksen}</span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '4px' }}>
+                                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                      Gepland: {plannedTime || '--:--'}
+                                  </div>
+                              </div>
                           </div>
-                          <button style={{...styles.btnSecondary, padding: '0.4rem'}} onClick={() => setActiveReeks(activeReeks + 1)}><ChevronRight size={20}/></button>
+
+                          <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.min(totaalReeksen, activeReeks + 1))}><ChevronRight/></button>
                       </div>
 
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                          <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
-                              Gepland: <span style={{ fontWeight: 'bold', color: '#1e293b' }}>{plannedTime || '--:--'}</span>
-                          </div>
-                          {timeDiff !== null && (
+                      <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                         {timeDiff !== null && (
                               <div style={{ 
-                                  fontSize: '0.75rem', 
+                                  fontSize: '0.8rem', 
                                   fontWeight: 'bold', 
-                                  padding: '2px 8px', 
-                                  borderRadius: '4px',
+                                  padding: '4px 12px', 
+                                  borderRadius: '6px',
                                   background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
                                   color: timeDiff > 5 ? '#ef4444' : '#10b981'
                               }}>
-                                  {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+                                  Vertraging: {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
                               </div>
                           )}
                       </div>
-
-                      <button 
-                        style={{ 
-                          ...styles.btnPrimary, 
-                          background: isFinishedVisual ? '#059669' : '#10b981', 
-                          padding: '0.6rem 1.5rem',
-                          transform: isFinishedVisual ? 'scale(0.95)' : 'scale(1)',
-                          boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.2)'
-                        }} 
-                        onClick={handleFinishReeks}
-                      >
-                        <Check size={20} />
-                        <span>Reeks klaar</span>
-                        <ArrowRight size={18} style={{ marginLeft: '4px' }} />
+                      
+                      <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.5rem 1.5rem' }} onClick={handleFinishReeks}>
+                          <ChevronLeft size={18} style={{ marginRight: '4px' }}/> <Check size={18} style={{ marginRight: '8px' }}/> Reeks klaar
                       </button>
                   </div>
-                  
-                  {/* Grid met 2 kolommen voor 10 velden zodat alles op 1 scherm past */}
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(2, 1fr)', 
-                    gap: '0.6rem',
-                    flex: 1
-                  }}>
-                      {[...Array(10)].map((_, i) => {
-                          const veldNum = i + 1;
-                          const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
-                          return (
-                              <div key={veldNum} style={{ 
-                                  background: p ? '#fff' : 'transparent', 
-                                  padding: '0.75rem 1rem', 
-                                  borderRadius: '10px', 
-                                  border: p ? '1px solid #e2e8f0' : '1px dashed #cbd5e1',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '1rem',
-                                  height: '65px',
-                                  boxShadow: p ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                              }}>
-                                  <div style={{ 
-                                      background: p ? '#2563eb' : '#cbd5e1', 
-                                      color: '#fff', 
-                                      width: '32px', 
-                                      height: '32px', 
-                                      borderRadius: '8px', 
-                                      display: 'flex', 
-                                      alignItems: 'center', 
-                                      justifyContent: 'center', 
-                                      fontWeight: 'bold', 
-                                      fontSize: '1rem', 
-                                      flexShrink: 0 
-                                  }}>
-                                      {veldNum}
-                                  </div>
-                                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                                      <div style={{ 
-                                          fontWeight: 800, 
-                                          fontSize: '1.1rem', 
-                                          color: p ? '#1e293b' : '#cbd5e1',
-                                          whiteSpace: 'nowrap',
-                                          overflow: 'hidden',
-                                          textOverflow: 'ellipsis'
-                                      }}>
-                                          {p ? p.naam : '---'}
-                                      </div>
-                                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {p?.club || ''}
-                                      </div>
-                                  </div>
-                                  {p?.aanwezig && <CheckCircle size={20} color="#10b981" />}
-                              </div>
-                          );
-                      })}
-                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
+                        {[...Array(10)].map((_, i) => {
+                            const veldNum = i + 1;
+                            const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
+                            return (
+                                <div key={veldNum} style={{ 
+                                    background: p ? '#fff' : 'transparent', 
+                                    padding: '0.6rem 1rem', 
+                                    borderRadius: '10px', 
+                                    border: p ? '1px solid #e2e8f0' : '1px dashed #cbd5e1',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1rem',
+                                    height: '55px'
+                                }}>
+                                    <div style={{ 
+                                        background: p ? '#2563eb' : '#cbd5e1', 
+                                        color: '#fff', 
+                                        width: '28px', 
+                                        height: '28px', 
+                                        borderRadius: '6px', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        fontWeight: 'bold', 
+                                        fontSize: '0.9rem', 
+                                        flexShrink: 0 
+                                    }}>
+                                        {veldNum}
+                                    </div>
+                                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                                        <div style={{ 
+                                            fontWeight: 800, 
+                                            fontSize: '1rem', 
+                                            color: p ? '#1e293b' : '#cbd5e1',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                        }}>
+                                            {p ? p.naam : '---'}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{p?.club || ''}</div>
+                                    </div>
+                                    {p?.aanwezig && <CheckCircle size={18} color="#10b981" />}
+                                </div>
+                            );
+                        })}
+                    </div>
                   </>
                 ) : (
-                  /* FREESTYLE LAYOUT - ONGEWIJZIGD */
+                  /* FREESTYLE LAYOUT (Ongewijzigd) */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                       <div style={styles.reeksNav}>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
