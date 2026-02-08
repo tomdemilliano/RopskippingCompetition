@@ -49,6 +49,7 @@ const App = () => {
   const [allParticipantsCounts, setAllParticipantsCounts] = useState({});
   const [settings, setSettings] = useState({ activeCompetitionId: null });
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentTime, setCurrentTime] = useState(new Date());
   
   // Live State
   const [activeEvent, setActiveEvent] = useState(null);
@@ -63,6 +64,11 @@ const App = () => {
   const [editCompData, setEditCompData] = useState({ name: '', date: '', location: '', type: '' });
   const [editParticipantData, setEditParticipantData] = useState(null);
   const [csvInput, setCsvInput] = useState('');
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -161,6 +167,21 @@ const App = () => {
     const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
     return liveParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
   }, [liveParticipants, activeReeks, activeEvent]);
+
+  const plannedTime = useMemo(() => {
+    if (currentReeksData.length === 0) return null;
+    return currentReeksData[0][`detail_${activeEvent?.replace(/\s/g, '')}`]?.uur;
+  }, [currentReeksData, activeEvent]);
+
+  const timeDiff = useMemo(() => {
+    if (!plannedTime) return null;
+    const [pHours, pMinutes] = plannedTime.split(':').map(Number);
+    const pDate = new Date();
+    pDate.setHours(pHours, pMinutes, 0, 0);
+    
+    const diffMs = currentTime - pDate;
+    return Math.floor(diffMs / 60000);
+  }, [plannedTime, currentTime]);
 
   const handleFinishReeks = async () => {
     const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
@@ -375,7 +396,8 @@ const App = () => {
     liveGrid: { display: 'grid', gridTemplateColumns: '300px 1fr', height: '100%', overflow: 'hidden' },
     liveLeft: { background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
     liveContent: { padding: '2rem', overflowY: 'auto', background: '#f8fafc' },
-    reeksNav: { display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem', background: '#fff', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+    reeksNav: { display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem', background: '#fff', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    timerBox: { background: '#1e293b', color: '#10b981', padding: '0.5rem 1rem', borderRadius: '8px', fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 'bold' }
   };
 
   const renderManagement = () => (
@@ -585,7 +607,13 @@ const App = () => {
     return (
         <div style={styles.liveGrid}>
             <div style={styles.liveLeft}>
-                <div style={{ padding: '1.5rem', borderBottom: '1px solid #eee', fontWeight: 'bold', color: '#64748b' }}>ONDERDELEN</div>
+                <div style={{ padding: '1.5rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                   <span style={{ fontWeight: 'bold', color: '#64748b' }}>ONDERDELEN</span>
+                   <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>HUIDIG UUR</div>
+                      <div style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                   </div>
+                </div>
                 {sortedEvents.map(ev => (
                     <div key={ev} 
                         onClick={() => { setActiveEvent(ev); setActiveReeks(1); }}
@@ -607,12 +635,30 @@ const App = () => {
                         <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
                         <button style={styles.btnSecondary} onClick={() => setActiveReeks(activeReeks + 1)}><ChevronRight/></button>
                     </div>
+                    
                     <div style={{ flex: 1, textAlign: 'center' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 'bold' }}>HUIDIGE REEKS</span>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{activeEvent} - Reeks {activeReeks}</div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{activeEvent} - Reeks {activeReeks}</div>
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '4px' }}>
+                            <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
+                                Gepland: {plannedTime || '--:--'}
+                            </div>
+                            {timeDiff !== null && (
+                                <div style={{ 
+                                    fontSize: '0.85rem', 
+                                    fontWeight: 'bold', 
+                                    padding: '2px 8px', 
+                                    borderRadius: '4px',
+                                    background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
+                                    color: timeDiff > 5 ? '#ef4444' : '#10b981'
+                                }}>
+                                    {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+                                </div>
+                            )}
+                        </div>
                     </div>
-                    <button style={{ ...styles.btnPrimary, background: '#10b981', height: '50px', padding: '0 1.5rem' }} onClick={handleFinishReeks}>
-                        <FastForward size={20}/> Markeer reeks als voltooid
+
+                    <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0 1rem', width: 'auto' }} onClick={handleFinishReeks}>
+                        <FastForward size={18}/> Volgende Reeks
                     </button>
                 </div>
 
@@ -640,28 +686,28 @@ const App = () => {
                         )}
                     </div>
                 ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {[...Array(10)].map((_, i) => {
                             const veldNum = i + 1;
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
                             return (
                                 <div key={veldNum} style={{ 
                                     background: p ? '#fff' : '#f1f5f9', 
-                                    padding: '1.5rem', 
-                                    borderRadius: '12px', 
+                                    padding: '0.75rem 1.5rem', 
+                                    borderRadius: '8px', 
                                     border: p ? '1px solid #e2e8f0' : '1px dashed #cbd5e1',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '1rem'
+                                    gap: '1.5rem'
                                 }}>
-                                    <div style={{ background: p ? '#2563eb' : '#94a3b8', color: '#fff', width: '40px', height: '40px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem' }}>
+                                    <div style={{ background: p ? '#2563eb' : '#94a3b8', color: '#fff', width: '32px', height: '32px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1rem', flexShrink: 0 }}>
                                         {veldNum}
                                     </div>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 900, fontSize: '1.1rem', color: p ? '#1e293b' : '#94a3b8' }}>
-                                            {p ? p.naam : 'LEEG'}
+                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ fontWeight: 800, fontSize: '1.2rem', color: p ? '#1e293b' : '#94a3b8' }}>
+                                            {p ? p.naam : '---'}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{p?.club || 'Geen skipper'}</div>
+                                        <div style={{ fontSize: '1rem', color: '#64748b', fontStyle: 'italic' }}>{p?.club || ''}</div>
                                     </div>
                                     {p?.aanwezig && <CheckCircle size={20} color="#10b981" />}
                                 </div>
@@ -694,7 +740,7 @@ const App = () => {
         }
       `}</style>
 
-      {/* --- Modals (ongewijzigd) --- */}
+      {/* --- Modals --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
