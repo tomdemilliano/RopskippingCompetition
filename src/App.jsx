@@ -624,6 +624,12 @@ const renderLive = () => {
     const isLaatsteReeks = activeReeks === reeksenInEvent[reeksenInEvent.length - 1];
     const isReeksKlaar = finishedReeksen[activeEvent]?.includes(activeReeks);
 
+    // Bereken het hoogste veldnummer in de huidige reeks voor speed-onderdelen
+    const maxVeldInReeks = currentReeksData.reduce((max, p) => {
+        const veld = parseInt(p[`detail_${activeEvent?.replace(/\s/g, '')}`]?.veld) || 0;
+        return veld > max ? veld : max;
+    }, 0);
+
     return (
         <div style={styles.liveGrid}>
             <div style={styles.liveLeft}>
@@ -728,7 +734,7 @@ const renderLive = () => {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', width: 'fit-content', margin: '0 auto' }}>
-                        {[...Array(10)].map((_, i) => {
+                        {[...Array(maxVeldInReeks || 0)].map((_, i) => {
                             const veldNum = i + 1;
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
                             return (
