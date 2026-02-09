@@ -672,7 +672,7 @@ return (
         csvInput={csvInput} setCsvInput={setCsvInput}
         handleUploadCsv={handleUploadCsv}
         newComp={newComp} setNewComp={setNewComp}
-        handleAddComp={handleAddComp}
+        handleCreateComp={handleCreateComp}
         editCompData={editCompData} setEditCompData={setEditCompData}
         handleUpdateComp={handleUpdateComp}
         selectedComp={selectedComp}
