@@ -672,23 +672,36 @@ const renderLive = () => {
                 {!isFreestyle ? (
                   /* SPEED LAYOUT */
                   <>
-                  <div style={{...styles.reeksNav, minHeight: '80px', position: 'relative'}}>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <button 
-                            disabled={isEersteReeks}
-                            style={{ ...styles.btnSecondary, opacity: isEersteReeks ? 0.3 : 1, cursor: isEersteReeks ? 'not-allowed' : 'pointer' }} 
-                            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) - 1])}
-                          >
-                            <ChevronLeft/>
-                          </button>
-                          
-                          <div style={{ textAlign: 'center', minWidth: '150px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: isReeksKlaar ? '#10b981' : '#1e293b' }}>
-                                    Reeks {activeReeks} 
-                                    <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
-                                </div>
+                  <div style={{...styles.reeksNav, minHeight: '60px', padding: '0.5rem 1rem', position: 'relative', flexDirection: 'column', justifyContent: 'center'}}>
+                      <div style={{ display: 'flex', width: '100%', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <button 
+                                disabled={isEersteReeks}
+                                style={{ ...styles.btnSecondary, padding: '0.4rem 0.8rem', opacity: isEersteReeks ? 0.3 : 1, cursor: isEersteReeks ? 'not-allowed' : 'pointer' }} 
+                                onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) - 1])}
+                              >
+                                <ChevronLeft size={20}/>
+                              </button>
+                              
+                              <div style={{ textAlign: 'center', minWidth: '120px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                    <div style={{ fontSize: '1.4rem', fontWeight: 900, color: isReeksKlaar ? '#10b981' : '#1e293b', lineHeight: 1 }}>
+                                        Reeks {activeReeks} 
+                                        <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
+                                    </div>
+                                  </div>
                               </div>
+
+                              <button 
+                                disabled={isLaatsteReeks}
+                                style={{ ...styles.btnSecondary, padding: '0.4rem 0.8rem', opacity: isLaatsteReeks ? 0.3 : 1, cursor: isLaatsteReeks ? 'not-allowed' : 'pointer' }} 
+                                onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) + 1])}
+                              >
+                                <ChevronRight size={20}/>
+                              </button>
+                          </div>
+
+                          <div style={{ flex: 1, textAlign: 'center' }}>
                               <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
                                  Gepland: {plannedTime || '--:--'}
                                  {timeDiff !== null && !isReeksKlaar && (
@@ -698,43 +711,34 @@ const renderLive = () => {
                                  )}
                               </div>
                           </div>
-
-                          <button 
-                            disabled={isLaatsteReeks}
-                            style={{ ...styles.btnSecondary, opacity: isLaatsteReeks ? 0.3 : 1, cursor: isLaatsteReeks ? 'not-allowed' : 'pointer' }} 
-                            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) + 1])}
-                          >
-                            <ChevronRight/>
-                          </button>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            {isReeksKlaar ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '0.85rem' }}>
+                                <CheckCircle size={18} /> GEREED
+                                </div>
+                            ) : (
+                                <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.5rem 1rem', fontSize: '0.9rem' }} onClick={handleFinishReeks}>
+                                    {isLaatsteReeks ? `Klaar` : 'Volgende'} <ChevronRight size={18} style={{ marginLeft: '4px' }}/>
+                                </button>
+                            )}
+                          </div>
                       </div>
 
-                      <div style={{ flex: 1 }}></div>
-                      
-                      {isReeksKlaar ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.6rem 1.2rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
-                           <CheckCircle size={24} /> REEKS VOLTOOID
+                      {/* COMPACTE BADGE ONDERAAN IN HET FRAME */}
+                      {isLaatsteReeks && !isReeksKlaar && (
+                         <div style={{ 
+                            position: 'absolute', bottom: '2px', left: '50%', transform: 'translateX(-50%)',
+                            background: '#ef4444', color: '#fff', fontSize: '0.65rem', padding: '1px 8px', 
+                            borderRadius: '4px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px',
+                            letterSpacing: '0.5px'
+                        }}>
+                           <Flag size={10}/> LAATSTE REEKS
                         </div>
-                      ) : (
-                        <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.7rem 1.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
-                            {isLaatsteReeks ? `${activeEvent} klaar` : 'Reeks klaar'} <ChevronRight size={20} style={{ marginLeft: '4px' }}/>
-                        </button>
                       )}
                   </div>
 
-                  {/* CENTRALE BADGE LAATSTE REEKS */}
-                  {isLaatsteReeks && !isReeksKlaar && (
-                     <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 5, pointerEvents: 'none' }}>
-                        <div style={{ 
-                            background: '#ef4444', color: '#fff', fontSize: '1.5rem', padding: '1rem 2rem', 
-                            borderRadius: '12px', fontWeight: 900, boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)',
-                            display: 'flex', alignItems: 'center', gap: '12px', opacity: 0.15
-                        }}>
-                           <Flag size={32}/> LAATSTE REEKS
-                        </div>
-                     </div>
-                  )}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginTop: '1rem' }}>
                         {[...Array(10)].map((_, i) => {
                             const veldNum = i + 1;
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
