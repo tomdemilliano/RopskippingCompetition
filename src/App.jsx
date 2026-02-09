@@ -670,7 +670,7 @@ return (
         showAddCompModal={showAddCompModal} setShowAddCompModal={setShowAddCompModal}
         showEditCompModal={showEditCompModal} setShowEditCompModal={setShowEditCompModal}
         csvInput={csvInput} setCsvInput={setCsvInput}
-        handleProcessCsv={handleProcessCsv}
+        handleUploadCsv={handleUploadCsv}
         newComp={newComp} setNewComp={setNewComp}
         handleAddComp={handleAddComp}
         editCompData={editCompData} setEditCompData={setEditCompData}
