@@ -7,7 +7,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward, Flag
+  Trash2, Upload, X, Search, Star, Edit2, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, Info, RotateCcw, Clock, MapPin, UserPlus, UserMinus, Play, Square, Check, ChevronRight, ChevronLeft, Mic2, FastForward, Flag, Users, UserCheck, UserX, Ghost
 } from 'lucide-react';
 
 const getFirebaseConfig = () => {
@@ -49,6 +49,7 @@ const App = () => {
   const [allParticipantsCounts, setAllParticipantsCounts] = useState({});
   const [settings, setSettings] = useState({ activeCompetitionId: null });
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('alle'); // 'alle', 'niet-aangemeld', 'aangemeld', 'geschrapt'
   const [currentTime, setCurrentTime] = useState(new Date());
   
   // Live State
@@ -148,11 +149,25 @@ const App = () => {
   }, [sortedEvents]);
 
   const filteredParticipants = useMemo(() => {
-    return Object.values(participants).filter(p => 
-      p.naam?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      p.club?.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => (a.naam || '').localeCompare(b.naam || ''));
-  }, [participants, searchTerm]);
+    return Object.values(participants).filter(p => {
+      const matchesSearch = p.naam?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           p.club?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      let matchesFilter = true;
+      const hasGeschraptOnderdeel = p.eventStatus && Object.values(p.eventStatus).includes('geschrapt');
+      const isGeschrapt = p.status === 'geschrapt' || hasGeschraptOnderdeel;
+
+      if (filterStatus === 'niet-aangemeld') {
+        matchesFilter = !p.aanwezig && !isGeschrapt;
+      } else if (filterStatus === 'aangemeld') {
+        matchesFilter = p.aanwezig && !isGeschrapt;
+      } else if (filterStatus === 'geschrapt') {
+        matchesFilter = isGeschrapt;
+      }
+
+      return matchesSearch && matchesFilter;
+    }).sort((a, b) => (a.naam || '').localeCompare(b.naam || ''));
+  }, [participants, searchTerm, filterStatus]);
 
   const liveParticipants = useMemo(() => {
     if (!activeEvent) return [];
@@ -412,7 +427,22 @@ const App = () => {
     liveLeft: { background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
     liveContent: { padding: '1.5rem', overflowY: 'auto', background: '#f8fafc' },
     reeksNav: { display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', background: '#fff', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    timerBox: { background: '#1e293b', color: '#10b981', padding: '0.5rem 1rem', borderRadius: '8px', fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 'bold' }
+    timerBox: { background: '#1e293b', color: '#10b981', padding: '0.5rem 1rem', borderRadius: '8px', fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 'bold' },
+
+    filterBtn: { 
+      padding: '0.4rem 0.8rem', 
+      borderRadius: '6px', 
+      fontSize: '0.75rem', 
+      border: '1px solid #e2e8f0', 
+      cursor: 'pointer', 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '6px',
+      background: '#fff',
+      color: '#64748b',
+      fontWeight: 'bold',
+      transition: 'all 0.2s'
+    }
   };
 
   const renderManagement = () => (
@@ -490,7 +520,7 @@ const App = () => {
           {selectedComp ? (
             <>
               <div style={styles.card}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <h2 style={{ margin: 0 }}>{selectedComp.name}</h2>
@@ -525,6 +555,34 @@ const App = () => {
                         </button>
                     )}
                   </div>
+                </div>
+
+                {/* Filters toegevoegd aan frame boven deelnemerslijst */}
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+                    <button 
+                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'alle' ? '#2563eb' : '#e2e8f0', background: filterStatus === 'alle' ? '#f0f7ff' : '#fff', color: filterStatus === 'alle' ? '#2563eb' : '#64748b' }}
+                      onClick={() => setFilterStatus('alle')}
+                    >
+                      <Users size={14}/> Alle
+                    </button>
+                    <button 
+                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'niet-aangemeld' ? '#f59e0b' : '#e2e8f0', background: filterStatus === 'niet-aangemeld' ? '#fffbeb' : '#fff', color: filterStatus === 'niet-aangemeld' ? '#d97706' : '#64748b' }}
+                      onClick={() => setFilterStatus('niet-aangemeld')}
+                    >
+                      <UserPlus size={14}/> Niet aangemeld
+                    </button>
+                    <button 
+                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'aangemeld' ? '#10b981' : '#e2e8f0', background: filterStatus === 'aangemeld' ? '#f0fdf4' : '#fff', color: filterStatus === 'aangemeld' ? '#10b981' : '#64748b' }}
+                      onClick={() => setFilterStatus('aangemeld')}
+                    >
+                      <UserCheck size={14}/> Aangemeld
+                    </button>
+                    <button 
+                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'geschrapt' ? '#ef4444' : '#e2e8f0', background: filterStatus === 'geschrapt' ? '#fef2f2' : '#fff', color: filterStatus === 'geschrapt' ? '#ef4444' : '#64748b' }}
+                      onClick={() => setFilterStatus('geschrapt')}
+                    >
+                      <UserX size={14}/> Geschrapt
+                    </button>
                 </div>
               </div>
 
@@ -624,7 +682,6 @@ const renderLive = () => {
     const isLaatsteReeks = activeReeks === reeksenInEvent[reeksenInEvent.length - 1];
     const isReeksKlaar = finishedReeksen[activeEvent]?.includes(activeReeks);
 
-    // Bereken het hoogste veldnummer in de huidige reeks voor speed-onderdelen
     const maxVeldInReeks = currentReeksData.reduce((max, p) => {
         const veld = parseInt(p[`detail_${activeEvent?.replace(/\s/g, '')}`]?.veld) || 0;
         return veld > max ? veld : max;
@@ -660,7 +717,6 @@ const renderLive = () => {
 
             <div style={{...styles.liveContent, position: 'relative'}}>
                 {!isFreestyle ? (
-                  /* SPEED LAYOUT */
                   <>
                   <div style={{
                       ...styles.reeksNav, 
@@ -786,7 +842,6 @@ const renderLive = () => {
                     </div>
                   </>
                 ) : (
-                  /* FREESTYLE LAYOUT */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                       <div style={styles.reeksNav}>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
