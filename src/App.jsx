@@ -97,7 +97,6 @@ const App = () => {
         }
     });
 
-    // Luisteren naar voortgang (reeksen en onderdelen)
     onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'progress'), (d) => {
         if(d.exists()) {
             const data = d.data();
@@ -155,7 +154,6 @@ const App = () => {
     ).sort((a, b) => (a.naam || '').localeCompare(b.naam || ''));
   }, [participants, searchTerm]);
 
-  // LIVE LOGIC
   const liveParticipants = useMemo(() => {
     if (!activeEvent) return [];
     const eventKey = `reeks_${activeEvent.replace(/\s/g, '')}`;
@@ -198,7 +196,6 @@ const App = () => {
   const handleFinishReeks = async () => {
     const isLaatsteReeks = activeReeks === reeksenInEvent[reeksenInEvent.length - 1];
     
-    // Update lokale state en database
     const newFinishedReeksen = {
         ...finishedReeksen,
         [activeEvent]: [...(finishedReeksen[activeEvent] || []), activeReeks]
@@ -214,7 +211,6 @@ const App = () => {
         finishedEvents: newFinishedEvents
     });
 
-    // Navigatie logica
     const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
     if (nextIdx < reeksenInEvent.length) {
         setActiveReeks(reeksenInEvent[nextIdx]);
@@ -234,7 +230,6 @@ const App = () => {
     }
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', compId), { status: 'bezig' });
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: compId });
-    // Reset progress
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'progress'), { finishedReeksen: {}, finishedEvents: [] });
   };
 
@@ -378,18 +373,6 @@ const App = () => {
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', participantId), {
       status: newStatus,
       eventStatus: newEventStatus
-    });
-  };
-
-  const toggleEventStatus = (eventName) => {
-    const currentStatus = editParticipantData.eventStatus || {};
-    const newStatus = currentStatus[eventName] === 'geschrapt' ? 'actief' : 'geschrapt';
-    const globalStatus = newStatus === 'actief' ? 'actief' : editParticipantData.status;
-
-    setEditParticipantData({
-      ...editParticipantData,
-      status: globalStatus,
-      eventStatus: { ...currentStatus, [eventName]: newStatus }
     });
   };
 
@@ -670,39 +653,32 @@ const renderLive = () => {
 
             <div style={{...styles.liveContent, position: 'relative'}}>
                 {!isFreestyle ? (
-                  /* SPEED LAYOUT */
+                  /* SPEED LAYOUT - UPDATED */
                   <>
-                  <div style={{...styles.reeksNav, minHeight: '60px', padding: '0.5rem 1rem', position: 'relative', flexDirection: 'column', justifyContent: 'center'}}>
-                      <div style={{ display: 'flex', width: '100%', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                              <button 
-                                disabled={isEersteReeks}
-                                style={{ ...styles.btnSecondary, padding: '0.4rem 0.8rem', opacity: isEersteReeks ? 0.3 : 1, cursor: isEersteReeks ? 'not-allowed' : 'pointer' }} 
-                                onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) - 1])}
-                              >
-                                <ChevronLeft size={20}/>
-                              </button>
-                              
-                              <div style={{ textAlign: 'center', minWidth: '120px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                    <div style={{ fontSize: '1.4rem', fontWeight: 900, color: isReeksKlaar ? '#10b981' : '#1e293b', lineHeight: 1 }}>
-                                        Reeks {activeReeks} 
-                                        <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
-                                    </div>
-                                  </div>
+                  <div style={{
+                      ...styles.reeksNav, 
+                      minHeight: '140px', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      padding: '1.5rem',
+                      gap: '1rem'
+                  }}>
+                      {/* BOVENSTE RIJ: NAVIGATIE EN REEKS INFO */}
+                      <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <button 
+                            disabled={isEersteReeks}
+                            style={{ ...styles.btnSecondary, opacity: isEersteReeks ? 0.3 : 1, cursor: isEersteReeks ? 'not-allowed' : 'pointer', width: '60px' }} 
+                            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) - 1])}
+                          >
+                            <ChevronLeft/>
+                          </button>
+                          
+                          <div style={{ textAlign: 'center', flex: 1 }}>
+                              <div style={{ fontSize: '1.8rem', fontWeight: 900, color: isReeksKlaar ? '#10b981' : '#1e293b' }}>
+                                  Reeks {activeReeks} 
+                                  <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
                               </div>
-
-                              <button 
-                                disabled={isLaatsteReeks}
-                                style={{ ...styles.btnSecondary, padding: '0.4rem 0.8rem', opacity: isLaatsteReeks ? 0.3 : 1, cursor: isLaatsteReeks ? 'not-allowed' : 'pointer' }} 
-                                onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) + 1])}
-                              >
-                                <ChevronRight size={20}/>
-                              </button>
-                          </div>
-
-                          <div style={{ flex: 1, textAlign: 'center' }}>
-                              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
+                              <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 'bold', marginTop: '4px' }}>
                                  Gepland: {plannedTime || '--:--'}
                                  {timeDiff !== null && !isReeksKlaar && (
                                     <span style={{ color: timeDiff > 5 ? '#ef4444' : '#10b981', marginLeft: '4px' }}>
@@ -710,35 +686,50 @@ const renderLive = () => {
                                     </span>
                                  )}
                               </div>
-                          </div>
-                          
-                          <div style={{ display: 'flex', alignItems: 'center' }}>
-                            {isReeksKlaar ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '0.85rem' }}>
-                                <CheckCircle size={18} /> GEREED
+                              {/* LAATSTE REEKS BADGE HIER CENTRAAL ONDER DE UREN */}
+                              {isLaatsteReeks && !isReeksKlaar && (
+                                <div style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '4px', 
+                                    background: '#fee2e2', 
+                                    color: '#ef4444', 
+                                    fontSize: '0.75rem', 
+                                    padding: '4px 10px', 
+                                    borderRadius: '6px', 
+                                    fontWeight: 900,
+                                    marginTop: '8px',
+                                    border: '1px solid #fecaca'
+                                }}>
+                                    <Flag size={14}/> LAATSTE REEKS
                                 </div>
-                            ) : (
-                                <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.5rem 1rem', fontSize: '0.9rem' }} onClick={handleFinishReeks}>
-                                    {isLaatsteReeks ? `Klaar` : 'Volgende'} <ChevronRight size={18} style={{ marginLeft: '4px' }}/>
-                                </button>
-                            )}
+                              )}
                           </div>
+
+                          <button 
+                            disabled={isLaatsteReeks}
+                            style={{ ...styles.btnSecondary, opacity: isLaatsteReeks ? 0.3 : 1, cursor: isLaatsteReeks ? 'not-allowed' : 'pointer', width: '60px' }} 
+                            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) + 1])}
+                          >
+                            <ChevronRight/>
+                          </button>
                       </div>
 
-                      {/* COMPACTE BADGE ONDERAAN IN HET FRAME */}
-                      {isLaatsteReeks && !isReeksKlaar && (
-                         <div style={{ 
-                            position: 'absolute', bottom: '2px', left: '50%', transform: 'translateX(-50%)',
-                            background: '#ef4444', color: '#fff', fontSize: '0.65rem', padding: '1px 8px', 
-                            borderRadius: '4px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px',
-                            letterSpacing: '0.5px'
-                        }}>
-                           <Flag size={10}/> LAATSTE REEKS
-                        </div>
-                      )}
+                      {/* ONDERSTE RIJ: ACTIEKNOP */}
+                      <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 'auto' }}>
+                          {isReeksKlaar ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.6rem 1.5rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
+                               <CheckCircle size={20} /> REEKS VOLTOOID
+                            </div>
+                          ) : (
+                            <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.7rem 2.5rem', fontSize: '1rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} onClick={handleFinishReeks}>
+                                {isLaatsteReeks ? `${activeEvent} klaar` : 'Reeks klaar'} <ChevronRight size={20} style={{ marginLeft: '4px' }}/>
+                            </button>
+                          )}
+                      </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginTop: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
                         {[...Array(10)].map((_, i) => {
                             const veldNum = i + 1;
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
@@ -790,7 +781,7 @@ const renderLive = () => {
                     </div>
                   </>
                 ) : (
-                  /* FREESTYLE LAYOUT - ONGEWIJZIGD */
+                  /* FREESTYLE LAYOUT - UNCHANGED */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                       <div style={styles.reeksNav}>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -883,7 +874,7 @@ const renderLive = () => {
         }
       `}</style>
 
-      {/* --- Modals (Ongewijzigd) --- */}
+      {/* --- Modals --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
