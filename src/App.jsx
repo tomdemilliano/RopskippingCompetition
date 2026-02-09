@@ -653,7 +653,7 @@ const renderLive = () => {
 
             <div style={{...styles.liveContent, position: 'relative'}}>
                 {!isFreestyle ? (
-                  /* SPEED LAYOUT - UPDATED */
+                  /* SPEED LAYOUT */
                   <>
                   <div style={{
                       ...styles.reeksNav, 
@@ -663,7 +663,6 @@ const renderLive = () => {
                       padding: '1.5rem',
                       gap: '1rem'
                   }}>
-                      {/* BOVENSTE RIJ: NAVIGATIE EN REEKS INFO */}
                       <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
                           <button 
                             disabled={isEersteReeks}
@@ -686,7 +685,6 @@ const renderLive = () => {
                                     </span>
                                  )}
                               </div>
-                              {/* LAATSTE REEKS BADGE HIER CENTRAAL ONDER DE UREN */}
                               {isLaatsteReeks && !isReeksKlaar && (
                                 <div style={{ 
                                     display: 'inline-flex', 
@@ -715,7 +713,6 @@ const renderLive = () => {
                           </button>
                       </div>
 
-                      {/* ONDERSTE RIJ: ACTIEKNOP */}
                       <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 'auto' }}>
                           {isReeksKlaar ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.6rem 1.5rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
@@ -729,7 +726,7 @@ const renderLive = () => {
                       </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', width: 'fit-content', margin: '0 auto' }}>
                         {[...Array(10)].map((_, i) => {
                             const veldNum = i + 1;
                             const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
@@ -743,6 +740,7 @@ const renderLive = () => {
                                     alignItems: 'center',
                                     gap: '1rem',
                                     height: '60px',
+                                    minWidth: '350px', // VASTE MINIMALE BREEDTE VOOR STABILITEIT
                                     opacity: isReeksKlaar ? 0.6 : 1,
                                     transition: 'all 0.3s ease'
                                 }}>
@@ -781,7 +779,7 @@ const renderLive = () => {
                     </div>
                   </>
                 ) : (
-                  /* FREESTYLE LAYOUT - UNCHANGED */
+                  /* FREESTYLE LAYOUT */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                       <div style={styles.reeksNav}>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
