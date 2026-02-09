@@ -8,7 +8,7 @@ const Modals = ({
   showAddCompModal, setShowAddCompModal,
   showEditCompModal, setShowEditCompModal,
   csvInput, setCsvInput,
-  handleProcessCsv,
+  handleUploadCsv,
   newComp, setNewComp,
   handleAddComp,
   editCompData, setEditCompData,
@@ -39,7 +39,7 @@ const Modals = ({
             onChange={(e) => setCsvInput(e.target.value)}
           />
           <div style={{ display: 'flex', gap: '1rem' }}>
-            <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleProcessCsv}>Importeren</button>
+            <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleUploadCsv}>Importeren</button>
             <button style={{ ...styles.btnSecondary, flex: 1, justifyContent: 'center' }} onClick={() => setShowUploadModal(null)}>Annuleren</button>
           </div>
         </div>
