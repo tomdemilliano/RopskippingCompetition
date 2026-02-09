@@ -10,7 +10,7 @@ const Modals = ({
   csvInput, setCsvInput,
   handleUploadCsv,
   newComp, setNewComp,
-  handleAddComp,
+  handleCreateComp,
   editCompData, setEditCompData,
   handleUpdateComp, 
   selectedComp, 
@@ -79,7 +79,7 @@ const Modals = ({
             </div>
           </div>
 
-          <button style={{ ...styles.btnPrimary, width: '100%', justifyContent: 'center', marginTop: '1rem' }} onClick={handleAddComp}>Toevoegen</button>
+          <button style={{ ...styles.btnPrimary, width: '100%', justifyContent: 'center', marginTop: '1rem' }} onClick={handleCreateComp}>Toevoegen</button>
         </div>
       </div>
     );
