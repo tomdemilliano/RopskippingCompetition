@@ -116,6 +116,72 @@ const Modals = ({
     );
   }
 
+  // 4. Bewerk Deelnemer Modal
+  if (showEditParticipantModal) {
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modalContent}>
+          <div style={styles.modalHeader}>
+            <h3>Deelnemer Bewerken</h3>
+            <button onClick={() => setShowEditParticipantModal(null)} style={styles.iconBtn}><X size={20}/></button>
+          </div>
+          
+          <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Naam</label>
+          <input 
+            style={styles.input} 
+            value={editParticipantData?.naam || ''} 
+            onChange={e => setEditParticipantData({...editParticipantData, naam: e.target.value})} 
+          />
+          
+          <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Club</label>
+          <input 
+            style={styles.input} 
+            value={editParticipantData?.club || ''} 
+            onChange={e => setEditParticipantData({...editParticipantData, club: e.target.value})} 
+          />
+
+          <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'bold' }}>WEDSTRIJD DETAILS</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
+              {selectedComp?.events.map(ev => {
+                const key = ev.replace(/\s/g, '');
+                return (
+                  <div key={ev} style={{ padding: '0.5rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px' }}>{ev}</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <input 
+                        placeholder="Rks"
+                        style={{ ...styles.input, marginBottom: 0, padding: '2px 4px', fontSize: '0.75rem' }}
+                        value={editParticipantData?.[`reeks_${key}`] || ''}
+                        onChange={e => setEditParticipantData({...editParticipantData, [`reeks_${key}`]: e.target.value})}
+                      />
+                      <input 
+                        placeholder="Veld"
+                        style={{ ...styles.input, marginBottom: 0, padding: '2px 4px', fontSize: '0.75rem' }}
+                        value={editParticipantData?.[`detail_${key}`]?.veld || ''}
+                        onChange={e => setEditParticipantData({
+                          ...editParticipantData, 
+                          [`detail_${key}`]: { ...editParticipantData?.[`detail_${key}`], veld: e.target.value }
+                        })}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <button 
+            style={{ ...styles.btnPrimary, width: '100%', justifyContent: 'center', marginTop: '1.5rem' }} 
+            onClick={() => handleUpdateParticipant(editParticipantData.id, editParticipantData)}
+          >
+            Wijzigingen Opslaan
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
   return null;
 };
 
