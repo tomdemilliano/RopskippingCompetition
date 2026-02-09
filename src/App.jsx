@@ -618,12 +618,8 @@ const renderLive = () => {
     return (
         <div style={styles.liveGrid}>
             <div style={styles.liveLeft}>
-                <div style={{ padding: '1.5rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #eee' }}>
                    <span style={{ fontWeight: 'bold', color: '#64748b' }}>ONDERDELEN</span>
-                   <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>HUIDIG UUR</div>
-                      <div style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                   </div>
                 </div>
                 {sortedEvents.map(ev => (
                     <div key={ev} 
@@ -644,7 +640,7 @@ const renderLive = () => {
                 {!isFreestyle ? (
                   /* SPEED LAYOUT */
                   <>
-                  <div style={{...styles.reeksNav, minHeight: '80px'}}>
+                  <div style={{...styles.reeksNav, minHeight: '100px'}}>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                           <button 
                             disabled={isEersteReeks}
@@ -660,9 +656,25 @@ const renderLive = () => {
                                     Reeks {activeReeks} 
                                     <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
                                 </div>
-                                {isLaatsteReeks && <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><Flag size={10}/> LAATSTE REEKS</span>}
                               </div>
-                              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>Gepland: {plannedTime || '--:--'}</div>
+                              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
+                                Gepland: {plannedTime || '--:--'} 
+                                {timeDiff !== null && !isReeksKlaar && (
+                                    <span style={{ 
+                                        marginLeft: '4px',
+                                        color: timeDiff > 5 ? '#ef4444' : '#10b981'
+                                    }}>
+                                        ({timeDiff > 0 ? `+${timeDiff}` : timeDiff} min)
+                                    </span>
+                                )}
+                              </div>
+                              {isLaatsteReeks && (
+                                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
+                                    <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <Flag size={10}/> LAATSTE REEKS
+                                    </span>
+                                </div>
+                              )}
                           </div>
 
                           <button 
@@ -674,20 +686,7 @@ const renderLive = () => {
                           </button>
                       </div>
 
-                      <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                         {timeDiff !== null && !isReeksKlaar && (
-                              <div style={{ 
-                                  fontSize: '0.8rem', 
-                                  fontWeight: 'bold', 
-                                  padding: '4px 12px', 
-                                  borderRadius: '6px',
-                                  background: timeDiff > 5 ? '#fee2e2' : '#f0fdf4',
-                                  color: timeDiff > 5 ? '#ef4444' : '#10b981'
-                              }}>
-                                  {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
-                              </div>
-                          )}
-                      </div>
+                      <div style={{ flex: 1 }}></div>
                       
                       {isReeksKlaar ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.6rem 1.2rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
@@ -817,9 +816,21 @@ const renderLive = () => {
     <div style={styles.mainWrapper}>
       <header style={styles.header}>
         <div style={{ fontWeight: 900 }}>ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span></div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button style={{ ...styles.btnSecondary, background: view === 'management' ? '#2563eb' : '#fff', color: view === 'management' ? '#fff' : '#475569' }} onClick={() => setView('management')}>Beheer</button>
           <button style={{ ...styles.btnSecondary, background: view === 'live' ? '#2563eb' : '#fff', color: view === 'live' ? '#fff' : '#475569' }} onClick={() => setView('live')}>Live</button>
+          <div style={{ 
+            marginLeft: '1rem', 
+            fontWeight: 'bold', 
+            fontFamily: 'monospace', 
+            fontSize: '1.1rem',
+            background: '#f1f5f9',
+            padding: '0.4rem 0.8rem',
+            borderRadius: '6px',
+            color: '#1e293b'
+          }}>
+            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
         </div>
       </header>
 
@@ -833,7 +844,7 @@ const renderLive = () => {
         }
       `}</style>
 
-      {/* --- Modals (Ongewijzigd) --- */}
+      {/* --- Modals --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
