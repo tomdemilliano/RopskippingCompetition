@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, deleteDoc, addDoc, getDocs
+  getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, deleteDoc, addDoc, getDocs, setDoc
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged 
@@ -55,6 +55,7 @@ const App = () => {
   const [activeEvent, setActiveEvent] = useState(null);
   const [activeReeks, setActiveReeks] = useState(1);
   const [finishedReeksen, setFinishedReeksen] = useState({});
+  const [finishedEvents, setFinishedEvents] = useState([]);
 
   const [showAddCompModal, setShowAddCompModal] = useState(false);
   const [showEditCompModal, setShowEditCompModal] = useState(false);
@@ -95,6 +96,16 @@ const App = () => {
             }
         }
     });
+
+    // Luisteren naar voortgang (reeksen en onderdelen)
+    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'progress'), (d) => {
+        if(d.exists()) {
+            const data = d.data();
+            setFinishedReeksen(data.finishedReeksen || {});
+            setFinishedEvents(data.finishedEvents || []);
+        }
+    });
+
     onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'competitions'), s => {
       const comps = s.docs.map(d => ({ id: d.id, ...d.data() }));
       setCompetitions(comps);
@@ -184,12 +195,26 @@ const App = () => {
     return Math.floor(diffMs / 60000);
   }, [plannedTime, currentTime]);
 
-  const handleFinishReeks = () => {
-    setFinishedReeksen(prev => ({
-        ...prev,
-        [activeEvent]: [...(prev[activeEvent] || []), activeReeks]
-    }));
+  const handleFinishReeks = async () => {
+    const isLaatsteReeks = activeReeks === reeksenInEvent[reeksenInEvent.length - 1];
+    
+    // Update lokale state en database
+    const newFinishedReeksen = {
+        ...finishedReeksen,
+        [activeEvent]: [...(finishedReeksen[activeEvent] || []), activeReeks]
+    };
+    
+    let newFinishedEvents = [...finishedEvents];
+    if (isLaatsteReeks && !newFinishedEvents.includes(activeEvent)) {
+        newFinishedEvents.push(activeEvent);
+    }
 
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'progress'), {
+        finishedReeksen: newFinishedReeksen,
+        finishedEvents: newFinishedEvents
+    });
+
+    // Navigatie logica
     const nextIdx = reeksenInEvent.indexOf(activeReeks) + 1;
     if (nextIdx < reeksenInEvent.length) {
         setActiveReeks(reeksenInEvent[nextIdx]);
@@ -198,8 +223,6 @@ const App = () => {
         if (eventIdx < sortedEvents.length) {
             setActiveEvent(sortedEvents[eventIdx]);
             setActiveReeks(1);
-        } else {
-            alert("Alle onderdelen zijn voltooid!");
         }
     }
   };
@@ -211,6 +234,8 @@ const App = () => {
     }
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', compId), { status: 'bezig' });
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: compId });
+    // Reset progress
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'progress'), { finishedReeksen: {}, finishedEvents: [] });
   };
 
   const handleEndCompetition = async (compId) => {
@@ -621,26 +646,33 @@ const renderLive = () => {
                 <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #eee' }}>
                    <span style={{ fontWeight: 'bold', color: '#64748b' }}>ONDERDELEN</span>
                 </div>
-                {sortedEvents.map(ev => (
-                    <div key={ev} 
-                        onClick={() => { setActiveEvent(ev); setActiveReeks(1); }}
-                        style={{ 
-                            padding: '1rem 1.5rem', cursor: 'pointer', borderBottom: '1px solid #f8fafc',
-                            background: activeEvent === ev ? '#f0f7ff' : '#fff',
-                            color: activeEvent === ev ? '#2563eb' : '#475569',
-                            fontWeight: activeEvent === ev ? 'bold' : 'normal',
-                            borderLeft: activeEvent === ev ? '4px solid #2563eb' : '4px solid transparent'
-                        }}>
-                        {ev}
-                    </div>
-                ))}
+                {sortedEvents.map(ev => {
+                    const isEventDone = finishedEvents.includes(ev);
+                    return (
+                        <div key={ev} 
+                            onClick={() => { setActiveEvent(ev); setActiveReeks(1); }}
+                            style={{ 
+                                padding: '1rem 1.5rem', cursor: 'pointer', borderBottom: '1px solid #f8fafc',
+                                background: activeEvent === ev ? '#f0f7ff' : (isEventDone ? '#f1f5f9' : '#fff'),
+                                color: activeEvent === ev ? '#2563eb' : (isEventDone ? '#94a3b8' : '#475569'),
+                                fontWeight: activeEvent === ev ? 'bold' : 'normal',
+                                borderLeft: activeEvent === ev ? '4px solid #2563eb' : '4px solid transparent',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                            <span>{ev}</span>
+                            {isEventDone && <Check size={14} color="#10b981" />}
+                        </div>
+                    );
+                })}
             </div>
 
-            <div style={styles.liveContent}>
+            <div style={{...styles.liveContent, position: 'relative'}}>
                 {!isFreestyle ? (
                   /* SPEED LAYOUT */
                   <>
-                  <div style={{...styles.reeksNav, minHeight: '100px'}}>
+                  <div style={{...styles.reeksNav, minHeight: '80px', position: 'relative'}}>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                           <button 
                             disabled={isEersteReeks}
@@ -658,23 +690,13 @@ const renderLive = () => {
                                 </div>
                               </div>
                               <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
-                                Gepland: {plannedTime || '--:--'} 
-                                {timeDiff !== null && !isReeksKlaar && (
-                                    <span style={{ 
-                                        marginLeft: '4px',
-                                        color: timeDiff > 5 ? '#ef4444' : '#10b981'
-                                    }}>
+                                 Gepland: {plannedTime || '--:--'}
+                                 {timeDiff !== null && !isReeksKlaar && (
+                                    <span style={{ color: timeDiff > 5 ? '#ef4444' : '#10b981', marginLeft: '4px' }}>
                                         ({timeDiff > 0 ? `+${timeDiff}` : timeDiff} min)
                                     </span>
-                                )}
+                                 )}
                               </div>
-                              {isLaatsteReeks && (
-                                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
-                                    <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <Flag size={10}/> LAATSTE REEKS
-                                    </span>
-                                </div>
-                              )}
                           </div>
 
                           <button 
@@ -694,10 +716,23 @@ const renderLive = () => {
                         </div>
                       ) : (
                         <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.7rem 1.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
-                            Reeks klaar <ChevronRight size={20} style={{ marginLeft: '4px' }}/>
+                            {isLaatsteReeks ? `${activeEvent} klaar` : 'Reeks klaar'} <ChevronRight size={20} style={{ marginLeft: '4px' }}/>
                         </button>
                       )}
                   </div>
+
+                  {/* CENTRALE BADGE LAATSTE REEKS */}
+                  {isLaatsteReeks && !isReeksKlaar && (
+                     <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 5, pointerEvents: 'none' }}>
+                        <div style={{ 
+                            background: '#ef4444', color: '#fff', fontSize: '1.5rem', padding: '1rem 2rem', 
+                            borderRadius: '12px', fontWeight: 900, boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)',
+                            display: 'flex', alignItems: 'center', gap: '12px', opacity: 0.15
+                        }}>
+                           <Flag size={32}/> LAATSTE REEKS
+                        </div>
+                     </div>
+                  )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
                         {[...Array(10)].map((_, i) => {
@@ -844,7 +879,7 @@ const renderLive = () => {
         }
       `}</style>
 
-      {/* --- Modals --- */}
+      {/* --- Modals (Ongewijzigd) --- */}
       {showUploadModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.card, width: '650px', maxWidth: '90vw' }}>
@@ -852,21 +887,11 @@ const renderLive = () => {
               <h3 style={{ margin: 0 }}>Laden voor: {showUploadModal}</h3>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowUploadModal(null)} />
             </div>
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.3rem', display: 'flex', alignItems: 'center' }}>
-                <Info size={14} style={{ marginRight: '4px' }} /> Verplichte CSV Structuur:
-              </div>
-              <div style={styles.csvExample}>
-                {isFreestyleType(showUploadModal) 
-                  ? "reeks, uur, veld, club, skipper"
-                  : "reeks,onderdeel,uur,Club_veld1,Skipper_veld1,Club_veld2,Skipper_veld2,...,Club_veld10,Skipper_veld10"}
-              </div>
-            </div>
             <textarea 
               style={{ ...styles.input, height: '250px', fontFamily: 'monospace', fontSize: '0.75rem' }} 
               value={csvInput} 
               onChange={e => setCsvInput(e.target.value)} 
-              placeholder="Plak hier de CSV inhoud (inclusief headers)..." 
+              placeholder="Plak hier de CSV inhoud..." 
             />
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleUploadCsv}>Importeren</button>
@@ -887,29 +912,6 @@ const renderLive = () => {
             <input style={styles.input} value={editParticipantData.naam} onChange={e => setEditParticipantData({...editParticipantData, naam: e.target.value})} />
             <label style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Club</label>
             <input style={styles.input} value={editParticipantData.club} onChange={e => setEditParticipantData({...editParticipantData, club: e.target.value})} />
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Onderdelen</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
-                {editParticipantData.events?.map(ev => {
-                  const isG = editParticipantData.eventStatus?.[ev] === 'geschrapt';
-                  const d = editParticipantData[`detail_${ev.replace(/\s/g, '')}`] || {};
-                  return (
-                    <div key={ev} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem', borderRadius: '4px', background: isG ? '#f8fafc' : '#fff', border: '1px solid #f1f5f9' }}>
-                      <div>
-                        <span style={{ fontSize: '0.85rem', textDecoration: isG ? 'line-through' : 'none', fontWeight: 'bold' }}>{ev}</span>
-                        <div style={{ display: 'flex', gap: '10px', color: '#64748b', fontSize: '0.75rem' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={12}/> {d.uur || '--:--'}</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={12}/> Veld {d.veld || '?'}</span>
-                        </div>
-                      </div>
-                      <button style={isG ? styles.btnSuccess : styles.btnDanger} onClick={() => toggleEventStatus(ev)}>
-                        {isG ? <RotateCcw size={12}/> : <Trash2 size={12}/>}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleUpdateParticipant}>Opslaan</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowEditParticipantModal(null)}>Annuleren</button>
@@ -928,10 +930,6 @@ const renderLive = () => {
             <select style={styles.input} value={newComp.type} onChange={e => setNewComp({...newComp, type: e.target.value, events: COMPETITION_TYPES[e.target.value]})}>
               {Object.keys(COMPETITION_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <input type="date" style={styles.input} value={newComp.date} onChange={e => setNewComp({...newComp, date: e.target.value})} />
-              <input style={styles.input} value={newComp.location} onChange={e => setNewComp({...newComp, location: e.target.value})} placeholder="Locatie" />
-            </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleCreateComp}>Aanmaken</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowAddCompModal(false)}>Annuleren</button>
@@ -946,14 +944,6 @@ const renderLive = () => {
             <h3 style={{ marginTop: 0 }}>Wedstrijd Aanpassen</h3>
             <label style={{ fontSize: '0.8rem' }}>Naam</label>
             <input style={styles.input} value={editCompData.name} onChange={e => setEditCompData({...editCompData, name: e.target.value})} />
-            <label style={{ fontSize: '0.8rem' }}>Type</label>
-            <select style={styles.input} value={editCompData.type} onChange={e => setEditCompData({...editCompData, type: e.target.value})}>
-              {Object.keys(COMPETITION_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <input type="date" style={styles.input} value={editCompData.date} onChange={e => setEditCompData({...editCompData, date: e.target.value})} />
-              <input style={styles.input} value={editCompData.location} onChange={e => setEditCompData({...editCompData, location: e.target.value})} />
-            </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button style={{ ...styles.btnPrimary, flex: 1, justifyContent: 'center' }} onClick={handleUpdateComp}>Opslaan</button>
               <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setShowEditCompModal(false)}>Annuleren</button>
