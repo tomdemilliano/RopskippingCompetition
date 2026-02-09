@@ -12,7 +12,11 @@ const Modals = ({
   newComp, setNewComp,
   handleAddComp,
   editCompData, setEditCompData,
-  handleUpdateComp
+  handleUpdateComp, 
+  selectedComp, 
+  showEditParticipantModal, setShowEditParticipantModal,
+  editParticipantData, setEditParticipantData,
+  handleUpdateParticipant  
 }) => {
   
   // 1. CSV Upload Modal
