@@ -18,7 +18,7 @@ import Modals from './components/Modals';
 
 const firebaseConfig = getFirebaseConfig();
 let app, auth, db;
-const appId = APP_ID; // Gebruikt nu de constante uit constants.js
+const appId = APP_ID; 
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -59,7 +59,7 @@ const App = () => {
 
   useEffect(() => {
     const init = async () => {
-      if (!firebaseConfig) return; // Veiligheidshalve checken
+      if (!firebaseConfig) return;
       try {
         app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
         auth = getAuth(app);
@@ -392,7 +392,8 @@ const App = () => {
   };
 
   const renderManagement = () => (
-    <div style={styles.layoutGrid}>
+    /* Aangepaste grid: alleen de wedstrijdlijst (links) en de hoofdinhoud (rechts) */
+    <div style={{ ...styles.layoutGrid, gridTemplateColumns: '250px 1fr' }}>
         <aside style={styles.column}>
           <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem', justifyContent: 'center' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe wedstrijd</button>
           {competitions.map(c => {
@@ -464,7 +465,7 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* Onderdelen horizontaal weergegeven */}
+                {/* Onderdelen horizontaal in het wedstrijd-vak */}
                 <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
                   <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', marginBottom: '0.5rem' }}>ONDERDELEN</div>
                   <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
@@ -506,7 +507,6 @@ const App = () => {
                             <button 
                               style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} 
                               onClick={() => setShowUploadModal(ond)}
-                              title="Upload CSV"
                             >
                               <Upload size={12}/>
                             </button>
@@ -519,7 +519,7 @@ const App = () => {
               </div>
 
               <div style={{ ...styles.card, flex: 1, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                {/* Filters boven de zoekbalk */}
+                {/* Deelnemers filters en zoekbalk */}
                 <div style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                       <button 
@@ -580,7 +580,6 @@ const App = () => {
                                   const isGeschrapt = p.eventStatus?.[ev] === 'geschrapt' || isGlobalGeschrapt;
                                   return (
                                     <span key={ev} 
-                                      title={`${ev} (Reeks ${p['reeks_'+ev.replace(/\s/g, '')]}) ${isGeschrapt ? '- GESCHRAPT' : ''}`} 
                                       style={{ 
                                         fontSize: '0.6rem', 
                                         background: isGeschrapt ? '#fee2e2' : '#f1f5f9', 
@@ -599,21 +598,16 @@ const App = () => {
                               <button 
                                 style={{ border: 'none', background: 'none', color: p.aanwezig ? '#10b981' : '#cbd5e1', cursor: 'pointer', marginRight: '8px' }}
                                 onClick={() => handleToggleAttendance(p.id, p.aanwezig)}
-                                title={p.aanwezig ? "Afmelden" : "Aanmelden"}
                               >
                                 <CheckCircle size={18}/>
                               </button>
                               <button style={{ border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer', marginRight: '8px' }}
-                                onClick={() => {
-                                  setEditParticipantData({ ...p });
-                                  setShowEditParticipantModal(true);
-                                }}>
+                                onClick={() => { setEditParticipantData({ ...p }); setShowEditParticipantModal(true); }}>
                                 <Edit2 size={16}/>
                               </button>
                               <button 
                                 style={{ border: 'none', background: 'none', color: isGlobalGeschrapt ? '#10b981' : '#ef4444', cursor: 'pointer' }} 
                                 onClick={() => toggleParticipantGlobalStatus(p.id, p.status)}
-                                title={isGlobalGeschrapt ? "Deelnemer herstellen" : "Deelnemer schrappen"}
                               >
                                 {isGlobalGeschrapt ? <RotateCcw size={16}/> : <UserMinus size={16}/>}
                               </button>
@@ -626,7 +620,7 @@ const App = () => {
                 </div>
               </div>
             </>
-          ) : <div style={{ textAlign: 'center', padding: '10rem', color: '#94a3b8' }}>Selecteer een wedstrijd aan de linkerkant.</div>}
+          ) : <div style={{ textAlign: 'center', padding: '10rem', color: '#94a3b8' }}>Selecteer een wedstrijd.</div>}
         </main>
     </div>
   );
@@ -638,16 +632,7 @@ const App = () => {
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button style={{ ...styles.btnSecondary, background: view === 'management' ? '#2563eb' : '#fff', color: view === 'management' ? '#fff' : '#475569' }} onClick={() => setView('management')}>Beheer</button>
           <button style={{ ...styles.btnSecondary, background: view === 'live' ? '#2563eb' : '#fff', color: view === 'live' ? '#fff' : '#475569' }} onClick={() => setView('live')}>Live</button>
-          <div style={{ 
-            marginLeft: '1rem', 
-            fontWeight: 'bold', 
-            fontFamily: 'monospace', 
-            fontSize: '1.1rem',
-            background: '#f1f5f9',
-            padding: '0.4rem 0.8rem',
-            borderRadius: '6px',
-            color: '#1e293b'
-          }}>
+          <div style={{ marginLeft: '1rem', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '1.1rem', background: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '6px', color: '#1e293b' }}>
             {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         </div>
@@ -672,37 +657,16 @@ const App = () => {
         />
       )}
 
-      <style>{`
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0); }
-        }
-      `}</style>
-
-{/* --- Modals Component --- */}
       <Modals 
-        showUploadModal={showUploadModal}
-        setShowUploadModal={setShowUploadModal}
-        csvInput={csvInput}
-        setCsvInput={setCsvInput}
-        handleUploadCsv={handleUploadCsv}
-        showEditParticipantModal={showEditParticipantModal}
-        setShowEditParticipantModal={setShowEditParticipantModal}
-        editParticipantData={editParticipantData}
-        setEditParticipantData={setEditParticipantData}
-        handleUpdateParticipant={handleUpdateParticipant}
-        selectedComp={selectedComp}
-        showAddCompModal={showAddCompModal}
-        setShowAddCompModal={setShowAddCompModal}
-        newComp={newComp}
-        setNewComp={setNewComp}
-        handleCreateComp={handleCreateComp}
-        showEditCompModal={showEditCompModal}
-        setShowEditCompModal={setShowEditCompModal}
-        editCompData={editCompData}
-        setEditCompData={setEditCompData}
-        handleUpdateComp={handleUpdateComp}
+        showUploadModal={showUploadModal} setShowUploadModal={setShowUploadModal}
+        csvInput={csvInput} setCsvInput={setCsvInput} handleUploadCsv={handleUploadCsv}
+        showEditParticipantModal={showEditParticipantModal} setShowEditParticipantModal={setShowEditParticipantModal}
+        editParticipantData={editParticipantData} setEditParticipantData={setEditParticipantData}
+        handleUpdateParticipant={handleUpdateParticipant} selectedComp={selectedComp}
+        showAddCompModal={showAddCompModal} setShowAddCompModal={setShowAddCompModal}
+        newComp={newComp} setNewComp={setNewComp} handleCreateComp={handleCreateComp}
+        showEditCompModal={showEditCompModal} setShowEditCompModal={setShowEditCompModal}
+        editCompData={editCompData} setEditCompData={setEditCompData} handleUpdateComp={handleUpdateComp}
       />
     </div>
   );
