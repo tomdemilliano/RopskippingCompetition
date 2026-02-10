@@ -282,7 +282,7 @@ const App = () => {
           };
 
           if (existing) {
-            batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
+            batch.update(doc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id)), eventData);
           } else {
             const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
             batch.set(newRef, { naam, club, ...eventData, status: 'actief', aanwezig: false });
@@ -466,7 +466,7 @@ const App = () => {
           {selectedComp ? (
             <>
               <div style={styles.card}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <h2 style={{ margin: 0 }}>{selectedComp.name}</h2>
@@ -502,43 +502,43 @@ const App = () => {
                     )}
                   </div>
                 </div>
-
-                {/* Filters toegevoegd aan frame boven deelnemerslijst */}
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
-                    <button 
-                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'alle' ? '#2563eb' : '#e2e8f0', background: filterStatus === 'alle' ? '#f0f7ff' : '#fff', color: filterStatus === 'alle' ? '#2563eb' : '#64748b' }}
-                      onClick={() => setFilterStatus('alle')}
-                    >
-                      <Users size={14}/> Alle
-                    </button>
-                    <button 
-                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'niet-aangemeld' ? '#f59e0b' : '#e2e8f0', background: filterStatus === 'niet-aangemeld' ? '#fffbeb' : '#fff', color: filterStatus === 'niet-aangemeld' ? '#d97706' : '#64748b' }}
-                      onClick={() => setFilterStatus('niet-aangemeld')}
-                    >
-                      <UserPlus size={14}/> Niet aangemeld
-                    </button>
-                    <button 
-                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'aangemeld' ? '#10b981' : '#e2e8f0', background: filterStatus === 'aangemeld' ? '#f0fdf4' : '#fff', color: filterStatus === 'aangemeld' ? '#10b981' : '#64748b' }}
-                      onClick={() => setFilterStatus('aangemeld')}
-                    >
-                      <UserCheck size={14}/> Aangemeld
-                    </button>
-                    <button 
-                      style={{ ...styles.filterBtn, borderColor: filterStatus === 'geschrapt' ? '#ef4444' : '#e2e8f0', background: filterStatus === 'geschrapt' ? '#fef2f2' : '#fff', color: filterStatus === 'geschrapt' ? '#ef4444' : '#64748b' }}
-                      onClick={() => setFilterStatus('geschrapt')}
-                    >
-                      <UserX size={14}/> Geschrapt
-                    </button>
-                </div>
               </div>
 
               <div style={{ ...styles.card, flex: 1, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                {/* Filters verplaatst naar hier, boven de zoekbalk */}
                 <div style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                      <button 
+                        style={{ ...styles.filterBtn, borderColor: filterStatus === 'alle' ? '#2563eb' : '#e2e8f0', background: filterStatus === 'alle' ? '#f0f7ff' : '#fff', color: filterStatus === 'alle' ? '#2563eb' : '#64748b' }}
+                        onClick={() => setFilterStatus('alle')}
+                      >
+                        <Users size={14}/> Alle
+                      </button>
+                      <button 
+                        style={{ ...styles.filterBtn, borderColor: filterStatus === 'niet-aangemeld' ? '#f59e0b' : '#e2e8f0', background: filterStatus === 'niet-aangemeld' ? '#fffbeb' : '#fff', color: filterStatus === 'niet-aangemeld' ? '#d97706' : '#64748b' }}
+                        onClick={() => setFilterStatus('niet-aangemeld')}
+                      >
+                        <UserPlus size={14}/> Niet aangemeld
+                      </button>
+                      <button 
+                        style={{ ...styles.filterBtn, borderColor: filterStatus === 'aangemeld' ? '#10b981' : '#e2e8f0', background: filterStatus === 'aangemeld' ? '#f0fdf4' : '#fff', color: filterStatus === 'aangemeld' ? '#10b981' : '#64748b' }}
+                        onClick={() => setFilterStatus('aangemeld')}
+                      >
+                        <UserCheck size={14}/> Aangemeld
+                      </button>
+                      <button 
+                        style={{ ...styles.filterBtn, borderColor: filterStatus === 'geschrapt' ? '#ef4444' : '#e2e8f0', background: filterStatus === 'geschrapt' ? '#fef2f2' : '#fff', color: filterStatus === 'geschrapt' ? '#ef4444' : '#64748b' }}
+                        onClick={() => setFilterStatus('geschrapt')}
+                      >
+                        <UserX size={14}/> Geschrapt
+                      </button>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '0.4rem', borderRadius: '6px' }}>
                     <Search size={16} color="#64748b" style={{ margin: '0 0.5rem' }} />
                     <input style={{ border: 'none', background: 'none', outline: 'none', width: '100%' }} placeholder="Zoek skipper..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                   </div>
                 </div>
+                
                 <div style={{ overflowY: 'auto', flex: 1 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead style={{ position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #eee', zIndex: 10 }}>
