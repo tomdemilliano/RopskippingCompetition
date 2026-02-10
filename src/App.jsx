@@ -32,7 +32,7 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('alle');
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState('startklaar');
+  const [activeTab, setActiveTab] = useState('gepland');
   
   // Live State
   const [activeEvent, setActiveEvent] = useState(null);
@@ -396,6 +396,7 @@ const App = () => {
     const isSelected = selectedCompetitionId === c.id;
     const isBezig = c.status === 'bezig';
     const isDone = c.status === 'beëindigd';
+    const statusData = getCompDataStatus(c.id);
 
     return (
       <div key={c.id} onClick={() => setSelectedCompetitionId(c.id)} style={{
@@ -414,6 +415,13 @@ const App = () => {
             <Calendar size={12}/> {c.date || 'Geen datum'}
         </div>
         <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '2px' }}>{c.type}</div>
+        
+        {/* Alleen tonen in geplande tab of als data incompleet is */}
+        {activeTab === 'gepland' && !statusData.isComplete && (
+            <div style={{ fontSize: '0.65rem', color: '#f59e0b', marginTop: '6px', fontWeight: 'bold' }}>
+                ! {statusData.missingCount} leeg
+            </div>
+        )}
       </div>
     );
   };
@@ -427,12 +435,12 @@ const App = () => {
     const startklaar = overige.filter(c => getCompDataStatus(c.id).isComplete);
 
     const getTabData = () => {
-        if (activeTab === 'startklaar') return startklaar;
-        if (activeTab === 'gepland') return gepland;
-        return beëindigd;
+        if (activeTab === 'gepland') return { list: gepland, emptyText: 'Geen geplande wedstrijden' };
+        if (activeTab === 'startklaar') return { list: startklaar, emptyText: 'Geen startklare wedstrijden' };
+        return { list: beëindigd, emptyText: 'Geen voltooide wedstrijden' };
     };
 
-    const currentList = getTabData();
+    const { list: currentList, emptyText } = getTabData();
 
     return (
       <div style={{ ...styles.layoutGrid, gridTemplateColumns: '320px 1fr' }}>
@@ -441,17 +449,17 @@ const App = () => {
                 + Nieuwe wedstrijd
             </button>
             
-            {/* Tabs navigatie */}
+            {/* Tabs navigatie - Nieuwe Volgorde: Gepland, Startklaar, Voltooid */}
             <div style={{ display: 'flex', background: '#e2e8f0', padding: '3px', borderRadius: '8px', marginBottom: '1.5rem' }}>
-                <button 
-                    onClick={() => setActiveTab('startklaar')}
-                    style={{ flex: 1, border: 'none', padding: '8px 4px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '6px', cursor: 'pointer', background: activeTab === 'startklaar' ? '#fff' : 'transparent', color: activeTab === 'startklaar' ? '#2563eb' : '#64748b' }}>
-                    STARTKLAAR
-                </button>
                 <button 
                     onClick={() => setActiveTab('gepland')}
                     style={{ flex: 1, border: 'none', padding: '8px 4px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '6px', cursor: 'pointer', background: activeTab === 'gepland' ? '#fff' : 'transparent', color: activeTab === 'gepland' ? '#2563eb' : '#64748b' }}>
                     GEPLAND
+                </button>
+                <button 
+                    onClick={() => setActiveTab('startklaar')}
+                    style={{ flex: 1, border: 'none', padding: '8px 4px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '6px', cursor: 'pointer', background: activeTab === 'startklaar' ? '#fff' : 'transparent', color: activeTab === 'startklaar' ? '#2563eb' : '#64748b' }}>
+                    STARTKLAAR
                 </button>
                 <button 
                     onClick={() => setActiveTab('beëindigd')}
@@ -462,8 +470,8 @@ const App = () => {
 
             <div>
                 {currentList.length > 0 ? currentList.map(renderCompCard) : (
-                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#94a3b8', fontSize: '0.8rem' }}>
-                        Geen wedstrijden in deze categorie
+                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                        {emptyText}
                     </div>
                 )}
             </div>
