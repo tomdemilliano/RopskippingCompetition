@@ -1,36 +1,37 @@
 import React from 'react';
 import { 
-  ChevronLeft, ChevronRight, CheckCircle, Check, Flag, Mic2, FastForward 
+  ChevronLeft, ChevronRight, CheckCircle, Check, Flag, Mic2, FastForward, Coffee, Trophy, Utensils
 } from 'lucide-react';
 import { isFreestyleType } from '../constants';
 import { styles } from '../styles';
 
 const LiveView = ({ 
-  selectedComp, 
-  activeEvent, 
-  setActiveEvent, 
-  activeReeks, 
-  setActiveReeks, 
-  reeksenInEvent, 
-  liveParticipants, 
-  currentReeksData, 
-  plannedTime, 
-  timeDiff, 
-  finishedReeksen, 
-  finishedEvents, 
-  handleFinishReeks,
-  sortedEvents
+  selectedComp, activeEvent, setActiveEvent, activeReeks, setActiveReeks, 
+  reeksenInEvent, liveParticipants, currentReeksData, plannedTime, 
+  timeDiff, finishedReeksen, finishedEvents, handleFinishReeks, sortedEvents
 }) => {
-  if (!selectedComp) return <div style={{ textAlign: 'center', padding: '5rem' }}>Geen actieve wedstrijd geselecteerd in beheer.</div>;
+  // 1. Duidelijke boodschap indien geen actieve wedstrijd
+  if (!selectedComp) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#94a3b8' }}>
+      <Coffee size={64} strokeWidth={1} style={{ marginBottom: '1rem' }} />
+      <h3 style={{ margin: 0 }}>Geen actieve wedstrijd</h3>
+      <p>Selecteer een wedstrijd in het beheer om de Live View te starten.</p>
+    </div>
+  );
 
   const isFreestyle = isFreestyleType(activeEvent);
   const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
-  const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
+  
+  // Zoek de volgende skipper (sla pauzes over voor de 'Volgende aan de beurt' melding)
+  const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1 && p.status !== 'pauze') : null;
   
   const totaalReeksen = reeksenInEvent.length;
   const isEersteReeks = activeReeks === reeksenInEvent[0];
   const isLaatsteReeks = activeReeks === reeksenInEvent[reeksenInEvent.length - 1];
   const isReeksKlaar = finishedReeksen[activeEvent]?.includes(activeReeks);
+
+  // Check of de huidige reeks een pauze is
+  const isPauzeReeks = currentReeksData.length > 0 && currentReeksData[0].status === 'pauze';
 
   const maxVeldInReeks = currentReeksData.reduce((max, p) => {
     const veld = parseInt(p[`detail_${activeEvent?.replace(/\s/g, '')}`]?.veld) || 0;
@@ -39,7 +40,6 @@ const LiveView = ({
 
   return (
     <div style={styles.liveGrid}>
-      {/* Linker kolom: Onderdelen lijst */}
       <div style={styles.liveLeft}>
         <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #eee' }}>
           <span style={{ fontWeight: 'bold', color: '#64748b' }}>ONDERDELEN</span>
@@ -64,11 +64,16 @@ const LiveView = ({
         })}
       </div>
 
-      {/* Rechter kolom: Content */}
       <div style={{...styles.liveContent, position: 'relative'}}>
+        {/* 2. Naam van de wedstrijd boven het frame */}
+        <div style={{ marginBottom: '1rem', paddingLeft: '0.5rem' }}>
+          <h1 style={{ margin: 0, fontSize: '1.2rem', color: '#1e293b', fontWeight: 800 }}>{selectedComp.name}</h1>
+        </div>
+
         {!isFreestyle ? (
           <>
-            <div style={{ ...styles.reeksNav, minHeight: '140px', display: 'flex', flexDirection: 'column', padding: '1.5rem', gap: '1rem' }}>
+            {/* 3. Minder witruimte rond 'reeks klaar' (padding van 1.5rem naar 1rem) */}
+            <div style={{ ...styles.reeksNav, minHeight: '120px', display: 'flex', flexDirection: 'column', padding: '1rem', gap: '0.75rem' }}>
               <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
                 <button 
                   disabled={isEersteReeks}
@@ -104,11 +109,11 @@ const LiveView = ({
 
               <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 'auto' }}>
                 {isReeksKlaar ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.6rem 1.5rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.5rem 1.5rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
                     <CheckCircle size={20} /> REEKS VOLTOOID
                   </div>
                 ) : (
-                  <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.7rem 2.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
+                  <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.6rem 2.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
                     {isLaatsteReeks ? `${activeEvent} klaar` : 'Reeks klaar'} <ChevronRight size={20} style={{ marginLeft: '4px' }}/>
                   </button>
                 )}
@@ -150,11 +155,19 @@ const LiveView = ({
               </button>
             </div>
 
-            <div style={{ background: '#2563eb', color: '#fff', padding: '3rem', borderRadius: '20px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '1rem' }}><Mic2 size={24}/> NU AAN DE BEURT</div>
-              <div style={{ fontSize: '4.5rem', fontWeight: 900 }}>{currentReeksData[0]?.naam || '---'}</div>
-              <div style={{ fontSize: '2rem' }}>{currentReeksData[0]?.club}</div>
-            </div>
+            {/* Speciale weergave voor pauze in Freestyle */}
+            {isPauzeReeks ? (
+              <div style={{ background: '#f8fafc', color: '#64748b', padding: '4rem', borderRadius: '20px', textAlign: 'center', border: '4px solid #e2e8f0' }}>
+                {currentReeksData[0].club.toLowerCase().includes('prijs') ? <Trophy size={64} style={{marginBottom: '1rem'}}/> : <Utensils size={64} style={{marginBottom: '1rem'}}/>}
+                <div style={{ fontSize: '4rem', fontWeight: 900, color: '#1e293b' }}>{currentReeksData[0].club}</div>
+              </div>
+            ) : (
+              <div style={{ background: '#2563eb', color: '#fff', padding: '3rem', borderRadius: '20px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '1rem' }}><Mic2 size={24}/> NU AAN DE BEURT</div>
+                <div style={{ fontSize: '4.5rem', fontWeight: 900 }}>{currentReeksData[0]?.naam || '---'}</div>
+                <div style={{ fontSize: '2rem' }}>{currentReeksData[0]?.club}</div>
+              </div>
+            )}
 
             {nextSkipper && (
               <div style={{ background: '#fff', border: '2px dashed #cbd5e1', padding: '2rem', borderRadius: '20px', opacity: 0.7 }}>
