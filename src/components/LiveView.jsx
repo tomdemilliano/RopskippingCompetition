@@ -1,12 +1,12 @@
 import React from 'react';
 import { 
-  ChevronLeft, ChevronRight, CheckCircle, Check, Flag, Mic2, FastForward, AlertCircle, PlayCircle
+  ChevronLeft, ChevronRight, CheckCircle, Check, Flag, Mic2, FastForward, Ghost
 } from 'lucide-react';
 import { isFreestyleType } from '../constants';
 import { styles } from '../styles';
 
 const LiveView = ({ 
-  selectedComp, 
+  selectedComp, // We gebruiken deze enkel als fallback of referentie
   activeEvent, 
   setActiveEvent, 
   activeReeks, 
@@ -21,26 +21,34 @@ const LiveView = ({
   handleFinishReeks,
   sortedEvents
 }) => {
-  // 1. Check of er een wedstrijd is geselecteerd
-  if (!selectedComp) {
+  
+  // Controleer of de huidige geselecteerde wedstrijd actief is.
+  // Indien niet, tonen we de "Geen actieve wedstrijd" view.
+  if (!selectedComp || selectedComp.status !== 'bezig') {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#94a3b8', textAlign: 'center' }}>
-        <AlertCircle size={64} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-        <h2 style={{ margin: 0, color: '#475569' }}>Geen wedstrijd geselecteerd</h2>
-        <p>Ga naar het beheerpaneel om een wedstrijd te kiezen.</p>
-      </div>
-    );
-  }
-
-  // 2. Check of de geselecteerde wedstrijd wel 'bezig' is
-  if (selectedComp.status !== 'bezig') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#94a3b8', textAlign: 'center' }}>
-        <PlayCircle size={64} style={{ marginBottom: '1rem', color: '#2563eb', opacity: 0.8 }} />
-        <h2 style={{ margin: 0, color: '#1e293b' }}>Wedstrijd staat niet live</h2>
-        <p style={{ maxWidth: '400px', marginTop: '0.5rem' }}>
-          De wedstrijd <strong>"{selectedComp.name}"</strong> is momenteel niet actief. 
-          Start de wedstrijd in het beheerpaneel om de live-weergave te gebruiken.
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '70vh', 
+        color: '#94a3b8',
+        textAlign: 'center'
+      }}>
+        <div style={{ 
+          background: '#f1f5f9', 
+          padding: '2rem', 
+          borderRadius: '50%', 
+          marginBottom: '1.5rem',
+          border: '4px solid #e2e8f0'
+        }}>
+          <Ghost size={80} color="#cbd5e1" strokeWidth={1.5} />
+        </div>
+        <h2 style={{ color: '#475569', marginBottom: '0.5rem', fontWeight: 800 }}>
+          Momenteel geen actieve wedstrijd
+        </h2>
+        <p style={{ maxWidth: '300px', lineHeight: '1.5' }}>
+          Zodra er een wedstrijd gestart wordt in het beheerpaneel, verschijnt deze hier live.
         </p>
       </div>
     );
