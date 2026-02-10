@@ -423,7 +423,6 @@ const App = () => {
         </div>
         <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '2px' }}>{c.type}</div>
         
-        {/* Alleen tonen in geplande tab of als data incompleet is */}
         {activeTab === 'gepland' && !statusData.isComplete && (
             <div style={{ fontSize: '0.65rem', color: '#f59e0b', marginTop: '6px', fontWeight: 'bold' }}>
                 ! {statusData.missingCount} onderdelen zonder deelnemers
@@ -456,7 +455,6 @@ const App = () => {
                 + Nieuwe wedstrijd
             </button>
             
-            {/* Tabs navigatie - Nieuwe Volgorde: Gepland, Startklaar, Voltooid */}
             <div style={{ display: 'flex', background: '#e2e8f0', padding: '3px', borderRadius: '8px', marginBottom: '1.5rem' }}>
                 <button 
                     onClick={() => setActiveTab('gepland')}
@@ -497,7 +495,6 @@ const App = () => {
                       <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{selectedComp.type} | {selectedComp.location} | {selectedComp.date}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      {/* Wijziging: Edit en Delete enkel tonen als status NIET 'bezig' is */}
                       {selectedComp.status !== 'bezig' && (
                         <>
                           <button style={styles.btnSecondary} onClick={() => {
@@ -592,7 +589,7 @@ const App = () => {
 
                 <div style={{ ...styles.card, flex: 1, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   <div style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'center' }}>
                         <button 
                           style={{ ...styles.filterBtn, borderColor: filterStatus === 'alle' ? '#2563eb' : '#e2e8f0', background: filterStatus === 'alle' ? '#f0f7ff' : '#fff', color: filterStatus === 'alle' ? '#2563eb' : '#64748b' }}
                           onClick={() => setFilterStatus('alle')}
@@ -617,6 +614,11 @@ const App = () => {
                         >
                           <UserX size={14}/> Geschrapt
                         </button>
+
+                        {/* Toegevoegde teller, rechts uitgelijnd */}
+                        <div style={{ flex: 1, textAlign: 'right', fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
+                            {filteredParticipants.length} skippers
+                        </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '0.4rem', borderRadius: '6px' }}>
                       <Search size={16} color="#64748b" style={{ margin: '0 0.5rem' }} />
