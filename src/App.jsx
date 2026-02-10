@@ -419,7 +419,7 @@ const App = () => {
         {/* Alleen tonen in geplande tab of als data incompleet is */}
         {activeTab === 'gepland' && !statusData.isComplete && (
             <div style={{ fontSize: '0.65rem', color: '#f59e0b', marginTop: '6px', fontWeight: 'bold' }}>
-                ! {statusData.missingCount} leeg
+                ! {statusData.missingCount} onderdelen zonder deelnemers
             </div>
         )}
       </div>
