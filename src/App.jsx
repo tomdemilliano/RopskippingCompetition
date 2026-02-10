@@ -497,11 +497,16 @@ const App = () => {
                       <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{selectedComp.type} | {selectedComp.location} | {selectedComp.date}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button style={styles.btnSecondary} onClick={() => {
-                        setEditCompData({ name: selectedComp.name, date: selectedComp.date, location: selectedComp.location, type: selectedComp.type });
-                        setShowEditCompModal(true);
-                      }}><Edit2 size={16}/></button>
-                      <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={handleDeleteComp}><Trash2 size={16}/></button>
+                      {/* Wijziging: Edit en Delete enkel tonen als status NIET 'bezig' is */}
+                      {selectedComp.status !== 'bezig' && (
+                        <>
+                          <button style={styles.btnSecondary} onClick={() => {
+                            setEditCompData({ name: selectedComp.name, date: selectedComp.date, location: selectedComp.location, type: selectedComp.type });
+                            setShowEditCompModal(true);
+                          }}><Edit2 size={16}/></button>
+                          <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={handleDeleteComp}><Trash2 size={16}/></button>
+                        </>
+                      )}
                       
                       {selectedComp.status === 'bezig' ? (
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
