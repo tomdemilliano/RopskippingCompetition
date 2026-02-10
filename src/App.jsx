@@ -136,6 +136,8 @@ const App = () => {
 
   const filteredParticipants = useMemo(() => {
     return Object.values(participants).filter(p => {
+      // Filter pauzes eruit voor de management lijst
+      if (p.status === 'pauze') return false;      
       const matchesSearch = p.naam?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                            p.club?.toLowerCase().includes(searchTerm.toLowerCase());
       
@@ -275,16 +277,20 @@ const App = () => {
       const eventKey = `reeks_${eventName.replace(/\s/g, '')}`;
       const detailKey = `detail_${eventName.replace(/\s/g, '')}`;
 
-      if (isFreestyle) {
+if (isFreestyle) {
         const naam = row['skipper'];
         const club = row['club'] || '';
         const reeks = row['reeks'] || '';
         const uur = row['uur'] || '';
-        // AANPASSING: Geen parseInt gebruiken zodat "Veld A" of "Veld B" bewaard blijft
-        const veld = row['veld'] || '1'; 
+        const veld = row['veld'] || ''; 
 
-        if (naam) {
-          const existing = currentParts.find(p => p.naam === naam);
+        // Check of dit een pauze/intermezzo is
+        const isPauze = !naam && !veld && club;
+
+        if (naam || isPauze) {
+          const identifier = isPauze ? `PAUZE_${reeks}_${uur}` : naam;
+          const existing = currentParts.find(p => p.naam === identifier);
+          
           const eventData = {
             events: Array.from(new Set([...(existing?.events || []), eventName])),
             [eventKey]: reeks,
@@ -295,7 +301,13 @@ const App = () => {
             batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
           } else {
             const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
-            batch.set(newRef, { naam, club, ...eventData, status: 'actief', aanwezig: false });
+            batch.set(newRef, { 
+              naam: identifier, 
+              club: club, 
+              ...eventData, 
+              status: isPauze ? 'pauze' : 'actief', 
+              aanwezig: isPauze ? true : false 
+            });
           }
         }
       } else {
