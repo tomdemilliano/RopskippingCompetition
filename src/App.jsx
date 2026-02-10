@@ -32,6 +32,7 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('alle');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [activeTab, setActiveTab] = useState('startklaar');
   
   // Live State
   const [activeEvent, setActiveEvent] = useState(null);
@@ -395,61 +396,76 @@ const App = () => {
     const isSelected = selectedCompetitionId === c.id;
     const isBezig = c.status === 'bezig';
     const isDone = c.status === 'beëindigd';
-    const statusData = getCompDataStatus(c.id);
 
     return (
       <div key={c.id} onClick={() => setSelectedCompetitionId(c.id)} style={{
-        padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', position: 'relative',
+        padding: '1rem', borderRadius: '8px', cursor: 'pointer', position: 'relative',
         border: '2px solid', 
-        borderColor: isBezig ? '#ef4444' : (isSelected ? '#2563eb' : 'transparent'),
-        backgroundColor: isDone ? '#f8fafc' : (isSelected ? '#f0f7ff' : '#fff'),
-        opacity: isDone ? 0.7 : 1,
-        marginBottom: '0.5rem'
+        borderColor: isBezig ? '#ef4444' : (isSelected ? '#2563eb' : (isDone ? '#e2e8f0' : 'transparent')),
+        backgroundColor: isDone ? '#f1f5f9' : (isSelected ? '#f0f7ff' : '#fff'),
+        marginBottom: '0.75rem',
+        transition: 'all 0.2s ease'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{c.name}</div>
+            <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: isDone ? '#64748b' : '#1e293b' }}>{c.name}</div>
             {isBezig && <span style={styles.badgeLive}>LIVE</span>}
-            {isDone && <span style={styles.badgeDone}>BEËINDIGD</span>}
         </div>
-        <div style={{ fontSize: '0.65rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-            <Calendar size={10}/> {c.date || 'Geen datum'}
+        <div style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+            <Calendar size={12}/> {c.date || 'Geen datum'}
         </div>
-        <div style={{ fontSize: '0.6rem', color: '#64748b' }}>{c.type}</div>
-        <div style={{ fontSize: '0.6rem', color: statusData.isComplete ? '#10b981' : '#f59e0b', marginTop: '4px', fontWeight: 'bold' }}>
-          {statusData.isComplete ? '✓ Data Compleet' : `! ${statusData.missingCount} leeg`}
-        </div>
+        <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '2px' }}>{c.type}</div>
       </div>
     );
   };
 
   const renderManagement = () => {
-    // Sorteren en categoriseren van wedstrijden
     const sortedComps = [...competitions].sort((a, b) => new Date(b.date) - new Date(a.date));
     
     const beëindigd = sortedComps.filter(c => c.status === 'beëindigd');
     const overige = sortedComps.filter(c => c.status !== 'beëindigd');
-    
     const gepland = overige.filter(c => !getCompDataStatus(c.id).isComplete);
     const startklaar = overige.filter(c => getCompDataStatus(c.id).isComplete);
 
+    const getTabData = () => {
+        if (activeTab === 'startklaar') return startklaar;
+        if (activeTab === 'gepland') return gepland;
+        return beëindigd;
+    };
+
+    const currentList = getTabData();
+
     return (
-      <div style={{ ...styles.layoutGrid, gridTemplateColumns: '250px 1fr' }}>
-          <aside style={{ ...styles.column, overflowY: 'auto' }}>
-            <button style={{ ...styles.btnPrimary, marginBottom: '1rem', justifyContent: 'center' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe wedstrijd</button>
+      <div style={{ ...styles.layoutGrid, gridTemplateColumns: '320px 1fr' }}>
+          <aside style={{ ...styles.column, overflowY: 'auto', background: '#f8fafc', padding: '1rem' }}>
+            <button style={{ ...styles.btnPrimary, marginBottom: '1.5rem', width: '100%', justifyContent: 'center', height: '45px' }} onClick={() => setShowAddCompModal(true)}>
+                + Nieuwe wedstrijd
+            </button>
             
-            <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#94a3b8', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>STARTKLAAR</div>
-                {startklaar.length > 0 ? startklaar.map(renderCompCard) : <div style={{ fontSize: '0.7rem', color: '#cbd5e1', fontStyle: 'italic', padding: '0.5rem' }}>Geen wedstrijden</div>}
+            {/* Tabs navigatie */}
+            <div style={{ display: 'flex', background: '#e2e8f0', padding: '3px', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                <button 
+                    onClick={() => setActiveTab('startklaar')}
+                    style={{ flex: 1, border: 'none', padding: '8px 4px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '6px', cursor: 'pointer', background: activeTab === 'startklaar' ? '#fff' : 'transparent', color: activeTab === 'startklaar' ? '#2563eb' : '#64748b' }}>
+                    STARTKLAAR
+                </button>
+                <button 
+                    onClick={() => setActiveTab('gepland')}
+                    style={{ flex: 1, border: 'none', padding: '8px 4px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '6px', cursor: 'pointer', background: activeTab === 'gepland' ? '#fff' : 'transparent', color: activeTab === 'gepland' ? '#2563eb' : '#64748b' }}>
+                    GEPLAND
+                </button>
+                <button 
+                    onClick={() => setActiveTab('beëindigd')}
+                    style={{ flex: 1, border: 'none', padding: '8px 4px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '6px', cursor: 'pointer', background: activeTab === 'beëindigd' ? '#fff' : 'transparent', color: activeTab === 'beëindigd' ? '#2563eb' : '#64748b' }}>
+                    VOLTOOID
+                </button>
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#94a3b8', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>GEPLAND</div>
-                {gepland.length > 0 ? gepland.map(renderCompCard) : <div style={{ fontSize: '0.7rem', color: '#cbd5e1', fontStyle: 'italic', padding: '0.5rem' }}>Geen wedstrijden</div>}
-            </div>
-
-            <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#94a3b8', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>BEËINDIGD</div>
-                {beëindigd.length > 0 ? beëindigd.map(renderCompCard) : <div style={{ fontSize: '0.7rem', color: '#cbd5e1', fontStyle: 'italic', padding: '0.5rem' }}>Geen wedstrijden</div>}
+            <div>
+                {currentList.length > 0 ? currentList.map(renderCompCard) : (
+                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#94a3b8', fontSize: '0.8rem' }}>
+                        Geen wedstrijden in deze categorie
+                    </div>
+                )}
             </div>
           </aside>
 
@@ -647,7 +663,7 @@ const App = () => {
                   </div>
                 </div>
               </>
-            ) : <div style={{ textAlign: 'center', padding: '10rem', color: '#94a3b8' }}>Selecteer een wedstrijd.</div>}
+            ) : <div style={{ textAlign: 'center', padding: '10rem', color: '#94a3b8' }}>Selecteer een wedstrijd uit de lijst aan de linkerkant.</div>}
           </main>
       </div>
     );
