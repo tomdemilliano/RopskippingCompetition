@@ -381,7 +381,7 @@ const App = () => {
     const newOrder = { ...(selectedComp.eventOrder || {}) };
     sortedEvents.forEach((ev, idx) => { if (newOrder[ev] === undefined) newOrder[ev] = idx; });
     const currentIndex = sortedEvents.indexOf(eventName);
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    const targetIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
     if (targetIndex >= 0 && targetIndex < sortedEvents.length) {
       const targetEvent = sortedEvents[targetIndex];
       const temp = newOrder[eventName];
@@ -392,7 +392,6 @@ const App = () => {
   };
 
   const renderManagement = () => (
-    /* Aangepaste grid: alleen de wedstrijdlijst (links) en de hoofdinhoud (rechts) */
     <div style={{ ...styles.layoutGrid, gridTemplateColumns: '250px 1fr' }}>
         <aside style={styles.column}>
           <button style={{ ...styles.btnPrimary, marginBottom: '0.5rem', justifyContent: 'center' }} onClick={() => setShowAddCompModal(true)}>+ Nieuwe wedstrijd</button>
@@ -465,7 +464,6 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* Onderdelen horizontaal in het wedstrijd-vak */}
                 <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
                   <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', marginBottom: '0.5rem' }}>ONDERDELEN</div>
                   <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
@@ -495,8 +493,8 @@ const App = () => {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <span style={{ fontWeight: 900, fontSize: '0.8rem' }}>{idx + 1}. {ond}</span>
                             <div style={{ display: 'flex', gap: '2px' }}>
-                              <button onClick={() => moveEvent(ond, 'up')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer', padding: '2px' }} disabled={idx === 0}><ChevronUp size={12}/></button>
-                              <button onClick={() => moveEvent(ond, 'down')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer', padding: '2px' }} disabled={idx === sortedEvents.length - 1}><ChevronDown size={12}/></button>
+                              <button onClick={() => moveEvent(ond, 'left')} title="Naar links" style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer', padding: '2px' }} disabled={idx === 0}><ChevronLeft size={12}/></button>
+                              <button onClick={() => moveEvent(ond, 'right')} title="Naar rechts" style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer', padding: '2px' }} disabled={idx === sortedEvents.length - 1}><ChevronRight size={12}/></button>
                             </div>
                           </div>
                           <div style={{ fontSize: '0.65rem', color: '#64748b', margin: '4px 0' }}>
@@ -519,7 +517,6 @@ const App = () => {
               </div>
 
               <div style={{ ...styles.card, flex: 1, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                {/* Deelnemers filters en zoekbalk */}
                 <div style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                       <button 
