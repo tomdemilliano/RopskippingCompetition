@@ -164,7 +164,8 @@ const App = () => {
         const ra = parseInt(a[eventKey]) || 0;
         const rb = parseInt(b[eventKey]) || 0;
         if (ra !== rb) return ra - rb;
-        return (a[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || 0) - (b[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || 0);
+        // Bij freestyle sorteren we op de tekstwaarde van het veld (A, B)
+        return (a[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || '').toString().localeCompare((b[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || '').toString());
       });
   }, [participants, activeEvent]);
 
@@ -279,7 +280,8 @@ const App = () => {
         const club = row['club'] || '';
         const reeks = row['reeks'] || '';
         const uur = row['uur'] || '';
-        const veld = parseInt(row['veld']) || 1;
+        // AANPASSING: Geen parseInt gebruiken zodat "Veld A" of "Veld B" bewaard blijft
+        const veld = row['veld'] || '1'; 
 
         if (naam) {
           const existing = currentParts.find(p => p.naam === naam);
@@ -615,9 +617,8 @@ const App = () => {
                           <UserX size={14}/> Geschrapt
                         </button>
 
-                        {/* Toegevoegde teller, rechts uitgelijnd */}
                         <div style={{ flex: 1, textAlign: 'right', fontSize: '0.85rem', color: '#64748b', fontWeight: 'bold' }}>
-                            {filteredParticipants.length} skippers
+                            {filteredParticipants.length} skippers getoond
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '0.4rem', borderRadius: '6px' }}>
