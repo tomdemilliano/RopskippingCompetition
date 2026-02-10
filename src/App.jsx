@@ -282,7 +282,7 @@ const App = () => {
           };
 
           if (existing) {
-            batch.update(doc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id)), eventData);
+            batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants', existing.id), eventData);
           } else {
             const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'competitions', selectedComp.id, 'participants'));
             batch.set(newRef, { naam, club, ...eventData, status: 'actief', aanwezig: false });
@@ -423,50 +423,11 @@ const App = () => {
           })}
         </aside>
 
-        <aside style={{ ...styles.column, backgroundColor: '#f8fafc' }}>
-          <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold' }}>ONDERDELEN</div>
-          {selectedComp ? sortedEvents.map((ond, idx) => {
-            const activePartsInEvent = Object.values(participants).filter(p => 
-                p.events?.includes(ond) && 
-                p.status !== 'geschrapt' && 
-                p.eventStatus?.[ond] !== 'geschrapt'
-            );
-            const count = activePartsInEvent.length;
-            const isSpecial = isFreestyleType(ond);
-            const reeksen = new Set(activePartsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
-            const maxVeld = activePartsInEvent.reduce((max, p) => {
-                const veld = p[`detail_${ond.replace(/\s/g, '')}`]?.veld || 0;
-                return veld > max ? veld : max;
-            }, 0);
-
-            return (
-              <div key={ond} style={{ ...styles.card, borderLeft: `4px solid ${count > 0 ? '#10b981' : '#f59e0b'}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.8rem' }}>{ond}</span>
-                  <div style={{ display: 'flex', gap: '2px' }}>
-                    <button onClick={() => moveEvent(ond, 'up')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer' }} disabled={idx === 0}><ChevronUp size={14}/></button>
-                    <button onClick={() => moveEvent(ond, 'down')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer' }} disabled={idx === sortedEvents.length - 1}><ChevronDown size={14}/></button>
-                  </div>
-                </div>
-                <div style={{ fontSize: '0.65rem', color: '#64748b', margin: '4px 0' }}>
-                  {reeksen.size} reeksen {!isSpecial && `| ${maxVeld || '-'} velden`}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>{count} actieve skippers</span>
-                  <button style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowUploadModal(ond)}>
-                    <Upload size={10} style={{ marginRight: '4px' }}/> CSV
-                  </button>
-                </div>
-              </div>
-            );
-          }) : <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#94a3b8' }}>Selecteer wedstrijd</div>}
-        </aside>
-
         <main style={styles.contentArea}>
           {selectedComp ? (
             <>
               <div style={styles.card}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <h2 style={{ margin: 0 }}>{selectedComp.name}</h2>
@@ -502,10 +463,63 @@ const App = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Onderdelen horizontaal weergegeven */}
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'bold', marginBottom: '0.5rem' }}>ONDERDELEN</div>
+                  <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                    {sortedEvents.map((ond, idx) => {
+                      const activePartsInEvent = Object.values(participants).filter(p => 
+                          p.events?.includes(ond) && 
+                          p.status !== 'geschrapt' && 
+                          p.eventStatus?.[ond] !== 'geschrapt'
+                      );
+                      const count = activePartsInEvent.length;
+                      const isSpecial = isFreestyleType(ond);
+                      const reeksen = new Set(activePartsInEvent.map(p => p[`reeks_${ond.replace(/\s/g, '')}`]).filter(Boolean));
+                      const maxVeld = activePartsInEvent.reduce((max, p) => {
+                          const veld = p[`detail_${ond.replace(/\s/g, '')}`]?.veld || 0;
+                          return veld > max ? veld : max;
+                      }, 0);
+
+                      return (
+                        <div key={ond} style={{ 
+                          minWidth: '220px', 
+                          padding: '0.75rem', 
+                          background: '#fff', 
+                          borderRadius: '8px', 
+                          border: '1px solid #e2e8f0',
+                          borderLeft: `4px solid ${count > 0 ? '#10b981' : '#f59e0b'}` 
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <span style={{ fontWeight: 900, fontSize: '0.8rem' }}>{idx + 1}. {ond}</span>
+                            <div style={{ display: 'flex', gap: '2px' }}>
+                              <button onClick={() => moveEvent(ond, 'up')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer', padding: '2px' }} disabled={idx === 0}><ChevronUp size={12}/></button>
+                              <button onClick={() => moveEvent(ond, 'down')} style={{ border: 'none', background: '#f1f5f9', cursor: 'pointer', padding: '2px' }} disabled={idx === sortedEvents.length - 1}><ChevronDown size={12}/></button>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '0.65rem', color: '#64748b', margin: '4px 0' }}>
+                            {reeksen.size} reeksen {!isSpecial && `| ${maxVeld || '-'} velden`}
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>{count} skippers</span>
+                            <button 
+                              style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} 
+                              onClick={() => setShowUploadModal(ond)}
+                              title="Upload CSV"
+                            >
+                              <Upload size={12}/>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div style={{ ...styles.card, flex: 1, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                {/* Filters verplaatst naar hier, boven de zoekbalk */}
+                {/* Filters boven de zoekbalk */}
                 <div style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                       <button 
