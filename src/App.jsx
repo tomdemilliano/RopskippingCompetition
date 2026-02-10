@@ -234,6 +234,13 @@ const App = () => {
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'progress'), { finishedReeksen: {}, finishedEvents: [] });
   };
 
+  const handleStopLive = async (compId) => {
+    if (window.confirm("Weet je zeker dat je de Live-status wilt stoppen? De wedstrijd blijft bestaan maar is niet langer actief.")) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', compId), { status: 'open' });
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'competition'), { activeCompetitionId: null });
+    }
+  };
+
   const handleEndCompetition = async (compId) => {
     if (window.confirm("Weet je zeker dat je deze wedstrijd wilt beëindigen?")) {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'competitions', compId), { status: 'beëindigd' });
@@ -497,9 +504,17 @@ const App = () => {
                       <button style={{ ...styles.btnSecondary, color: '#ef4444' }} onClick={handleDeleteComp}><Trash2 size={16}/></button>
                       
                       {selectedComp.status === 'bezig' ? (
-                          <button style={{ ...styles.btnPrimary, background: '#ef4444' }} onClick={() => handleEndCompetition(selectedComp.id)}>
-                              <Square size={16}/> Beëindig wedstrijd
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button 
+                              style={{ ...styles.btnSecondary, borderColor: '#ef4444', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                              onClick={() => handleStopLive(selectedComp.id)}
+                            >
+                              <Ghost size={16}/> Stop live
+                            </button>
+                            <button style={{ ...styles.btnPrimary, background: '#ef4444' }} onClick={() => handleEndCompetition(selectedComp.id)}>
+                                <Square size={16}/> Beëindig wedstrijd
+                            </button>
+                          </div>
                       ) : (
                           <button 
                               disabled={activeCompExists || selectedComp.status === 'beëindigd'} 
