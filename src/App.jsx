@@ -199,6 +199,22 @@ const App = () => {
     return Math.floor(diffMs / 60000);
   }, [plannedTime, currentTime]);
 
+  const officialStatus = useMemo(() => {
+    // Zoek het eerste event dat nog niet in finishedEvents staat
+    const currentOfficialEvent = sortedEvents.find(ev => !finishedEvents.includes(ev)) || sortedEvents[0];
+  
+    // Zoek de eerstvolgende reeks in dat event die nog niet gedaan is
+    // We hebben hier de deelnemers van dat specifieke event nodig om de reeksen te bepalen
+    const eventKey = `reeks_${currentOfficialEvent?.replace(/\s/g, '')}`;
+    const eventParts = Object.values(participants).filter(p => p.events?.includes(currentOfficialEvent));
+    const reeksen = [...new Set(eventParts.map(p => parseInt(p[eventKey])).filter(Boolean))].sort((a, b) => a - b);
+  
+    const doneInThisEvent = finishedReeksen[currentOfficialEvent] || [];
+    const currentOfficialReeks = reeksen.find(r => !doneInThisEvent.includes(r)) || reeksen[0] || 1;
+
+    return { event: currentOfficialEvent, reeks: currentOfficialReeks };
+  }, [sortedEvents, finishedEvents, finishedReeksen, participants]);
+  
   const handleFinishReeks = async () => {
     const isLaatsteReeks = activeReeks === reeksenInEvent[reeksenInEvent.length - 1];
     
@@ -748,8 +764,8 @@ if (isFreestyle) {
         ) : (
         <DisplayView 
           selectedComp={activeComp}
-          activeEvent={activeEvent}
-          activeReeks={activeReeks}
+          activeEvent={officialStatus.event}
+          activeReeks={officialStatus.reeks}
           liveParticipants={liveParticipants}
           timeDiff={timeDiff}
           onClose={() => setView('management')}
