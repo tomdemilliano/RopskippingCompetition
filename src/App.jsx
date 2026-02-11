@@ -720,13 +720,14 @@ if (isFreestyle) {
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button style={{ ...styles.btnSecondary, background: view === 'management' ? '#2563eb' : '#fff', color: view === 'management' ? '#fff' : '#475569' }} onClick={() => setView('management')}>Beheer</button>
           <button style={{ ...styles.btnSecondary, background: view === 'live' ? '#2563eb' : '#fff', color: view === 'live' ? '#fff' : '#475569' }} onClick={() => setView('live')}>Live</button>
+          <button   style={{ ...styles.btnSecondary, background: view === 'display' ? '#38bdf8' : '#fff', color: view === 'display' ? '#0f172a' : '#475569' }} onClick={() => setView('display')}>Display</button>
           <div style={{ marginLeft: '0.5rem', fontWeight: 700, fontSize: '0.9rem', background: '#f8fafc', padding: '0.5rem 0.8rem', borderRadius: '6px', color: '#64748b', border: '1px solid #e2e8f0', minWidth: '65px', textAlign: 'center' }}>
             {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false})}
           </div>
         </div>
       </header>
 
-      {view === 'management' ? renderManagement() : (
+      {view === 'management' ? renderManagement() : view === 'live' ? (
         <LiveView 
           selectedComp={activeComp}
           activeEvent={activeEvent}
@@ -743,6 +744,15 @@ if (isFreestyle) {
           handleFinishReeks={handleFinishReeks}
           sortedEvents={sortedEvents}
         />
+        ) : (
+        <DisplayView 
+          selectedComp={activeComp}
+          activeEvent={activeEvent}
+          activeReeks={activeReeks}
+          liveParticipants={liveParticipants}
+          timeDiff={timeDiff}
+          onClose={() => setView('management')}
+        />      
       )}
 
       <Modals 
