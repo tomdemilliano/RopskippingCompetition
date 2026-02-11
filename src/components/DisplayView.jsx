@@ -20,19 +20,31 @@ const DisplayView = ({
   const isFreestyle = isFreestyleType(activeEvent);
 
   // 1. Deelnemers die NU bezig zijn (huidige reeks)
-  const currentSkippers = liveParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
+  // Sortering toegevoegd: eerst op veldnummer (numeriek)
+  const currentSkippers = liveParticipants
+    .filter(p => parseInt(p[eventKey]) === activeReeks)
+    .sort((a, b) => {
+      const veldA = parseInt(a[detailKey]?.veld) || 0;
+      const veldB = parseInt(b[detailKey]?.veld) || 0;
+      return veldA - veldB;
+    });
 
   // 2. Logica voor "Volgende" (Klaarhouden)
   let nextUp = [];
   if (isFreestyle) {
-    // Bij freestyle: de eerstvolgende 8 skippers (ongeacht reeks, maar meestal de volgende nummers)
+    // Bij freestyle: de eerstvolgende 8 skippers op basis van reeksvolgorde
     nextUp = liveParticipants
       .filter(p => parseInt(p[eventKey]) > activeReeks)
       .slice(0, 8);
   } else {
-    // Bij speed: alle deelnemers van enkel de eerstvolgende reeks
+    // Bij speed: alle deelnemers van enkel de eerstvolgende reeks, numeriek gesorteerd op veld
     nextUp = liveParticipants
-      .filter(p => parseInt(p[eventKey]) === (activeReeks + 1));
+      .filter(p => parseInt(p[eventKey]) === (activeReeks + 1))
+      .sort((a, b) => {
+        const veldA = parseInt(a[detailKey]?.veld) || 0;
+        const veldB = parseInt(b[detailKey]?.veld) || 0;
+        return veldA - veldB;
+      });
   }
 
   const toggleFullscreen = () => {
