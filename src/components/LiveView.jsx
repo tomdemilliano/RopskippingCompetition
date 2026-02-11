@@ -6,7 +6,7 @@ import { isFreestyleType } from '../constants';
 import { styles } from '../styles';
 
 const LiveView = ({ 
-  selectedComp, // We gebruiken deze enkel als fallback of referentie
+  selectedComp, 
   activeEvent, 
   setActiveEvent, 
   activeReeks, 
@@ -22,8 +22,6 @@ const LiveView = ({
   sortedEvents
 }) => {
   
-  // Controleer of de huidige geselecteerde wedstrijd actief is.
-  // Indien niet, tonen we de "Geen actieve wedstrijd" view.
   if (!selectedComp || selectedComp.status !== 'bezig') {
     return (
       <div style={{ 
@@ -99,7 +97,28 @@ const LiveView = ({
       <div style={{...styles.liveContent, position: 'relative'}}>
         {!isFreestyle ? (
           <>
-            <div style={{ ...styles.reeksNav, minHeight: '140px', display: 'flex', flexDirection: 'column', padding: '1.5rem', gap: '1rem' }}>
+            {/* Wedstrijdnaam gecentreerd boven het navigatieframe */}
+            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+              <span style={{ 
+                fontSize: '0.75rem', 
+                fontWeight: 900, 
+                color: '#94a3b8', 
+                letterSpacing: '0.1em', 
+                textTransform: 'uppercase' 
+              }}>
+                {selectedComp.name}
+              </span>
+            </div>
+
+            {/* Navigatieframe met minder verticale witruimte */}
+            <div style={{ 
+              ...styles.reeksNav, 
+              minHeight: 'auto', // Verwijderd voor minder witruimte
+              display: 'flex', 
+              flexDirection: 'column', 
+              padding: '0.75rem 1.5rem', // Padding verminderd
+              gap: '0.75rem' 
+            }}>
               <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
                 <button 
                   disabled={isEersteReeks}
@@ -133,13 +152,13 @@ const LiveView = ({
                 </button>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '0.25rem' }}>
                 {isReeksKlaar ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.6rem 1.5rem', borderRadius: '8px', border: '2px solid #bbf7d0' }}>
-                    <CheckCircle size={20} /> REEKS VOLTOOID
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 900, background: '#f0fdf4', padding: '0.5rem 1.5rem', borderRadius: '8px', border: '2px solid #bbf7d0', fontSize: '0.9rem' }}>
+                    <CheckCircle size={18} /> REEKS VOLTOOID
                   </div>
                 ) : (
-                  <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.7rem 2.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
+                  <button style={{ ...styles.btnPrimary, background: '#10b981', padding: '0.6rem 2.5rem', fontSize: '1rem' }} onClick={handleFinishReeks}>
                     {isLaatsteReeks ? `${activeEvent} klaar` : 'Reeks klaar'} <ChevronRight size={20} style={{ marginLeft: '4px' }}/>
                   </button>
                 )}
@@ -171,6 +190,11 @@ const LiveView = ({
         ) : (
           /* Freestyle View */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '-1rem' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                {selectedComp.name}
+              </span>
+            </div>
             <div style={styles.reeksNav}>
               <button style={styles.btnSecondary} onClick={() => setActiveReeks(Math.max(1, activeReeks - 1))}><ChevronLeft/></button>
               <div style={{ flex: 1, textAlign: 'center' }}>
