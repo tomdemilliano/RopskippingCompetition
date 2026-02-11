@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Maximize2, Minimize2, Clock, X, Coffee
 } from 'lucide-react';
@@ -8,11 +8,27 @@ const DisplayView = ({
   selectedComp, 
   activeEvent, 
   activeReeks, 
-  liveParticipants, 
+  liveParticipants: allParticipants, // We hernoemen deze prop intern omdat we de ongefilterde lijst nodig hebben
   timeDiff,
   onClose 
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // --- LOGICA VOOR HET VOLGEN VAN HET OFFICIELE VERLOOP ---
+  
+  // 1. Filter de deelnemers specifiek voor het event dat de Display moet tonen
+  const currentEventParticipants = useMemo(() => {
+    if (!activeEvent || !allParticipants) return [];
+    return Object.values(allParticipants)
+      .filter(p => p.events?.includes(activeEvent) && p.status !== 'geschrapt' && p.eventStatus?.[activeEvent] !== 'geschrapt')
+      .sort((a, b) => {
+        const eventKey = `reeks_${activeEvent.replace(/\s/g, '')}`;
+        const ra = parseInt(a[eventKey]) || 0;
+        const rb = parseInt(b[eventKey]) || 0;
+        if (ra !== rb) return ra - rb;
+        return (a[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || '').toString().localeCompare((b[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || '').toString());
+      });
+  }, [allParticipants, activeEvent]);
 
   const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
   const detailKey = `detail_${activeEvent?.replace(/\s/g, '')}`;
@@ -41,8 +57,9 @@ const DisplayView = ({
     return fullList;
   };
 
-  const totalReeksen = Math.max(...liveParticipants.map(p => parseInt(p[eventKey]) || 0), 0);
-  const rawCurrentSkippers = liveParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
+  // Gebruik nu 'currentEventParticipants' i.p.v. de (verkeerd gefilterde) 'liveParticipants' prop
+  const totalReeksen = Math.max(...currentEventParticipants.map(p => parseInt(p[eventKey]) || 0), 0);
+  const rawCurrentSkippers = currentEventParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
   
   // Detecteer pauze op basis van de naamgeving conventie
   const isPause = rawCurrentSkippers.some(p => p.naam && p.naam.startsWith('PAUZE_'));
@@ -53,11 +70,11 @@ const DisplayView = ({
 
   let nextUp = [];
   if (isFreestyle) {
-    nextUp = liveParticipants
+    nextUp = currentEventParticipants
       .filter(p => parseInt(p[eventKey]) > activeReeks)
       .slice(0, 8);
   } else {
-    const rawNextSkippers = liveParticipants.filter(p => parseInt(p[eventKey]) === (activeReeks + 1));
+    const rawNextSkippers = currentEventParticipants.filter(p => parseInt(p[eventKey]) === (activeReeks + 1));
     nextUp = getFullFields(rawNextSkippers);
   }
 
