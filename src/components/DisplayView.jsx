@@ -78,7 +78,7 @@ const DisplayView = ({
       fontFamily: 'system-ui, sans-serif', overflow: 'hidden',
       display: 'flex', flexDirection: 'column'
     }}>
-      {/* Top Bar: Wedstrijd - Onderdeel */}
+      {/* Top Bar */}
       <div style={{ 
         padding: '1rem 2.5rem', background: 'rgba(30, 41, 59, 0.8)', 
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -99,31 +99,33 @@ const DisplayView = ({
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Side: Smaller (30%) */}
-        <div style={{ width: '30%', padding: '2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)' }}>
-          <div style={{ marginBottom: '2.5rem' }}>
-            <div style={{ color: '#94a3b8', fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.8rem', textTransform: 'uppercase' }}>
+        {/* Left Side: 30% width */}
+        <div style={{ width: '30%', padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem', textTransform: 'uppercase' }}>
               Nu bezig: Reeks {activeReeks}
             </div>
             <div style={{ 
               background: 'rgba(30, 41, 59, 0.4)', 
-              padding: '1.2rem', 
-              borderRadius: '15px', 
+              padding: '1rem', 
+              borderRadius: '12px', 
               border: '1px solid rgba(255,255,255,0.1)' 
             }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {currentSkippers.map((p, i) => (
-                  <div key={i} style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                  <div key={i} style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                     <span style={{ 
-                      background: '#38bdf8', color: '#0f172a', 
-                      minWidth: '2.5rem', textAlign: 'center',
-                      padding: '0.2rem 0.4rem', borderRadius: '6px', fontWeight: 900 
+                      background: '#334155', 
+                      color: '#fff',
+                      minWidth: '1.8rem', textAlign: 'center',
+                      padding: '0.1rem 0.3rem', borderRadius: '4px', 
+                      fontSize: '0.85rem', fontWeight: 700 
                     }}>
                       {p[detailKey]?.veld || '-'}
                     </span>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontWeight: 700 }}>{p.naam}</span>
-                      <span style={{ color: '#64748b', fontSize: '0.9rem' }}>{p.club}</span>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontWeight: 400 }}>{p.naam}</span>
+                      <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({p.club})</span>
                     </div>
                   </div>
                 ))}
@@ -132,35 +134,35 @@ const DisplayView = ({
           </div>
 
           <div>
-            <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>TIJDSSCHEMA</div>
-            <div style={{ fontSize: '2.5rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              <Clock size={32} color="#38bdf8" />
+            <div style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.4rem' }}>TIJDSSCHEMA</div>
+            <div style={{ fontSize: '2.2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <Clock size={28} color="#38bdf8" />
               {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
             {timeDiff !== 0 && (
               <div style={{ 
-                marginTop: '1rem', padding: '0.8rem', borderRadius: '10px', 
+                marginTop: '0.8rem', padding: '0.6rem', borderRadius: '8px', 
                 background: timeDiff > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
                 color: timeDiff > 0 ? '#f87171' : '#34d399',
-                fontSize: '1rem', fontWeight: 'bold'
+                fontSize: '0.9rem', fontWeight: 'bold'
               }}>
-                {timeDiff > 0 ? `Vertraging: +${timeDiff} min` : `Voor op schema: ${Math.abs(timeDiff)} min`}
+                {timeDiff > 0 ? `+${timeDiff} min` : `${timeDiff} min`}
               </div>
             )}
           </div>
         </div>
 
-        {/* Right Side: Wider (70%) and more compact header */}
-        <div style={{ flex: 1, padding: '1.5rem 2.5rem', overflowY: 'auto' }}>
-          <div style={{ marginBottom: '1rem' }}>
+        {/* Right Side: 70% width */}
+        <div style={{ flex: 1, padding: '1rem 2.5rem', overflowY: 'auto' }}>
+          <div style={{ marginBottom: '0.5rem' }}>
             <h2 style={{ fontSize: '2.2rem', fontWeight: 900, margin: 0, color: '#f8fafc' }}>
               Volgende
             </h2>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px' }}>
             <thead>
-              <tr style={{ color: '#64748b', fontSize: '1rem', textAlign: 'left' }}>
+              <tr style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'left' }}>
                 <th style={{ padding: '0 1rem' }}>Verwacht</th>
                 <th style={{ padding: '0 1rem' }}>Reeks</th>
                 <th style={{ padding: '0 1rem' }}>Veld</th>
@@ -176,11 +178,11 @@ const DisplayView = ({
                     background: 'rgba(30, 41, 59, 0.4)',
                     fontSize: '1.4rem',
                   }}>
-                    <td style={{ padding: '0.8rem 1rem', borderRadius: '12px 0 0 12px', fontWeight: 800, color: '#94a3b8' }}>
+                    <td style={{ padding: '0.6rem 1rem', borderRadius: '10px 0 0 10px', fontWeight: 800, color: '#94a3b8' }}>
                       {time || '--:--'}
                     </td>
-                    <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>{p[eventKey]}</td>
-                    <td style={{ padding: '0.8rem 1rem' }}>
+                    <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{p[eventKey]}</td>
+                    <td style={{ padding: '0.6rem 1rem' }}>
                       <span style={{ 
                         background: '#334155', 
                         color: '#fff',
@@ -190,8 +192,8 @@ const DisplayView = ({
                         {p[detailKey]?.veld || '-'}
                       </span>
                     </td>
-                    <td style={{ padding: '0.8rem 1rem', fontWeight: 800 }}>{p.naam}</td>
-                    <td style={{ padding: '0.8rem 1rem', borderRadius: '0 12px 12px 0', color: '#94a3b8', fontSize: '1.2rem' }}>{p.club}</td>
+                    <td style={{ padding: '0.6rem 1rem', fontWeight: 800 }}>{p.naam}</td>
+                    <td style={{ padding: '0.6rem 1rem', borderRadius: '0 10px 10px 0', color: '#94a3b8', fontSize: '1.2rem' }}>{p.club}</td>
                   </tr>
                 );
               })}
@@ -199,14 +201,14 @@ const DisplayView = ({
           </table>
 
           {nextUp.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#475569', fontSize: '1.2rem' }}>
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#475569', fontSize: '1.1rem' }}>
               Geen verdere deelnemers gepland.
             </div>
           )}
         </div>
       </div>
 
-      <div style={{ background: '#38bdf8', color: '#0f172a', padding: '0.6rem', fontWeight: 800, fontSize: '1.1rem', textAlign: 'center' }}>
+      <div style={{ background: '#38bdf8', color: '#0f172a', padding: '0.5rem', fontWeight: 800, fontSize: '1rem', textAlign: 'center' }}>
         MELD JE TIJDIG AAN BIJ DE STEWARD • KIJK GOED NAAR JE VELDNUMMER • VEEL SUCCES!
       </div>
     </div>
