@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Maximize2, Minimize2, Clock, X, Coffee
+  Maximize2, Minimize2, Clock, X, Coffee, ChevronRight
 } from 'lucide-react';
 import { isFreestyleType } from '../constants';
 
@@ -8,14 +8,19 @@ const DisplayView = ({
   selectedComp, 
   activeEvent, 
   activeReeks, 
-  liveParticipants: allParticipants, // We hernoemen deze prop intern omdat we de ongefilterde lijst nodig hebben
+  liveParticipants: allParticipants,
   timeDiff,
   onClose 
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // --- LOGICA VOOR HET VOLGEN VAN HET OFFICIELE VERLOOP ---
-  
+  // Verkrijg de gesorteerde lijst van events uit de competitie
+  const sortedEvents = useMemo(() => {
+    if (!selectedComp || !selectedComp.events) return [];
+    const order = selectedComp.eventOrder || {};
+    return [...selectedComp.events].sort((a, b) => (order[a] || 0) - (order[b] || 0));
+  }, [selectedComp]);
+
   // 1. Filter de deelnemers specifiek voor het event dat de Display moet tonen
   const currentEventParticipants = useMemo(() => {
     if (!activeEvent || !allParticipants) return [];
@@ -35,21 +40,21 @@ const DisplayView = ({
   const isFreestyle = isFreestyleType(activeEvent);
 
   // Helper om een reeks deelnemers aan te vullen met lege velden (voor Speed)
-  const getFullFields = (participantsInReeks) => {
+  const getFullFields = (participantsInReeks, specificDetailKey) => {
     if (participantsInReeks.length === 0) return [];
     
-    const maxVeld = Math.max(...participantsInReeks.map(p => parseInt(p[detailKey]?.veld) || 0), 0);
+    const maxVeld = Math.max(...participantsInReeks.map(p => parseInt(p[specificDetailKey]?.veld) || 0), 0);
     const fullList = [];
 
     for (let v = 1; v <= maxVeld; v++) {
-      const skipper = participantsInReeks.find(p => (parseInt(p[detailKey]?.veld) || 0) === v);
+      const skipper = participantsInReeks.find(p => (parseInt(p[specificDetailKey]?.veld) || 0) === v);
       if (skipper) {
         fullList.push(skipper);
       } else {
         fullList.push({
           naam: "---",
           club: "",
-          [detailKey]: { veld: v.toString() },
+          [specificDetailKey]: { veld: v.toString() },
           isEmpty: true
         });
       }
@@ -57,26 +62,56 @@ const DisplayView = ({
     return fullList;
   };
 
-  // Gebruik nu 'currentEventParticipants' i.p.v. de (verkeerd gefilterde) 'liveParticipants' prop
   const totalReeksen = Math.max(...currentEventParticipants.map(p => parseInt(p[eventKey]) || 0), 0);
   const rawCurrentSkippers = currentEventParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
-  
-  // Detecteer pauze op basis van de naamgeving conventie
   const isPause = rawCurrentSkippers.some(p => p.naam && p.naam.startsWith('PAUZE_'));
 
   const currentSkippers = isFreestyle 
     ? rawCurrentSkippers 
-    : getFullFields(rawCurrentSkippers);
+    : getFullFields(rawCurrentSkippers, detailKey);
 
-  let nextUp = [];
-  if (isFreestyle) {
-    nextUp = currentEventParticipants
-      .filter(p => parseInt(p[eventKey]) > activeReeks)
-      .slice(0, 8);
-  } else {
-    const rawNextSkippers = currentEventParticipants.filter(p => parseInt(p[eventKey]) === (activeReeks + 1));
-    nextUp = getFullFields(rawNextSkippers);
-  }
+  // --- LOGICA VOOR VOLGENDE REEKS (OOK OVER EVENTS HEEN) ---
+  const { nextUp, nextEventName, isNextEvent } = useMemo(() => {
+    // Check of er nog een reeks is in het huidige event
+    const hasMoreInCurrent = activeReeks < totalReeksen;
+    
+    if (hasMoreInCurrent) {
+      const nextR = activeReeks + 1;
+      let list = [];
+      if (isFreestyle) {
+        list = currentEventParticipants.filter(p => parseInt(p[eventKey]) > activeReeks).slice(0, 8);
+      } else {
+        const rawNext = currentEventParticipants.filter(p => parseInt(p[eventKey]) === nextR);
+        list = getFullFields(rawNext, detailKey);
+      }
+      return { nextUp: list, nextEventName: activeEvent, isNextEvent: false };
+    } 
+
+    // Zoek het volgende event
+    const currentIndex = sortedEvents.indexOf(activeEvent);
+    const nextEvent = sortedEvents[currentIndex + 1];
+
+    if (nextEvent) {
+      const nextEventKey = `reeks_${nextEvent.replace(/\s/g, '')}`;
+      const nextDetailKey = `detail_${nextEvent.replace(/\s/g, '')}`;
+      const nextIsFreestyle = isFreestyleType(nextEvent);
+
+      const nextParts = Object.values(allParticipants)
+        .filter(p => p.events?.includes(nextEvent) && p.status !== 'geschrapt' && p.eventStatus?.[nextEvent] !== 'geschrapt')
+        .sort((a, b) => (parseInt(a[nextEventKey]) || 0) - (parseInt(b[nextEventKey]) || 0));
+
+      let list = [];
+      if (nextIsFreestyle) {
+        list = nextParts.filter(p => parseInt(p[nextEventKey]) === 1).slice(0, 8);
+      } else {
+        const rawNext = nextParts.filter(p => parseInt(p[nextEventKey]) === 1);
+        list = getFullFields(rawNext, nextDetailKey);
+      }
+      return { nextUp: list, nextEventName: nextEvent, isNextEvent: true };
+    }
+
+    return { nextUp: [], nextEventName: null, isNextEvent: false };
+  }, [activeReeks, totalReeksen, activeEvent, currentEventParticipants, sortedEvents, allParticipants]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -88,7 +123,9 @@ const DisplayView = ({
     }
   };
 
-  const getExpectedTime = (plannedStr) => {
+  const getExpectedTime = (p, currentNextEvent) => {
+    const dKey = `detail_${currentNextEvent.replace(/\s/g, '')}`;
+    const plannedStr = p[dKey]?.uur;
     if (!plannedStr || !timeDiff) return plannedStr;
     const [hours, minutes] = plannedStr.split(':').map(Number);
     const date = new Date();
@@ -178,7 +215,7 @@ const DisplayView = ({
                         padding: '0.1rem 0.3rem', borderRadius: '4px', 
                         fontSize: '0.85rem', fontWeight: 700 
                       }}>
-                        {p[detailKey]?.veld || '-'}
+                        {p[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld || '-'}
                       </span>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <span style={{ fontWeight: 400, fontStyle: p.isEmpty ? 'italic' : 'normal' }}>{p.naam}</span>
@@ -214,71 +251,94 @@ const DisplayView = ({
 
         {/* Right Side: Next Up List */}
         <div style={{ flex: 1, padding: '1rem 2.5rem', overflowY: 'auto' }}>
-          <div style={{ marginBottom: '0.5rem' }}>
+          <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
             <h2 style={{ fontSize: '2.2rem', fontWeight: 900, margin: 0, color: '#f8fafc' }}>
               Volgende
             </h2>
+            {isNextEvent && nextEventName && (
+              <div style={{ 
+                display: 'flex', alignItems: 'center', gap: '0.5rem', 
+                background: '#38bdf8', color: '#0f172a', 
+                padding: '0.4rem 1rem', borderRadius: '12px', fontWeight: 800, fontSize: '1rem' 
+              }}>
+                <ChevronRight size={20} />
+                VOLGEND ONDERDEEL: {nextEventName.toUpperCase()}
+              </div>
+            )}
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px' }}>
-            <thead>
-              <tr style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'left' }}>
-                <th style={{ padding: '0 1rem' }}>Verwacht</th>
-                <th style={{ padding: '0 1rem' }}>Veld</th>
-                <th style={{ padding: '0 1rem' }}>Skipper / Team</th>
-                <th style={{ padding: '0 1rem' }}>Club</th>
-              </tr>
-            </thead>
-            <tbody>
-              {nextUp.map((p, idx) => {
-                const time = getExpectedTime(p[detailKey]?.uur);
-                const isNextPause = p.naam && p.naam.startsWith('PAUZE_');
+          {nextUp.length > 0 ? (
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px' }}>
+              <thead>
+                <tr style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'left' }}>
+                  <th style={{ padding: '0 1rem' }}>Verwacht</th>
+                  <th style={{ padding: '0 1rem' }}>Veld</th>
+                  <th style={{ padding: '0 1rem' }}>Skipper / Team</th>
+                  <th style={{ padding: '0 1rem' }}>Club</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nextUp.map((p, idx) => {
+                  const time = getExpectedTime(p, nextEventName);
+                  const isNextPause = p.naam && p.naam.startsWith('PAUZE_');
+                  const currentNextDetailKey = `detail_${nextEventName.replace(/\s/g, '')}`;
 
-                return (
-                  <tr key={idx} style={{ 
-                    background: isNextPause ? 'rgba(56, 189, 248, 0.1)' : 'rgba(30, 41, 59, 0.4)',
-                    fontSize: '1.4rem',
-                    opacity: p.isEmpty ? 0.6 : 1
-                  }}>
-                    <td style={{ padding: '0.6rem 1rem', borderRadius: '10px 0 0 10px', fontWeight: 800, color: '#94a3b8' }}>
-                      {time || '--:--'}
-                    </td>
-                    <td style={{ padding: '0.6rem 1rem' }}>
-                      {!isNextPause && (
-                        <span style={{ 
-                          background: '#334155', 
-                          color: '#fff',
-                          minWidth: '2.2rem', display: 'inline-block', textAlign: 'center',
-                          padding: '0.1rem 0.6rem', borderRadius: '6px'
-                        }}>
-                          {p[detailKey]?.veld || '-'}
-                        </span>
-                      )}
-                    </td>
-                    <td 
-                      colSpan={isNextPause ? 2 : 1} 
-                      style={{ padding: '0.6rem 1rem', fontWeight: 800, fontStyle: (p.isEmpty || isNextPause) ? 'italic' : 'normal' }}
-                    >
-                      {isNextPause ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#38bdf8' }}>
-                          <Coffee size={24} />
-                          <span>PAUZE</span>
-                        </div>
-                      ) : (
-                        p.naam
-                      )}
-                    </td>
-                    {!isNextPause && (
-                      <td style={{ padding: '0.6rem 1rem', borderRadius: '0 10px 10px 0', color: '#94a3b8', fontSize: '1.2rem' }}>
-                        {p.club}
+                  return (
+                    <tr key={idx} style={{ 
+                      background: isNextPause ? 'rgba(56, 189, 248, 0.1)' : 'rgba(30, 41, 59, 0.4)',
+                      fontSize: '1.4rem',
+                      opacity: p.isEmpty ? 0.6 : 1
+                    }}>
+                      <td style={{ padding: '0.6rem 1rem', borderRadius: '10px 0 0 10px', fontWeight: 800, color: '#94a3b8' }}>
+                        {time || '--:--'}
                       </td>
-                    )}
-                    {isNextPause && <td style={{ borderRadius: '0 10px 10px 0' }}></td>}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <td style={{ padding: '0.6rem 1rem' }}>
+                        {!isNextPause && (
+                          <span style={{ 
+                            background: '#334155', 
+                            color: '#fff',
+                            minWidth: '2.2rem', display: 'inline-block', textAlign: 'center',
+                            padding: '0.1rem 0.6rem', borderRadius: '6px'
+                          }}>
+                            {p[currentNextDetailKey]?.veld || '-'}
+                          </span>
+                        )}
+                      </td>
+                      <td 
+                        colSpan={isNextPause ? 2 : 1} 
+                        style={{ padding: '0.6rem 1rem', fontWeight: 800, fontStyle: (p.isEmpty || isNextPause) ? 'italic' : 'normal' }}
+                      >
+                        {isNextPause ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#38bdf8' }}>
+                            <Coffee size={24} />
+                            <span>PAUZE</span>
+                          </div>
+                        ) : (
+                          p.naam
+                        )}
+                      </td>
+                      {!isNextPause && (
+                        <td style={{ padding: '0.6rem 1rem', borderRadius: '0 10px 10px 0', color: '#94a3b8', fontSize: '1.2rem' }}>
+                          {p.club}
+                        </td>
+                      )}
+                      {isNextPause && <td style={{ borderRadius: '0 10px 10px 0' }}></td>}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div style={{ 
+              marginTop: '4rem', textAlign: 'center', padding: '3rem', 
+              background: 'rgba(30, 41, 59, 0.4)', borderRadius: '20px',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#94a3b8' }}>
+                De wedstrijd is afgelopen
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
