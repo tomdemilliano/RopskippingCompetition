@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Maximize2, Minimize2, Clock, Users, MapPin, FastForward, PlayCircle, X 
+  Maximize2, Minimize2, Clock, X 
 } from 'lucide-react';
 import { isFreestyleType } from '../constants';
 
@@ -14,19 +14,26 @@ const DisplayView = ({
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Filter deelnemers die nog moeten komen (huidige reeks en verder)
+  // Hulpvariabelen voor data-extractie
   const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
   const detailKey = `detail_${activeEvent?.replace(/\s/g, '')}`;
+  const isFreestyle = isFreestyleType(activeEvent);
 
-  const upcoming = liveParticipants.filter(p => {
-    const pReeks = parseInt(p[eventKey]);
-    return pReeks >= activeReeks;
-  });
+  // 1. Deelnemers die NU bezig zijn (huidige reeks)
+  const currentSkippers = liveParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
 
-  // De huidige actieve skipper(s)
-  const currentSkippers = upcoming.filter(p => parseInt(p[eventKey]) === activeReeks);
-  // De skippers die hierna komen (volgende reeksen)
-  const nextUp = upcoming.filter(p => parseInt(p[eventKey]) > activeReeks).slice(0, 15);
+  // 2. Logica voor "Volgende" (Klaarhouden)
+  let nextUp = [];
+  if (isFreestyle) {
+    // Bij freestyle: de eerstvolgende 8 skippers (ongeacht reeks, maar meestal de volgende nummers)
+    nextUp = liveParticipants
+      .filter(p => parseInt(p[eventKey]) > activeReeks)
+      .slice(0, 8);
+  } else {
+    // Bij speed: alle deelnemers van enkel de eerstvolgende reeks
+    nextUp = liveParticipants
+      .filter(p => parseInt(p[eventKey]) === (activeReeks + 1));
+  }
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -71,8 +78,7 @@ const DisplayView = ({
         borderBottom: '1px solid rgba(255,255,255,0.1)' 
       }}>
         <div>
-          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.1em' }}>OPWARMRUIMTE DISPLAY</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{selectedComp.name}</div>
+          <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{selectedComp.name}</div>
         </div>
         
         <div style={{ textAlign: 'right', display: 'flex', gap: '1rem' }}>
@@ -89,15 +95,31 @@ const DisplayView = ({
         {/* Left Side: Current Status */}
         <div style={{ width: '35%', padding: '2.5rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)' }}>
           <div style={{ marginBottom: '3rem' }}>
-            <div style={{ color: '#94a3b8', fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>NU BEZIG</div>
-            <div style={{ background: '#2563eb', padding: '2rem', borderRadius: '20px', boxShadow: '0 10px 25px -5px rgba(37, 99, 235, 0.4)' }}>
-              <div style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.1 }}>{activeEvent}</div>
-              <div style={{ fontSize: '4rem', fontWeight: 900 }}>Reeks {activeReeks}</div>
+            <div style={{ color: '#94a3b8', fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.8rem', textTransform: 'uppercase' }}>
+              Nu bezig: {activeEvent}
+            </div>
+            <div style={{ 
+              background: 'rgba(30, 41, 59, 0.4)', 
+              padding: '1.5rem', 
+              borderRadius: '15px', 
+              border: '1px solid rgba(255,255,255,0.1)' 
+            }}>
+              <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#38bdf8', marginBottom: '1rem' }}>
+                Reeks {activeReeks}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {currentSkippers.map((p, i) => (
+                  <div key={i} style={{ fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{p.naam}</span>
+                    <span style={{ color: '#64748b', fontSize: '1rem' }}>Veld {p[detailKey]?.veld || '-'}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
           <div>
-            <div style={{ color: '#94a3b8', fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '1rem' }}>TIJDSSCHEMA</div>
+            <div style={{ color: '#94a3b8', fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '1rem' }}>TIJDSSCHEMA</div>
             <div style={{ fontSize: '3rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <Clock size={40} color="#38bdf8" />
               {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -107,7 +129,7 @@ const DisplayView = ({
                 marginTop: '1rem', padding: '1rem', borderRadius: '12px', 
                 background: timeDiff > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
                 color: timeDiff > 0 ? '#f87171' : '#34d399',
-                fontSize: '1.2rem', fontWeight: 'bold'
+                fontSize: '1.1rem', fontWeight: 'bold'
               }}>
                 {timeDiff > 0 ? `Vertraging: +${timeDiff} min` : `Voor op schema: ${Math.abs(timeDiff)} min`}
               </div>
@@ -115,18 +137,17 @@ const DisplayView = ({
           </div>
         </div>
 
-        {/* Right Side: Upcoming List (The Main Focus) */}
+        {/* Right Side: Next Up List */}
         <div style={{ flex: 1, padding: '2.5rem', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem' }}>
             <h2 style={{ fontSize: '2.5rem', fontWeight: 900, margin: 0, color: '#f8fafc' }}>
-              Klaarhouden <span style={{ color: '#38bdf8' }}>programma</span>
+              Volgende
             </h2>
-            <div style={{ color: '#94a3b8', fontSize: '1.1rem' }}>{nextUp.length + currentSkippers.length} skippers in overzicht</div>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 12px' }}>
             <thead>
-              <tr style={{ color: '#64748b', fontSize: '1.2rem', textAlign: 'left' }}>
+              <tr style={{ color: '#64748b', fontSize: '1.1rem', textAlign: 'left' }}>
                 <th style={{ padding: '0 1rem' }}>Verwacht</th>
                 <th style={{ padding: '0 1rem' }}>Reeks</th>
                 <th style={{ padding: '0 1rem' }}>Veld</th>
@@ -135,47 +156,45 @@ const DisplayView = ({
               </tr>
             </thead>
             <tbody>
-              {/* Combineer huidige reeks (als die nog loopt) en de volgende reeksen */}
-              {[...currentSkippers, ...nextUp].map((p, idx) => {
-                const isCurrent = parseInt(p[eventKey]) === activeReeks;
+              {nextUp.map((p, idx) => {
                 const time = getExpectedTime(p[detailKey]?.uur);
 
                 return (
                   <tr key={idx} style={{ 
-                    background: isCurrent ? 'rgba(255,255,255,0.05)' : 'rgba(30, 41, 59, 0.4)',
-                    fontSize: isCurrent ? '1.8rem' : '1.5rem',
+                    background: 'rgba(30, 41, 59, 0.4)',
+                    fontSize: '1.6rem',
                     transition: 'all 0.3s ease'
                   }}>
-                    <td style={{ padding: '1.5rem 1rem', borderRadius: '15px 0 0 15px', fontWeight: 900, color: isCurrent ? '#38bdf8' : '#94a3b8' }}>
+                    <td style={{ padding: '1.2rem 1rem', borderRadius: '15px 0 0 15px', fontWeight: 900, color: '#94a3b8' }}>
                       {time || '--:--'}
                     </td>
-                    <td style={{ padding: '1.5rem 1rem', fontWeight: 700 }}>{p[eventKey]}</td>
-                    <td style={{ padding: '1.5rem 1rem' }}>
+                    <td style={{ padding: '1.2rem 1rem', fontWeight: 700 }}>{p[eventKey]}</td>
+                    <td style={{ padding: '1.2rem 1rem' }}>
                       <span style={{ 
-                        background: isCurrent ? '#38bdf8' : '#334155', 
-                        color: isCurrent ? '#0f172a' : '#fff',
+                        background: '#334155', 
+                        color: '#fff',
                         padding: '0.2rem 0.8rem', borderRadius: '8px'
                       }}>
                         {p[detailKey]?.veld || '-'}
                       </span>
                     </td>
-                    <td style={{ padding: '1.5rem 1rem', fontWeight: 900 }}>{p.naam}</td>
-                    <td style={{ padding: '1.5rem 1rem', borderRadius: '0 15px 15px 0', color: '#94a3b8' }}>{p.club}</td>
+                    <td style={{ padding: '1.2rem 1rem', fontWeight: 900 }}>{p.naam}</td>
+                    <td style={{ padding: '1.2rem 1rem', borderRadius: '0 15px 15px 0', color: '#94a3b8' }}>{p.club}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
 
-          {upcoming.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '5rem', color: '#475569', fontSize: '2rem' }}>
-              Geen deelnemers meer gepland voor dit onderdeel.
+          {nextUp.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '5rem', color: '#475569', fontSize: '1.5rem' }}>
+              Geen verdere deelnemers gepland.
             </div>
           )}
         </div>
       </div>
 
-      {/* Footer scrolling news or info */}
+      {/* Footer info */}
       <div style={{ background: '#38bdf8', color: '#0f172a', padding: '0.8rem', fontWeight: 800, fontSize: '1.2rem', textAlign: 'center' }}>
         MELD JE TIJDIG AAN BIJ DE STEWARD • KIJK GOED NAAR JE VELDNUMMER • VEEL SUCCES!
       </div>
