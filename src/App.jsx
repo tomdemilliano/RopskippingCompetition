@@ -15,6 +15,7 @@ import { APP_ID, COMPETITION_TYPES, isFreestyleType, getFirebaseConfig } from '.
 import { styles } from './styles';
 import LiveView from './components/LiveView';
 import Modals from './components/Modals';
+import DisplayView from './components/DisplayView';
 
 const firebaseConfig = getFirebaseConfig();
 let app, auth, db;
