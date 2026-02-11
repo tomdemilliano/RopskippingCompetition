@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  ChevronLeft, ChevronRight, CheckCircle, Check, Flag, Mic2, FastForward, Ghost
+  ChevronLeft, ChevronRight, CheckCircle, Check, Flag, Mic2, FastForward, Ghost, Clock, MapPin
 } from 'lucide-react';
 import { isFreestyleType } from '../constants';
 import { styles } from '../styles';
@@ -54,7 +54,17 @@ const LiveView = ({
 
   const isFreestyle = isFreestyleType(activeEvent);
   const eventKey = `reeks_${activeEvent?.replace(/\s/g, '')}`;
-  const nextSkipper = isFreestyle ? liveParticipants.find(p => parseInt(p[eventKey]) === activeReeks + 1) : null;
+  const detailKey = `detail_${activeEvent?.replace(/\s/g, '')}`;
+  
+  // Zoek de index van de huidige reeks om de lijst met "volgende" te bepalen
+  const currentReeksIndex = reeksenInEvent.indexOf(activeReeks);
+  const upcomingParticipants = liveParticipants.filter(p => {
+    const pReeks = parseInt(p[eventKey]);
+    return pReeks > activeReeks;
+  });
+
+  const nextSkipper = upcomingParticipants[0];
+  const furtherParticipants = upcomingParticipants.slice(1);
   
   const totaalReeksen = reeksenInEvent.length;
   const isEersteReeks = activeReeks === reeksenInEvent[0];
@@ -62,11 +72,10 @@ const LiveView = ({
   const isReeksKlaar = finishedReeksen[activeEvent]?.includes(activeReeks);
 
   const maxVeldInReeks = currentReeksData.reduce((max, p) => {
-    const veld = parseInt(p[`detail_${activeEvent?.replace(/\s/g, '')}`]?.veld) || 0;
+    const veld = parseInt(p[detailKey]?.veld) || 0;
     return veld > max ? veld : max;
   }, 0);
 
-  // Gemeenschappelijke Header voor beide types
   const RenderHeader = () => (
     <>
       <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
@@ -94,7 +103,7 @@ const LiveView = ({
           <button 
             disabled={isEersteReeks}
             style={{ ...styles.btnSecondary, opacity: isEersteReeks ? 0.3 : 1, cursor: isEersteReeks ? 'not-allowed' : 'pointer', width: '60px' }} 
-            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) - 1])}
+            onClick={() => setActiveReeks(reeksenInEvent[currentReeksIndex - 1])}
           >
             <ChevronLeft/>
           </button>
@@ -104,7 +113,6 @@ const LiveView = ({
               {isFreestyle ? activeEvent : 'Reeks'} {activeReeks} 
               <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
             </div>
-            {/* Tijdweergave nu voor zowel Speed als Freestyle */}
             <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 'bold', marginTop: '4px' }}>
               Gepland: {plannedTime || '--:--'}
               {timeDiff !== null && !isReeksKlaar && (
@@ -118,7 +126,7 @@ const LiveView = ({
           <button 
             disabled={isLaatsteReeks}
             style={{ ...styles.btnSecondary, opacity: isLaatsteReeks ? 0.3 : 1, cursor: isLaatsteReeks ? 'not-allowed' : 'pointer', width: '60px' }} 
-            onClick={() => setActiveReeks(reeksenInEvent[reeksenInEvent.indexOf(activeReeks) + 1])}
+            onClick={() => setActiveReeks(reeksenInEvent[currentReeksIndex + 1])}
           >
             <ChevronRight/>
           </button>
@@ -165,14 +173,14 @@ const LiveView = ({
         })}
       </div>
 
-      <div style={{...styles.liveContent, position: 'relative'}}>
+      <div style={{...styles.liveContent, position: 'relative', overflowY: 'auto'}}>
         <RenderHeader />
 
         {!isFreestyle ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', width: 'fit-content', margin: '0 auto' }}>
             {[...Array(maxVeldInReeks || 0)].map((_, i) => {
               const veldNum = i + 1;
-              const p = currentReeksData.find(cp => cp[`detail_${activeEvent.replace(/\s/g, '')}`]?.veld === veldNum);
+              const p = currentReeksData.find(cp => cp[detailKey]?.veld === veldNum);
               return (
                 <div key={veldNum} style={{ 
                   background: isReeksKlaar ? '#f1f5f9' : (p ? '#fff' : 'transparent'), 
@@ -191,17 +199,71 @@ const LiveView = ({
             })}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            <div style={{ background: '#2563eb', color: '#fff', padding: '3rem', borderRadius: '20px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '1rem' }}><Mic2 size={24}/> NU AAN DE BEURT</div>
-              <div style={{ fontSize: '4.5rem', fontWeight: 900 }}>{currentReeksData[0]?.naam || '---'}</div>
-              <div style={{ fontSize: '2rem' }}>{currentReeksData[0]?.club}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '900px', margin: '0 auto', width: '100%', paddingBottom: '2rem' }}>
+            {/* NU AAN DE BEURT - Kleiner gemaakt */}
+            <div style={{ background: '#2563eb', color: '#fff', padding: '1.5rem 2rem', borderRadius: '16px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '0.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Mic2 size={16}/> NU AAN DE BEURT
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <div>
+                  <div style={{ fontSize: '3rem', fontWeight: 900, lineHeight: 1.1 }}>{currentReeksData[0]?.naam || '---'}</div>
+                  <div style={{ fontSize: '1.4rem', opacity: 0.9 }}>{currentReeksData[0]?.club}</div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>VELD</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 900 }}>{currentReeksData[0]?.[detailKey]?.veld || '-'}</div>
+                </div>
+              </div>
             </div>
 
-            {nextSkipper && (
-              <div style={{ background: '#fff', border: '2px dashed #cbd5e1', padding: '2rem', borderRadius: '20px', opacity: 0.7 }}>
-                <div style={{ color: '#64748b', fontWeight: 'bold' }}>VOLGENDE AAN DE BEURT</div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 800 }}>{nextSkipper.naam}</div>
+            {/* VOLGENDE AAN DE BEURT - Met extra info */}
+            {nextSkipper ? (
+              <div style={{ background: '#fff', border: '2px solid #e2e8f0', padding: '1.2rem 1.5rem', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ color: '#64748b', fontWeight: 'bold', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <FastForward size={14}/> VOLGENDE
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1e293b' }}>{nextSkipper.naam}</div>
+                  <div style={{ fontSize: '1rem', color: '#64748b' }}>{nextSkipper.club}</div>
+                </div>
+                <div style={{ textAlign: 'right', color: '#64748b' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>VELD {nextSkipper[detailKey]?.veld}</div>
+                  <div style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                    <Clock size={14}/> {nextSkipper[detailKey]?.uur}
+                  </div>
+                </div>
+              </div>
+            ) : (
+                <div style={{ textAlign: 'center', padding: '1rem', color: '#94a3b8', fontStyle: 'italic' }}>Einde van dit onderdeel</div>
+            )}
+
+            {/* PROGRAMMA GRID / SCROLL LIST */}
+            {furtherParticipants.length > 0 && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 900, color: '#94a3b8', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>VERDER PROGRAMMA</div>
+                <div style={{ maxHeight: '300px', overflowY: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', fontSize: '0.9rem' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', borderBottom: '1px solid #e2e8f0', zIndex: 1 }}>
+                      <tr style={{ textAlign: 'left', color: '#64748b' }}>
+                        <th style={{ padding: '0.75rem', fontWeight: 'bold' }}>Uur</th>
+                        <th style={{ padding: '0.75rem', fontWeight: 'bold' }}>Veld</th>
+                        <th style={{ padding: '0.75rem', fontWeight: 'bold' }}>Skipper</th>
+                        <th style={{ padding: '0.75rem', fontWeight: 'bold' }}>Club</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {furtherParticipants.map((p, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '0.75rem', color: '#64748b' }}><Clock size={12} style={{marginRight: '4px', display: 'inline'}}/>{p[detailKey]?.uur}</td>
+                          <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>{p[detailKey]?.veld}</td>
+                          <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#1e293b' }}>{p.naam}</td>
+                          <td style={{ padding: '0.75rem', color: '#64748b' }}>{p.club}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
