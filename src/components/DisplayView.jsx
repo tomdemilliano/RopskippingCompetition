@@ -18,6 +18,9 @@ const DisplayView = ({
   const detailKey = `detail_${activeEvent?.replace(/\s/g, '')}`;
   const isFreestyle = isFreestyleType(activeEvent);
 
+  // Bereken totaal aantal reeksen voor dit onderdeel
+  const totalReeksen = Math.max(...liveParticipants.map(p => parseInt(p[eventKey]) || 0), 0);
+
   // Sortering op veld (numeriek) voor speed
   const currentSkippers = liveParticipants
     .filter(p => parseInt(p[eventKey]) === activeReeks)
@@ -57,7 +60,8 @@ const DisplayView = ({
     const [hours, minutes] = plannedStr.split(':').map(Number);
     const date = new Date();
     date.setHours(hours, minutes + timeDiff, 0);
-    return date.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
+    // Forceer 24u formaat voor verwachte tijden
+    return date.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
   if (!selectedComp || selectedComp.status !== 'bezig') {
@@ -99,11 +103,11 @@ const DisplayView = ({
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Side: 30% width */}
+        {/* Left Side: Current Status */}
         <div style={{ width: '30%', padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)' }}>
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem', textTransform: 'uppercase' }}>
-              Nu bezig: Reeks {activeReeks}
+              Nu bezig: Reeks {activeReeks} van {totalReeksen}
             </div>
             <div style={{ 
               background: 'rgba(30, 41, 59, 0.4)', 
@@ -137,7 +141,8 @@ const DisplayView = ({
             <div style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.4rem' }}>TIJDSSCHEMA</div>
             <div style={{ fontSize: '2.2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
               <Clock size={28} color="#38bdf8" />
-              {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {/* 24-uurs formaat */}
+              {new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', hour12: false })}
             </div>
             {timeDiff !== 0 && (
               <div style={{ 
@@ -152,7 +157,7 @@ const DisplayView = ({
           </div>
         </div>
 
-        {/* Right Side: 70% width */}
+        {/* Right Side: Next Up List */}
         <div style={{ flex: 1, padding: '1rem 2.5rem', overflowY: 'auto' }}>
           <div style={{ marginBottom: '0.5rem' }}>
             <h2 style={{ fontSize: '2.2rem', fontWeight: 900, margin: 0, color: '#f8fafc' }}>
@@ -164,7 +169,6 @@ const DisplayView = ({
             <thead>
               <tr style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'left' }}>
                 <th style={{ padding: '0 1rem' }}>Verwacht</th>
-                <th style={{ padding: '0 1rem' }}>Reeks</th>
                 <th style={{ padding: '0 1rem' }}>Veld</th>
                 <th style={{ padding: '0 1rem' }}>Skipper / Team</th>
                 <th style={{ padding: '0 1rem' }}>Club</th>
@@ -181,7 +185,6 @@ const DisplayView = ({
                     <td style={{ padding: '0.6rem 1rem', borderRadius: '10px 0 0 10px', fontWeight: 800, color: '#94a3b8' }}>
                       {time || '--:--'}
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{p[eventKey]}</td>
                     <td style={{ padding: '0.6rem 1rem' }}>
                       <span style={{ 
                         background: '#334155', 
