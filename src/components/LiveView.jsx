@@ -7,6 +7,7 @@ import { styles } from '../styles';
 
 const LiveView = ({ 
   selectedComp, // We gebruiken deze enkel als fallback of referentie
+  activeComp,
   activeEvent, 
   setActiveEvent, 
   activeReeks, 
