@@ -104,16 +104,15 @@ const LiveView = ({
               {isFreestyle ? activeEvent : 'Reeks'} {activeReeks} 
               <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '1.2rem', marginLeft: '4px' }}>/ {totaalReeksen}</span>
             </div>
-            {!isFreestyle && (
-              <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 'bold', marginTop: '4px' }}>
-                Gepland: {plannedTime || '--:--'}
-                {timeDiff !== null && !isReeksKlaar && (
-                  <span style={{ color: timeDiff > 5 ? '#ef4444' : '#10b981', marginLeft: '4px' }}>
-                    ({timeDiff > 0 ? `+${timeDiff}` : timeDiff} min)
-                  </span>
-                )}
-              </div>
-            )}
+            {/* Tijdweergave nu voor zowel Speed als Freestyle */}
+            <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 'bold', marginTop: '4px' }}>
+              Gepland: {plannedTime || '--:--'}
+              {timeDiff !== null && !isReeksKlaar && (
+                <span style={{ color: timeDiff > 5 ? '#ef4444' : '#10b981', marginLeft: '4px' }}>
+                  ({timeDiff > 0 ? `+${timeDiff}` : timeDiff} min)
+                </span>
+              )}
+            </div>
           </div>
 
           <button 
@@ -142,7 +141,6 @@ const LiveView = ({
 
   return (
     <div style={styles.liveGrid}>
-      {/* Linker kolom: Onderdelen lijst */}
       <div style={styles.liveLeft}>
         <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #eee' }}>
           <span style={{ fontWeight: 'bold', color: '#64748b' }}>ONDERDELEN</span>
@@ -167,7 +165,6 @@ const LiveView = ({
         })}
       </div>
 
-      {/* Rechter kolom: Content */}
       <div style={{...styles.liveContent, position: 'relative'}}>
         <RenderHeader />
 
