@@ -22,7 +22,6 @@ const DisplayView = ({
   const getFullFields = (participantsInReeks) => {
     if (participantsInReeks.length === 0) return [];
     
-    // Zoek het hoogste veldnummer in deze reeks
     const maxVeld = Math.max(...participantsInReeks.map(p => parseInt(p[detailKey]?.veld) || 0), 0);
     const fullList = [];
 
@@ -31,7 +30,6 @@ const DisplayView = ({
       if (skipper) {
         fullList.push(skipper);
       } else {
-        // Maak een placeholder voor een leeg veld
         fullList.push({
           naam: "---",
           club: "",
@@ -43,20 +41,16 @@ const DisplayView = ({
     return fullList;
   };
 
-  // 1. Bereken totaal aantal reeksen
   const totalReeksen = Math.max(...liveParticipants.map(p => parseInt(p[eventKey]) || 0), 0);
-
-  // 2. Filter deelnemers voor huidige reeks
   const rawCurrentSkippers = liveParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
   
-  // Check of de huidige reeks een pauze is (kijkt naar de naam van de eerste skipper in de reeks)
+  // Detecteer pauze op basis van de naamgeving conventie
   const isPause = rawCurrentSkippers.some(p => p.naam && p.naam.startsWith('PAUZE_'));
 
   const currentSkippers = isFreestyle 
     ? rawCurrentSkippers 
     : getFullFields(rawCurrentSkippers);
 
-  // 3. Filter deelnemers voor volgende reeks
   let nextUp = [];
   if (isFreestyle) {
     nextUp = liveParticipants
@@ -124,32 +118,32 @@ const DisplayView = ({
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Side: Current Status */}
+        {/* Left Side: Current Status or Pause */}
         <div style={{ width: '30%', padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1 }}>
-            <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem', textTransform: 'uppercase' }}>
-              Nu bezig: Reeks {activeReeks} van {totalReeksen}
-            </div>
+            {/* Titel enkel tonen als er geen pauze is */}
+            {!isPause && (
+              <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem', textTransform: 'uppercase' }}>
+                Nu bezig: Reeks {activeReeks} van {totalReeksen}
+              </div>
+            )}
 
             {isPause ? (
               <div style={{ 
                 background: 'rgba(56, 189, 248, 0.1)', 
-                padding: '2rem 1rem', 
+                padding: '4rem 1rem', 
                 borderRadius: '15px', 
                 border: '2px dashed #38bdf8',
                 textAlign: 'center',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '1.5rem'
+                justifyContent: 'center',
+                gap: '2rem',
+                marginTop: '2rem'
               }}>
-                <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#38bdf8', letterSpacing: '2px' }}>PAUZE</div>
-                <img 
-                  src="https://images.unsplash.com/photo-1434596922112-19c563067271?auto=format&fit=crop&q=80&w=300&h=300" 
-                  alt="Pause" 
-                  style={{ width: '80%', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)' }}
-                />
-                <Coffee size={48} color="#38bdf8" />
+                <Coffee size={120} color="#38bdf8" strokeWidth={1.5} />
+                <div style={{ fontSize: '4.5rem', fontWeight: 900, color: '#38bdf8', letterSpacing: '4px' }}>PAUZE</div>
               </div>
             ) : (
               <div style={{ 
@@ -252,17 +246,11 @@ const DisplayView = ({
               })}
             </tbody>
           </table>
-
-          {nextUp.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#475569', fontSize: '1.1rem' }}>
-              Geen verdere deelnemers gepland.
-            </div>
-          )}
         </div>
       </div>
 
       <div style={{ background: '#38bdf8', color: '#0f172a', padding: '0.5rem', fontWeight: 800, fontSize: '1rem', textAlign: 'center' }}>
-        ZET JE TIJDIG KLAAR! • CHECK GEREGELD DE TIMING! • VEEL SUCCES!
+        ZET JE TIJDIG KLAAR • KIJK GOED NAAR JE VELDNUMMER • VEEL SUCCES!
       </div>
     </div>
   );
