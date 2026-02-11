@@ -112,6 +112,7 @@ const App = () => {
   }, [selectedCompetitionId, isAuthReady]);
 
   const selectedComp = competitions.find(c => c.id === selectedCompetitionId);
+  const activeComp = competitions.find(c => c.status === 'bezig');
   const activeCompExists = competitions.some(c => c.status === 'bezig');
 
   const getCompDataStatus = (compId) => {
