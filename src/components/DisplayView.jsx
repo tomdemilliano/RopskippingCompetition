@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  Maximize2, Minimize2, Clock, X 
+  Maximize2, Minimize2, Clock, X, Coffee
 } from 'lucide-react';
 import { isFreestyleType } from '../constants';
 
@@ -29,6 +29,8 @@ const DisplayView = ({
       const veldB = parseInt(b[detailKey]?.veld) || 0;
       return veldA - veldB;
     });
+
+  const isPause = currentSkippers.length === 0;
 
   let nextUp = [];
   if (isFreestyle) {
@@ -60,7 +62,6 @@ const DisplayView = ({
     const [hours, minutes] = plannedStr.split(':').map(Number);
     const date = new Date();
     date.setHours(hours, minutes + timeDiff, 0);
-    // Forceer 24u formaat voor verwachte tijden
     return date.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
@@ -103,45 +104,67 @@ const DisplayView = ({
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Side: Current Status */}
-        <div style={{ width: '30%', padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)' }}>
-          <div style={{ marginBottom: '2rem' }}>
+        {/* Left Side: Current Status or Pause */}
+        <div style={{ width: '30%', padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1 }}>
             <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem', textTransform: 'uppercase' }}>
-              Nu bezig: Reeks {activeReeks} van {totalReeksen}
+              Status: Reeks {activeReeks} van {totalReeksen}
             </div>
-            <div style={{ 
-              background: 'rgba(30, 41, 59, 0.4)', 
-              padding: '1rem', 
-              borderRadius: '12px', 
-              border: '1px solid rgba(255,255,255,0.1)' 
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {currentSkippers.map((p, i) => (
-                  <div key={i} style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <span style={{ 
-                      background: '#334155', 
-                      color: '#fff',
-                      minWidth: '1.8rem', textAlign: 'center',
-                      padding: '0.1rem 0.3rem', borderRadius: '4px', 
-                      fontSize: '0.85rem', fontWeight: 700 
-                    }}>
-                      {p[detailKey]?.veld || '-'}
-                    </span>
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <span style={{ fontWeight: 400 }}>{p.naam}</span>
-                      <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({p.club})</span>
-                    </div>
-                  </div>
-                ))}
+
+            {isPause ? (
+              <div style={{ 
+                background: 'rgba(56, 189, 248, 0.1)', 
+                padding: '2rem 1rem', 
+                borderRadius: '15px', 
+                border: '2px dashed #38bdf8',
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1.5rem'
+              }}>
+                <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#38bdf8', letterSpacing: '2px' }}>PAUZE</div>
+                <img 
+                  src="https://images.unsplash.com/photo-1434596922112-19c563067271?auto=format&fit=crop&q=80&w=300&h=300" 
+                  alt="Pause" 
+                  style={{ width: '80%', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)' }}
+                />
+                <Coffee size={48} color="#38bdf8" />
               </div>
-            </div>
+            ) : (
+              <div style={{ 
+                background: 'rgba(30, 41, 59, 0.4)', 
+                padding: '1rem', 
+                borderRadius: '12px', 
+                border: '1px solid rgba(255,255,255,0.1)' 
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {currentSkippers.map((p, i) => (
+                    <div key={i} style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span style={{ 
+                        background: '#334155', 
+                        color: '#fff',
+                        minWidth: '1.8rem', textAlign: 'center',
+                        padding: '0.1rem 0.3rem', borderRadius: '4px', 
+                        fontSize: '0.85rem', fontWeight: 700 
+                      }}>
+                        {p[detailKey]?.veld || '-'}
+                      </span>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontWeight: 400 }}>{p.naam}</span>
+                        <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({p.club})</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div>
+          <div style={{ marginTop: '2rem' }}>
             <div style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.4rem' }}>TIJDSSCHEMA</div>
             <div style={{ fontSize: '2.2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
               <Clock size={28} color="#38bdf8" />
-              {/* 24-uurs formaat */}
               {new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', hour12: false })}
             </div>
             {timeDiff !== 0 && (
