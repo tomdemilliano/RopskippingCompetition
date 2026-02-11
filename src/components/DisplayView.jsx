@@ -121,7 +121,6 @@ const DisplayView = ({
         {/* Left Side: Current Status or Pause */}
         <div style={{ width: '30%', padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1 }}>
-            {/* Titel enkel tonen als er geen pauze is */}
             {!isPause && (
               <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem', textTransform: 'uppercase' }}>
                 Nu bezig: Reeks {activeReeks} van {totalReeksen}
@@ -216,9 +215,11 @@ const DisplayView = ({
             <tbody>
               {nextUp.map((p, idx) => {
                 const time = getExpectedTime(p[detailKey]?.uur);
+                const isNextPause = p.naam && p.naam.startsWith('PAUZE_');
+
                 return (
                   <tr key={idx} style={{ 
-                    background: 'rgba(30, 41, 59, 0.4)',
+                    background: isNextPause ? 'rgba(56, 189, 248, 0.1)' : 'rgba(30, 41, 59, 0.4)',
                     fontSize: '1.4rem',
                     opacity: p.isEmpty ? 0.6 : 1
                   }}>
@@ -226,21 +227,36 @@ const DisplayView = ({
                       {time || '--:--'}
                     </td>
                     <td style={{ padding: '0.6rem 1rem' }}>
-                      <span style={{ 
-                        background: '#334155', 
-                        color: '#fff',
-                        minWidth: '2.2rem', display: 'inline-block', textAlign: 'center',
-                        padding: '0.1rem 0.6rem', borderRadius: '6px'
-                      }}>
-                        {p[detailKey]?.veld || '-'}
-                      </span>
+                      {!isNextPause && (
+                        <span style={{ 
+                          background: '#334155', 
+                          color: '#fff',
+                          minWidth: '2.2rem', display: 'inline-block', textAlign: 'center',
+                          padding: '0.1rem 0.6rem', borderRadius: '6px'
+                        }}>
+                          {p[detailKey]?.veld || '-'}
+                        </span>
+                      )}
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', fontWeight: 800, fontStyle: p.isEmpty ? 'italic' : 'normal' }}>
-                      {p.naam}
+                    <td 
+                      colSpan={isNextPause ? 2 : 1} 
+                      style={{ padding: '0.6rem 1rem', fontWeight: 800, fontStyle: (p.isEmpty || isNextPause) ? 'italic' : 'normal' }}
+                    >
+                      {isNextPause ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#38bdf8' }}>
+                          <Coffee size={24} />
+                          <span>PAUZE</span>
+                        </div>
+                      ) : (
+                        p.naam
+                      )}
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', borderRadius: '0 10px 10px 0', color: '#94a3b8', fontSize: '1.2rem' }}>
-                      {p.club}
-                    </td>
+                    {!isNextPause && (
+                      <td style={{ padding: '0.6rem 1rem', borderRadius: '0 10px 10px 0', color: '#94a3b8', fontSize: '1.2rem' }}>
+                        {p.club}
+                      </td>
+                    )}
+                    {isNextPause && <td style={{ borderRadius: '0 10px 10px 0' }}></td>}
                   </tr>
                 );
               })}
@@ -250,7 +266,7 @@ const DisplayView = ({
       </div>
 
       <div style={{ background: '#38bdf8', color: '#0f172a', padding: '0.5rem', fontWeight: 800, fontSize: '1rem', textAlign: 'center' }}>
-        ZET JE TIJDIG KLAAR • KIJK GOED NAAR JE VELDNUMMER • VEEL SUCCES!
+        MELD JE TIJDIG AAN BIJ DE STEWARD • KIJK GOED NAAR JE VELDNUMMER • VEEL SUCCES!
       </div>
     </div>
   );
