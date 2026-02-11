@@ -18,33 +18,53 @@ const DisplayView = ({
   const detailKey = `detail_${activeEvent?.replace(/\s/g, '')}`;
   const isFreestyle = isFreestyleType(activeEvent);
 
-  // Bereken totaal aantal reeksen voor dit onderdeel
+  // Helper om een reeks deelnemers aan te vullen met lege velden (voor Speed)
+  const getFullFields = (participantsInReeks) => {
+    if (participantsInReeks.length === 0) return [];
+    
+    // Zoek het hoogste veldnummer in deze reeks
+    const maxVeld = Math.max(...participantsInReeks.map(p => parseInt(p[detailKey]?.veld) || 0), 0);
+    const fullList = [];
+
+    for (let v = 1; v <= maxVeld; v++) {
+      const skipper = participantsInReeks.find(p => (parseInt(p[detailKey]?.veld) || 0) === v);
+      if (skipper) {
+        fullList.push(skipper);
+      } else {
+        // Maak een placeholder voor een leeg veld
+        fullList.push({
+          naam: "---",
+          club: "",
+          [detailKey]: { veld: v.toString() },
+          isEmpty: true
+        });
+      }
+    }
+    return fullList;
+  };
+
+  // 1. Bereken totaal aantal reeksen
   const totalReeksen = Math.max(...liveParticipants.map(p => parseInt(p[eventKey]) || 0), 0);
 
-  // Sortering op veld (numeriek) voor speed
-  const currentSkippers = liveParticipants
-    .filter(p => parseInt(p[eventKey]) === activeReeks)
-    .sort((a, b) => {
-      const veldA = parseInt(a[detailKey]?.veld) || 0;
-      const veldB = parseInt(b[detailKey]?.veld) || 0;
-      return veldA - veldB;
-    });
+  // 2. Filter deelnemers voor huidige reeks
+  const rawCurrentSkippers = liveParticipants.filter(p => parseInt(p[eventKey]) === activeReeks);
+  
+  // Check of de huidige reeks een pauze is (kijkt naar de naam van de eerste skipper in de reeks)
+  const isPause = rawCurrentSkippers.some(p => p.naam && p.naam.startsWith('PAUZE_'));
 
-  const isPause = currentSkippers.length === 0;
+  const currentSkippers = isFreestyle 
+    ? rawCurrentSkippers 
+    : getFullFields(rawCurrentSkippers);
 
+  // 3. Filter deelnemers voor volgende reeks
   let nextUp = [];
   if (isFreestyle) {
     nextUp = liveParticipants
       .filter(p => parseInt(p[eventKey]) > activeReeks)
       .slice(0, 8);
   } else {
-    nextUp = liveParticipants
-      .filter(p => parseInt(p[eventKey]) === (activeReeks + 1))
-      .sort((a, b) => {
-        const veldA = parseInt(a[detailKey]?.veld) || 0;
-        const veldB = parseInt(b[detailKey]?.veld) || 0;
-        return veldA - veldB;
-      });
+    const rawNextSkippers = liveParticipants.filter(p => parseInt(p[eventKey]) === (activeReeks + 1));
+    nextUp = getFullFields(rawNextSkippers);
   }
 
   const toggleFullscreen = () => {
@@ -104,11 +124,11 @@ const DisplayView = ({
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Side: Current Status or Pause */}
+        {/* Left Side: Current Status */}
         <div style={{ width: '30%', padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.3)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1 }}>
             <div style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem', textTransform: 'uppercase' }}>
-              Status: Reeks {activeReeks} van {totalReeksen}
+              Nu bezig: Reeks {activeReeks} van {totalReeksen}
             </div>
 
             {isPause ? (
@@ -140,7 +160,7 @@ const DisplayView = ({
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {currentSkippers.map((p, i) => (
-                    <div key={i} style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <div key={i} style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', opacity: p.isEmpty ? 0.5 : 1 }}>
                       <span style={{ 
                         background: '#334155', 
                         color: '#fff',
@@ -151,8 +171,10 @@ const DisplayView = ({
                         {p[detailKey]?.veld || '-'}
                       </span>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <span style={{ fontWeight: 400 }}>{p.naam}</span>
-                        <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({p.club})</span>
+                        <span style={{ fontWeight: 400, fontStyle: p.isEmpty ? 'italic' : 'normal' }}>{p.naam}</span>
+                        {!p.isEmpty && p.club && (
+                          <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({p.club})</span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -204,6 +226,7 @@ const DisplayView = ({
                   <tr key={idx} style={{ 
                     background: 'rgba(30, 41, 59, 0.4)',
                     fontSize: '1.4rem',
+                    opacity: p.isEmpty ? 0.6 : 1
                   }}>
                     <td style={{ padding: '0.6rem 1rem', borderRadius: '10px 0 0 10px', fontWeight: 800, color: '#94a3b8' }}>
                       {time || '--:--'}
@@ -218,8 +241,12 @@ const DisplayView = ({
                         {p[detailKey]?.veld || '-'}
                       </span>
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', fontWeight: 800 }}>{p.naam}</td>
-                    <td style={{ padding: '0.6rem 1rem', borderRadius: '0 10px 10px 0', color: '#94a3b8', fontSize: '1.2rem' }}>{p.club}</td>
+                    <td style={{ padding: '0.6rem 1rem', fontWeight: 800, fontStyle: p.isEmpty ? 'italic' : 'normal' }}>
+                      {p.naam}
+                    </td>
+                    <td style={{ padding: '0.6rem 1rem', borderRadius: '0 10px 10px 0', color: '#94a3b8', fontSize: '1.2rem' }}>
+                      {p.club}
+                    </td>
                   </tr>
                 );
               })}
@@ -235,7 +262,7 @@ const DisplayView = ({
       </div>
 
       <div style={{ background: '#38bdf8', color: '#0f172a', padding: '0.5rem', fontWeight: 800, fontSize: '1rem', textAlign: 'center' }}>
-        MELD JE TIJDIG AAN BIJ DE STEWARD • KIJK GOED NAAR JE VELDNUMMER • VEEL SUCCES!
+        ZET JE TIJDIG KLAAR! • CHECK GEREGELD DE TIMING! • VEEL SUCCES!
       </div>
     </div>
   );
