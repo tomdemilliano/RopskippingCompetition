@@ -720,8 +720,8 @@ if (isFreestyle) {
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button style={{ ...styles.btnSecondary, background: view === 'management' ? '#2563eb' : '#fff', color: view === 'management' ? '#fff' : '#475569' }} onClick={() => setView('management')}>Beheer</button>
           <button style={{ ...styles.btnSecondary, background: view === 'live' ? '#2563eb' : '#fff', color: view === 'live' ? '#fff' : '#475569' }} onClick={() => setView('live')}>Live</button>
-          <div style={{ marginLeft: '1rem', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '1.1rem', background: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '6px', color: '#1e293b' }}>
-            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <div style={{ marginLeft: '0.5rem', fontWeight: 700, fontSize: '0.9rem', background: '#f8fafc', padding: '0.5rem 0.8rem', borderRadius: '6px', color: '#64748b', border: '1px solid #e2e8f0', minWidth: '65px', textAlign: 'center' }}>
+            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false})}
           </div>
         </div>
       </header>
