@@ -70,51 +70,47 @@ const DisplayView = ({
     ? rawCurrentSkippers 
     : getFullFields(rawCurrentSkippers, detailKey);
 
-  // --- AANGEPASTE LOGICA VOOR VOLGENDE (VOLGEND ONDERDEEL DETECTIE) ---
+  // --- AANGEPASTE LOGICA VOOR VOLGENDE (HERZIEN VOOR DETECTIE LAATSTE REEKS) ---
   const { nextUp, nextEventName, isNextEvent } = useMemo(() => {
-    // Check of er nog een reeks is in het huidige event
-    const hasMoreInCurrent = activeReeks < totalReeksen;
-    
-    if (hasMoreInCurrent) {
+    // Check of we nog NIET aan de laatste reeks van het huidige onderdeel zitten
+    if (activeReeks < totalReeksen) {
       const nextR = activeReeks + 1;
       let list = [];
       if (isFreestyle) {
-        // Voor freestyle tonen we de komende 8 skippers
         list = currentEventParticipants.filter(p => parseInt(p[eventKey]) > activeReeks).slice(0, 8);
       } else {
-        // Voor speed tonen we de volledige volgende reeks met velden
         const rawNext = currentEventParticipants.filter(p => parseInt(p[eventKey]) === nextR);
         list = getFullFields(rawNext, detailKey);
       }
       return { nextUp: list, nextEventName: activeEvent, isNextEvent: false };
     } 
 
-    // ALS HET HUIDIGE ONDERDEEL AFGELOPEN IS: Zoek het volgende event
+    // We zitten op de LAATSTE REEKS (of verder): Zoek het volgende onderdeel met deelnemers
     const currentIndex = sortedEvents.indexOf(activeEvent);
-    const nextEvent = sortedEvents[currentIndex + 1];
+    const followingEvents = sortedEvents.slice(currentIndex + 1);
 
-    if (nextEvent) {
-      const nextEventKey = `reeks_${nextEvent.replace(/\s/g, '')}`;
-      const nextDetailKey = `detail_${nextEvent.replace(/\s/g, '')}`;
-      const nextIsFreestyle = isFreestyleType(nextEvent);
+    for (const nextEv of followingEvents) {
+      const nextEvKey = `reeks_${nextEv.replace(/\s/g, '')}`;
+      const nextDetKey = `detail_${nextEv.replace(/\s/g, '')}`;
+      const nextIsFreestyle = isFreestyleType(nextEv);
 
       const nextParts = Object.values(allParticipants)
-        .filter(p => p.events?.includes(nextEvent) && p.status !== 'geschrapt' && p.eventStatus?.[nextEvent] !== 'geschrapt')
-        .sort((a, b) => (parseInt(a[nextEventKey]) || 0) - (parseInt(b[nextEventKey]) || 0));
+        .filter(p => p.events?.includes(nextEv) && p.status !== 'geschrapt' && p.eventStatus?.[nextEv] !== 'geschrapt')
+        .sort((a, b) => (parseInt(a[nextEvKey]) || 0) - (parseInt(b[nextEvKey]) || 0));
 
-      let list = [];
       if (nextParts.length > 0) {
+        let list = [];
+        const firstReeksNext = nextParts.filter(p => parseInt(p[nextEvKey]) === 1);
+        
         if (nextIsFreestyle) {
-          list = nextParts.filter(p => parseInt(p[nextEventKey]) === 1).slice(0, 8);
+          list = nextParts.slice(0, 8);
         } else {
-          const rawNext = nextParts.filter(p => parseInt(p[nextEventKey]) === 1);
-          list = getFullFields(rawNext, nextDetailKey);
+          list = getFullFields(firstReeksNext, nextDetKey);
         }
-        return { nextUp: list, nextEventName: nextEvent, isNextEvent: true };
+        return { nextUp: list, nextEventName: nextEv, isNextEvent: true };
       }
     }
 
-    // Geen volgende reeksen of events meer
     return { nextUp: [], nextEventName: null, isNextEvent: false };
   }, [activeReeks, totalReeksen, activeEvent, currentEventParticipants, sortedEvents, allParticipants, eventKey, detailKey, isFreestyle]);
 
