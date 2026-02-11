@@ -70,7 +70,7 @@ const DisplayView = ({
     ? rawCurrentSkippers 
     : getFullFields(rawCurrentSkippers, detailKey);
 
-  // --- LOGICA VOOR VOLGENDE REEKS (OOK OVER EVENTS HEEN) ---
+  // --- AANGEPASTE LOGICA VOOR VOLGENDE (VOLGEND ONDERDEEL DETECTIE) ---
   const { nextUp, nextEventName, isNextEvent } = useMemo(() => {
     // Check of er nog een reeks is in het huidige event
     const hasMoreInCurrent = activeReeks < totalReeksen;
@@ -79,15 +79,17 @@ const DisplayView = ({
       const nextR = activeReeks + 1;
       let list = [];
       if (isFreestyle) {
+        // Voor freestyle tonen we de komende 8 skippers
         list = currentEventParticipants.filter(p => parseInt(p[eventKey]) > activeReeks).slice(0, 8);
       } else {
+        // Voor speed tonen we de volledige volgende reeks met velden
         const rawNext = currentEventParticipants.filter(p => parseInt(p[eventKey]) === nextR);
         list = getFullFields(rawNext, detailKey);
       }
       return { nextUp: list, nextEventName: activeEvent, isNextEvent: false };
     } 
 
-    // Zoek het volgende event
+    // ALS HET HUIDIGE ONDERDEEL AFGELOPEN IS: Zoek het volgende event
     const currentIndex = sortedEvents.indexOf(activeEvent);
     const nextEvent = sortedEvents[currentIndex + 1];
 
@@ -101,17 +103,20 @@ const DisplayView = ({
         .sort((a, b) => (parseInt(a[nextEventKey]) || 0) - (parseInt(b[nextEventKey]) || 0));
 
       let list = [];
-      if (nextIsFreestyle) {
-        list = nextParts.filter(p => parseInt(p[nextEventKey]) === 1).slice(0, 8);
-      } else {
-        const rawNext = nextParts.filter(p => parseInt(p[nextEventKey]) === 1);
-        list = getFullFields(rawNext, nextDetailKey);
+      if (nextParts.length > 0) {
+        if (nextIsFreestyle) {
+          list = nextParts.filter(p => parseInt(p[nextEventKey]) === 1).slice(0, 8);
+        } else {
+          const rawNext = nextParts.filter(p => parseInt(p[nextEventKey]) === 1);
+          list = getFullFields(rawNext, nextDetailKey);
+        }
+        return { nextUp: list, nextEventName: nextEvent, isNextEvent: true };
       }
-      return { nextUp: list, nextEventName: nextEvent, isNextEvent: true };
     }
 
+    // Geen volgende reeksen of events meer
     return { nextUp: [], nextEventName: null, isNextEvent: false };
-  }, [activeReeks, totalReeksen, activeEvent, currentEventParticipants, sortedEvents, allParticipants]);
+  }, [activeReeks, totalReeksen, activeEvent, currentEventParticipants, sortedEvents, allParticipants, eventKey, detailKey, isFreestyle]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -124,6 +129,7 @@ const DisplayView = ({
   };
 
   const getExpectedTime = (p, currentNextEvent) => {
+    if (!currentNextEvent) return null;
     const dKey = `detail_${currentNextEvent.replace(/\s/g, '')}`;
     const plannedStr = p[dKey]?.uur;
     if (!plannedStr || !timeDiff) return plannedStr;
@@ -281,7 +287,7 @@ const DisplayView = ({
                 {nextUp.map((p, idx) => {
                   const time = getExpectedTime(p, nextEventName);
                   const isNextPause = p.naam && p.naam.startsWith('PAUZE_');
-                  const currentNextDetailKey = `detail_${nextEventName.replace(/\s/g, '')}`;
+                  const currentNextDetailKey = `detail_${nextEventName?.replace(/\s/g, '')}`;
 
                   return (
                     <tr key={idx} style={{ 
@@ -332,7 +338,7 @@ const DisplayView = ({
             <div style={{ 
               marginTop: '4rem', textAlign: 'center', padding: '3rem', 
               background: 'rgba(30, 41, 59, 0.4)', borderRadius: '20px',
-              border: '1px solid rgba(255,255,255,0.1)'
+              border: '1px solid rgba(255,255,255,0.1)' 
             }}>
               <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#94a3b8' }}>
                 De wedstrijd is afgelopen
