@@ -728,7 +728,7 @@ if (isFreestyle) {
 
       {view === 'management' ? renderManagement() : (
         <LiveView 
-          selectedComp={selectedComp}
+          selectedComp={activeComp}
           activeEvent={activeEvent}
           setActiveEvent={setActiveEvent}
           activeReeks={activeReeks}
