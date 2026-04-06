@@ -98,5 +98,3 @@ export default function AddCompetitionModal({ onClose, onCreated }) {
     </div>
   );
 }
-
-export default AddCompetitionModal;
