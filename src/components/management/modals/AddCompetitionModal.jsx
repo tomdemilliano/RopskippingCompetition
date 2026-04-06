@@ -7,7 +7,7 @@ import { X } from 'lucide-react';
 import { useAppContext } from '../../../AppContext';
 import { modalStyles as s } from './modalStyles';
 
-export function AddCompetitionModal({ onClose, onCreated }) {
+export default function AddCompetitionModal({ onClose, onCreated }) {
   const { competitionTypes, createCompetition } = useAppContext();
 
   const [form, setForm] = useState({
