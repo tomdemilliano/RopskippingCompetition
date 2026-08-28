@@ -29,13 +29,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isBeheerder() {
-      return isSignedIn() &&
-        exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.role == 'beheerder';
-    }
-
     match /artifacts/{appId}/public/data {
+
+      // isBeheerder() staat bewust hier (niet bij isSignedIn() hierboven):
+      // appId is enkel binnen dit match-blok gebonden. Firestore rules-functies
+      // zien path-variabelen uit de omringende match-blokken op het moment van
+      // hun DEFINITIE, niet van hun aanroep — buiten dit blok bestaat "appId"
+      // dus niet en geeft dat de "invalid variable name"-fout.
+      function isBeheerder() {
+        return isSignedIn() &&
+          exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.role == 'beheerder';
+      }
 
       // Gebruikers: iedereen mag zijn eigen profiel lezen, enkel een
       // beheerder mag de volledige lijst lezen of iets schrijven.
