@@ -12,6 +12,7 @@ import React, { useState, useEffect } from 'react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { runSeed } from '../seedData';
 import { eventFactory, competitionTypeFactory, userFactory } from '../dbSchema';
+import { emailForUsername } from '../constants';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES (inline — conform project-conventie)
@@ -189,13 +190,17 @@ const SeedPage = () => {
       setAdminError('Gebruikersnaam en een wachtwoord van minstens 6 tekens zijn verplicht.');
       return;
     }
+    const email = emailForUsername(adminUsername);
+    if (!email) {
+      setAdminError('Ongeldige gebruikersnaam — gebruik minstens één letter of cijfer.');
+      return;
+    }
     setAdminState('busy');
     setAdminError('');
     try {
       // Stap 1: het Firebase Auth-account — altijd toegelaten, geen rechten nodig.
-      const auth  = getAuth();
-      const email = `${adminUsername.trim().toLowerCase()}@ropescore.pro.local`;
-      const cred  = await createUserWithEmailAndPassword(auth, email, adminPassword);
+      const auth = getAuth();
+      const cred = await createUserWithEmailAndPassword(auth, email, adminPassword);
       setAdminUid(cred.user.uid);
 
       // Stap 2: het Firestore-profiel — vereist onder de echte security rules
