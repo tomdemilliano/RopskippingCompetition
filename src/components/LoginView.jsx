@@ -85,6 +85,9 @@ function friendlyError(err) {
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
     return 'Gebruikersnaam of wachtwoord klopt niet.';
   }
+  if (code.includes('invalid-email')) {
+    return 'Ongeldige gebruikersnaam.';
+  }
   if (code.includes('too-many-requests')) {
     return 'Te veel pogingen — probeer het straks opnieuw.';
   }

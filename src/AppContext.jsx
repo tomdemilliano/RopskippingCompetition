@@ -44,10 +44,7 @@ import {
   userFactory,
 } from './dbSchema';
 
-/** Login-namen zijn geen echt e-mailadres — Firebase Auth vereist er wel een. */
-const emailForUsername = (username) =>
-  `${username.trim().toLowerCase()}@ropescore.pro.local`;
-import { APP_ID, getFirebaseConfig } from './constants';
+import { APP_ID, getFirebaseConfig, emailForUsername } from './constants';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTEXT SETUP
@@ -278,8 +275,10 @@ export function AppProvider({ children }) {
 
   /** Meld aan met gebruikersnaam + wachtwoord. */
   const login = useCallback(async (username, password) => {
+    const email = emailForUsername(username);
+    if (!email) throw new Error('Ongeldige gebruikersnaam.');
     const auth = getAuth();
-    await signInWithEmailAndPassword(auth, emailForUsername(username), password);
+    await signInWithEmailAndPassword(auth, email, password);
   }, []);
 
   /** Meld af. */
@@ -296,13 +295,13 @@ export function AppProvider({ children }) {
    * nieuwe account.
    */
   const createUser = useCallback(async ({ username, password, role, permissions }) => {
+    const email = emailForUsername(username);
+    if (!email) throw new Error('Ongeldige gebruikersnaam.');
     const firebaseConfig = getFirebaseConfig();
     const secondaryApp = initializeApp(firebaseConfig, `secondary-${Date.now()}`);
     try {
       const secondaryAuth = getAuth(secondaryApp);
-      const cred = await createUserWithEmailAndPassword(
-        secondaryAuth, emailForUsername(username), password
-      );
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
       await userFactory.create(cred.user.uid, {
         username: username.trim(), role, permissions,
       });
