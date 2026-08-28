@@ -9,8 +9,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { runSeed } from '../seedData';
-import { eventFactory, competitionTypeFactory } from '../dbSchema';
+import { eventFactory, competitionTypeFactory, userFactory } from '../dbSchema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES (inline — conform project-conventie)
@@ -143,7 +144,15 @@ const SeedPage = () => {
   const [seedResult, setSeedResult]     = useState(null);
   const [events, setEvents]             = useState([]);
   const [types, setTypes]               = useState([]);
+  const [users, setUsers]               = useState([]);
   const [loadingData, setLoadingData]   = useState(true);
+
+  // Beheerder-bootstrap
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminState,    setAdminState]    = useState('idle'); // idle | busy | done | manual | error
+  const [adminError,    setAdminError]    = useState('');
+  const [adminUid,      setAdminUid]      = useState('');
 
   // Laad huidige staat van de collecties
   useEffect(() => {
@@ -152,13 +161,15 @@ const SeedPage = () => {
     const load = async () => {
       setLoadingData(true);
       try {
-        const [evts, typs] = await Promise.all([
+        const [evts, typs, usrs] = await Promise.all([
           eventFactory.getAll(),
           competitionTypeFactory.getAll(),
+          userFactory.getAll(),
         ]);
         if (!cancelled) {
           setEvents(evts);
           setTypes(typs);
+          setUsers(usrs);
         }
       } catch (err) {
         console.error('SeedPage load error:', err);
@@ -169,7 +180,48 @@ const SeedPage = () => {
 
     load();
     return () => { cancelled = true; };
-  }, [seedState]); // herlaad na elke seed-run
+  }, [seedState, adminState]); // herlaad na elke seed-run en na een geslaagde beheerder-aanmaak
+
+  const hasBeheerder = users.some(u => u.role === 'beheerder');
+
+  const handleCreateAdmin = async () => {
+    if (!adminUsername.trim() || adminPassword.length < 6) {
+      setAdminError('Gebruikersnaam en een wachtwoord van minstens 6 tekens zijn verplicht.');
+      return;
+    }
+    setAdminState('busy');
+    setAdminError('');
+    try {
+      // Stap 1: het Firebase Auth-account — altijd toegelaten, geen rechten nodig.
+      const auth  = getAuth();
+      const email = `${adminUsername.trim().toLowerCase()}@ropescore.pro.local`;
+      const cred  = await createUserWithEmailAndPassword(auth, email, adminPassword);
+      setAdminUid(cred.user.uid);
+
+      // Stap 2: het Firestore-profiel — vereist onder de echte security rules
+      // (zie firestore.rules) al een bestaande beheerder, wat er bij de
+      // allereerste nog niet is. We proberen het toch (werkt zolang je nog
+      // met de standaard/open rules draait); lukt het niet, dan toont de UI
+      // de manuele Console-stap met dit uid.
+      try {
+        await userFactory.create(cred.user.uid, {
+          username: adminUsername.trim(),
+          role: 'beheerder',
+          permissions: { speaker: false, backstage: false, podium: false, aanwezigheid: false },
+        });
+        setAdminState('done');
+      } catch {
+        setAdminState('manual');
+      }
+    } catch (err) {
+      setAdminError(
+        err.code === 'auth/email-already-in-use'
+          ? 'Deze gebruikersnaam bestaat al.'
+          : (err.message ?? 'Aanmaken mislukt.')
+      );
+      setAdminState('error');
+    }
+  };
 
   const handleSeed = async () => {
     setSeedState('running');
@@ -212,6 +264,9 @@ const SeedPage = () => {
               <span style={s.stat}>
                 {types.length === 0 ? '—' : '✓'} {types.length} wedstrijdtypes
               </span>
+              <span style={s.stat}>
+                {hasBeheerder ? '✓' : '—'} {users.length} gebruikers
+              </span>
             </div>
 
             {isAlreadySeeded && seedState === 'idle' && (
@@ -223,6 +278,63 @@ const SeedPage = () => {
           </>
         )}
       </div>
+
+      {/* ── Eerste beheerder ── */}
+      {!loadingData && !hasBeheerder && (
+        <div style={s.card}>
+          <div style={s.cardTitle}>Eerste beheerder aanmaken</div>
+          <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
+            Er bestaat nog geen beheerder-account. Zonder beheerder kan niemand
+            inloggen in de app (die maakt op zijn beurt de rest van de gebruikers aan).
+            Dit is de enige plek waar dat éénmalig, zonder ingelogde beheerder, kan.
+          </div>
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <input
+              placeholder="Gebruikersnaam"
+              value={adminUsername}
+              onChange={e => setAdminUsername(e.target.value)}
+              style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.5rem 0.7rem', fontSize: '0.85rem' }}
+            />
+            <input
+              placeholder="Wachtwoord (min. 6 tekens)"
+              type="password"
+              value={adminPassword}
+              onChange={e => setAdminPassword(e.target.value)}
+              style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.5rem 0.7rem', fontSize: '0.85rem' }}
+            />
+            <button
+              style={s.btn(adminState === 'busy' ? 'disabled' : 'primary')}
+              onClick={handleCreateAdmin}
+              disabled={adminState === 'busy'}
+            >
+              {adminState === 'busy' ? '⏳ Bezig…' : '▶ Beheerder aanmaken'}
+            </button>
+          </div>
+          {adminState === 'done' && (
+            <div style={s.resultBox('success')}>
+              Beheerder <strong>{adminUsername}</strong> aangemaakt — kan nu inloggen in de app.
+            </div>
+          )}
+          {adminState === 'manual' && (
+            <div style={s.resultBox('warning')}>
+              <div style={{ marginBottom: '0.5rem' }}>
+                Auth-account aangemaakt, maar het Firestore-profiel kon niet automatisch
+                worden weggeschreven (de security rules staan dat terecht niet toe zonder
+                bestaande beheerder). Voeg dit document handmatig toe via
+                Firebase Console → Firestore Database → collectie <code>artifacts/ropescore-pro-v1/public/data/users</code>,
+                document-id:
+              </div>
+              <div style={{ fontFamily: 'monospace', background: '#fff', padding: '0.5rem', borderRadius: '6px', marginBottom: '0.5rem' }}>
+                {adminUid}
+              </div>
+              <div>met velden: <code>username: "{adminUsername}"</code>, <code>role: "beheerder"</code>,{' '}
+                <code>permissions: {'{'}speaker:false, backstage:false, podium:false, aanwezigheid:false{'}'}</code>.
+              </div>
+            </div>
+          )}
+          {adminError && <div style={s.resultBox('error')}>{adminError}</div>}
+        </div>
+      )}
 
       {/* ── Seed-knop ── */}
       <div style={s.card}>

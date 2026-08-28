@@ -20,21 +20,32 @@ import React, {
   useCallback,
   useRef,
 } from 'react';
-import { initializeApp, getApps } from 'firebase/app';
+import { initializeApp, getApps, deleteApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import {
+  getAuth, onAuthStateChanged,
+  signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword,
+} from 'firebase/auth';
 
 import {
   initDb,
   isScratchedFromEvent,
   isFullyScratched,
+  hasPermission,
   settingsFactory,
   competitionTypeFactory,
   eventFactory,
   clubFactory,
   competitionFactory,
   participantFactory,
+  blockFactory,
+  BLOCK_TYPE_LABELS,
+  userFactory,
 } from './dbSchema';
+
+/** Login-namen zijn geen echt e-mailadres — Firebase Auth vereist er wel een. */
+const emailForUsername = (username) =>
+  `${username.trim().toLowerCase()}@ropescore.pro.local`;
 import { APP_ID, getFirebaseConfig } from './constants';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,8 +67,18 @@ export function useAppContext() {
 export function AppProvider({ children }) {
 
   // ── Auth ────────────────────────────────────────────────────────────────
-  const [authReady, setAuthReady] = useState(false);
-  const [authError, setAuthError] = useState('');
+  // authReady: Firebase is geïnitialiseerd en de auth-status is één keer
+  // gecontroleerd (ongeacht of er iemand ingelogd is).
+  // currentUser: Firebase Auth user object, of null als niemand ingelogd is.
+  // userProfile: het bijhorende users/{uid}-document (rol + rechten).
+  const [authReady, setAuthReady]   = useState(false);
+  const [authError, setAuthError]   = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+
+  // ── Gebruikersbeheer (enkel geladen door het beheerder-only scherm) ──────
+  const [users, setUsers]                 = useState([]);
+  const usersUnsubRef                     = useRef(null);
 
   // ── Collectiedata ────────────────────────────────────────────────────────
   const [competitions, setCompetitions]         = useState([]);
@@ -65,15 +86,20 @@ export function AppProvider({ children }) {
   const [clubs, setClubs]                       = useState([]);
   const [competitionTypes, setCompetitionTypes] = useState([]);
 
-  // ── Settings / voortgang ─────────────────────────────────────────────────
+  // ── Settings ─────────────────────────────────────────────────────────────
   const [activeCompetitionId, setActiveCompetitionId] = useState(null);
-  const [finishedEvents, setFinishedEvents]           = useState([]);
-  const [finishedSeries, setFinishedSeries]           = useState({});
+  // finishedEvents/finishedSeries leven op het competition-document zelf
+  // (zie dbSchema.js) en worden hieronder afgeleid van activeCompetition.
 
   // ── Deelnemers (per wedstrijd geladen) ───────────────────────────────────
   const [participants, setParticipants]               = useState([]);
   const [participantsCompId, setParticipantsCompId]   = useState(null);
   const participantUnsubRef                           = useRef(null);
+
+  // ── Blocks — dagtijdlijn (per wedstrijd geladen) ─────────────────────────
+  const [blocks, setBlocks]                 = useState([]);
+  const [blocksCompId, setBlocksCompId]     = useState(null);
+  const blockUnsubRef                       = useRef(null);
 
   // ─────────────────────────────────────────────────────────────────────────
   // FIREBASE INIT
@@ -91,15 +117,14 @@ export function AppProvider({ children }) {
 
         const auth = getAuth(app);
         const db   = getFirestore(app);
+        initDb(db, APP_ID);
 
+        // Geen automatische (anonieme) sign-in meer — de gebruiker moet
+        // zich aanmelden via login(). We tonen enkel of er al een sessie is.
         onAuthStateChanged(auth, (user) => {
-          if (user) {
-            initDb(db, APP_ID);
-            setAuthReady(true);
-          }
+          setCurrentUser(user);
+          setAuthReady(true);
         });
-
-        await signInAnonymously(auth);
       } catch (err) {
         setAuthError(err.message ?? String(err));
       }
@@ -108,13 +133,23 @@ export function AppProvider({ children }) {
     init();
   }, []);
 
+  // ── Gebruikersprofiel volgen zodra iemand ingelogd is ────────────────────
+  useEffect(() => {
+    if (!currentUser) {
+      setUserProfile(null);
+      return;
+    }
+    return userFactory.subscribeOne(currentUser.uid, setUserProfile);
+  }, [currentUser]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // REALTIME LISTENERS
-  // Starten zodra auth klaar is. Worden automatisch opgeruimd.
+  // Starten zodra iemand ingelogd is (Firestore-rules vereisen een sessie).
+  // Worden automatisch opgeruimd bij het uitloggen.
   // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!currentUser) return;
 
     const unsubs = [
       competitionFactory.subscribe(setCompetitions),
@@ -125,15 +160,10 @@ export function AppProvider({ children }) {
       settingsFactory.subscribeCompetition(({ activeCompetitionId: id }) => {
         setActiveCompetitionId(id ?? null);
       }),
-
-      settingsFactory.subscribeProgress(({ finishedEvents: fe, finishedSeries: fs }) => {
-        setFinishedEvents(fe ?? []);
-        setFinishedSeries(fs ?? {});
-      }),
     ];
 
     return () => unsubs.forEach(u => u());
-  }, [authReady]);
+  }, [currentUser]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // PARTICIPANTS — laden per geselecteerde wedstrijd
@@ -171,10 +201,42 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // BLOCKS — laden per geselecteerde wedstrijd
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start realtime listener voor de blokken (dagtijdlijn) van een wedstrijd.
+   * Stopt de vorige listener automatisch.
+   */
+  const loadBlocks = useCallback((competitionId) => {
+    if (blockUnsubRef.current) {
+      blockUnsubRef.current();
+      blockUnsubRef.current = null;
+    }
+
+    if (!competitionId) {
+      setBlocks([]);
+      setBlocksCompId(null);
+      return;
+    }
+
+    setBlocksCompId(competitionId);
+    blockUnsubRef.current = blockFactory.subscribe(competitionId, setBlocks);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (blockUnsubRef.current) blockUnsubRef.current();
+    };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // AFGELEIDE DATA
   // ─────────────────────────────────────────────────────────────────────────
 
   const activeCompetition = competitions.find(c => c.id === activeCompetitionId) ?? null;
+  const finishedEvents = activeCompetition?.finishedEvents ?? [];
+  const finishedSeries = activeCompetition?.finishedSeries ?? {};
 
   /** Geeft de gesorteerde events voor een wedstrijd terug. */
   const getSortedEvents = useCallback((competition) => {
@@ -205,6 +267,74 @@ export function AppProvider({ children }) {
     return events.find(e => e.id === eventId) ?? null;
   }, [events]);
 
+  /** Heeft de ingelogde gebruiker recht op dit scherm? Beheerder = altijd. */
+  const checkPermission = useCallback((key) => hasPermission(userProfile, key), [userProfile]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ACTIONS — auth & gebruikers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Meld aan met gebruikersnaam + wachtwoord. */
+  const login = useCallback(async (username, password) => {
+    const auth = getAuth();
+    await signInWithEmailAndPassword(auth, emailForUsername(username), password);
+  }, []);
+
+  /** Meld af. */
+  const logout = useCallback(async () => {
+    const auth = getAuth();
+    await signOut(auth);
+  }, []);
+
+  /**
+   * Maak een nieuwe gebruiker aan (enkel bruikbaar door een beheerder).
+   * Gebruikt een tijdelijke, secundaire Firebase-app-instantie zodat de
+   * sessie van de beheerder die dit aanroept niet verstoord wordt —
+   * createUserWithEmailAndPassword logt anders automatisch in als het
+   * nieuwe account.
+   */
+  const createUser = useCallback(async ({ username, password, role, permissions }) => {
+    const firebaseConfig = getFirebaseConfig();
+    const secondaryApp = initializeApp(firebaseConfig, `secondary-${Date.now()}`);
+    try {
+      const secondaryAuth = getAuth(secondaryApp);
+      const cred = await createUserWithEmailAndPassword(
+        secondaryAuth, emailForUsername(username), password
+      );
+      await userFactory.create(cred.user.uid, {
+        username: username.trim(), role, permissions,
+      });
+      await signOut(secondaryAuth);
+    } finally {
+      await deleteApp(secondaryApp);
+    }
+  }, []);
+
+  /** Pas rol en/of rechten van een bestaande gebruiker aan. */
+  const updateUser = useCallback((uid, data) => {
+    return userFactory.update(uid, data);
+  }, []);
+
+  /**
+   * Verwijder het profiel van een gebruiker (zie userFactory.delete —
+   * verwijdert het Firebase Auth-account zelf niet, enkel de rechten).
+   */
+  const deleteUser = useCallback((uid) => {
+    return userFactory.delete(uid);
+  }, []);
+
+  /** Start de gebruikerslijst-listener (enkel het gebruikersbeheer-scherm roept dit aan). */
+  const loadUsers = useCallback(() => {
+    if (usersUnsubRef.current) return; // al actief
+    usersUnsubRef.current = userFactory.subscribe(setUsers);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (usersUnsubRef.current) usersUnsubRef.current();
+    };
+  }, []);
+
   // ─────────────────────────────────────────────────────────────────────────
   // ACTIONS — wedstrijden
   // ─────────────────────────────────────────────────────────────────────────
@@ -226,9 +356,11 @@ export function AppProvider({ children }) {
   const startCompetition = useCallback(async (competitionId) => {
     const alreadyActive = competitions.some(c => c.status === 'bezig');
     if (alreadyActive) throw new Error('Er is al een wedstrijd bezig.');
+    // Geen reset van finishedEvents/finishedSeries hier: die leven op het
+    // competition-document zelf (start als [] / {} bij create()), dus
+    // hervatten van een gepauzeerde wedstrijd behoudt gewoon zijn voortgang.
     await competitionFactory.setStatus(competitionId, 'bezig');
     await settingsFactory.setActiveCompetition(competitionId);
-    await settingsFactory.resetProgress();
   }, [competitions]);
 
   const stopCompetitionLive = useCallback(async (competitionId) => {
@@ -250,6 +382,8 @@ export function AppProvider({ children }) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const finishSeries = useCallback(async (eventId, seriesNr, isLastInEvent) => {
+    if (!activeCompetition) throw new Error('Geen actieve wedstrijd.');
+
     const newFinishedSeries = {
       ...finishedSeries,
       [eventId]: [...(finishedSeries[eventId] ?? []), seriesNr],
@@ -258,11 +392,11 @@ export function AppProvider({ children }) {
       ? [...finishedEvents, eventId]
       : finishedEvents;
 
-    return settingsFactory.saveProgress({
+    return competitionFactory.saveProgress(activeCompetition.id, {
       finishedEvents: newFinishedEvents,
       finishedSeries: newFinishedSeries,
     });
-  }, [finishedEvents, finishedSeries]);
+  }, [activeCompetition, finishedEvents, finishedSeries]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // ACTIONS — deelnemers
@@ -307,6 +441,26 @@ export function AppProvider({ children }) {
   }, [clubs]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ACTIONS — blocks (dagtijdlijn)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const createBlock = useCallback((competitionId, data) => {
+    return blockFactory.create(competitionId, data);
+  }, []);
+
+  const updateBlock = useCallback((competitionId, blockId, data) => {
+    return blockFactory.update(competitionId, blockId, data);
+  }, []);
+
+  const setBlockStatus = useCallback((competitionId, blockId, status) => {
+    return blockFactory.setStatus(competitionId, blockId, status);
+  }, []);
+
+  const deleteBlock = useCallback((competitionId, blockId) => {
+    return blockFactory.delete(competitionId, blockId);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -314,6 +468,18 @@ export function AppProvider({ children }) {
     // Auth
     authReady,
     authError,
+    currentUser,
+    userProfile,
+    hasPermission: checkPermission,
+    login,
+    logout,
+
+    // Gebruikersbeheer
+    users,
+    loadUsers,
+    createUser,
+    updateUser,
+    deleteUser,
 
     // Collectiedata
     competitions,
@@ -325,6 +491,11 @@ export function AppProvider({ children }) {
     participants,
     participantsCompId,
     loadParticipants,
+
+    // Blocks (dagtijdlijn)
+    blocks,
+    blocksCompId,
+    loadBlocks,
 
     // Settings
     activeCompetitionId,
@@ -338,6 +509,7 @@ export function AppProvider({ children }) {
     getEvent,
     isScratchedFromEvent,
     isFullyScratched,
+    blockTypeLabels: BLOCK_TYPE_LABELS,
 
     // Actions — wedstrijden
     createCompetition,
@@ -361,6 +533,12 @@ export function AppProvider({ children }) {
     // Actions — clubs
     createClub,
     findClubByName,
+
+    // Actions — blocks
+    createBlock,
+    updateBlock,
+    setBlockStatus,
+    deleteBlock,
   };
 
   return (
