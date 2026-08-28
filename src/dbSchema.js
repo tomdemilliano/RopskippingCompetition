@@ -12,16 +12,23 @@
  *
  * Collecties:
  *   settings/competition          singleton — actieve wedstrijd pointer
- *   settings/progress             singleton — voortgang live wedstrijd
+ *   users/{uid}                   gebruikers + rechten (doc-id = Firebase Auth uid)
  *   competitionTypes/{id}         wedstrijdtypes met standaard events
  *   events/{id}                   beschikbare onderdelen (globaal)
  *   clubs/{id}                    clubs + logo
- *   competitions/{id}             wedstrijden
+ *   competitions/{id}             wedstrijden — incl. finishedEvents/finishedSeries
  *   competitions/{id}/participants/{id}   deelnemers per wedstrijd
+ *   competitions/{id}/blocks/{id}         dagtijdlijn: blok → onderdeel (optioneel) → reeks
+ *
+ * Voortgang van een live wedstrijd (finishedEvents/finishedSeries) leeft op
+ * het competition-document zelf, niet in een los singleton — zo verliest
+ * pauzeren + hervatten van dezelfde wedstrijd nooit de voortgang, en heeft
+ * elk dagdeel op een wedstrijddag automatisch zijn eigen voortgang.
  *
  * Afgeleide properties (nooit opgeslagen in Firestore):
  *   isScratchedFromEvent(participant, eventId) → boolean
  *   isFullyScratched(participant)              → boolean
+ *   hasPermission(user, key)                   → boolean
  */
 
 import {
@@ -82,8 +89,12 @@ const paths = {
   settingsCompetition: () =>
     doc(getDb(), 'artifacts', getAppId(), 'public', 'data', 'settings', 'competition'),
 
-  settingsProgress: () =>
-    doc(getDb(), 'artifacts', getAppId(), 'public', 'data', 'settings', 'progress'),
+  // Users — doc-id is de Firebase Auth uid
+  users: () =>
+    collection(getDb(), 'artifacts', getAppId(), 'public', 'data', 'users'),
+
+  user: (uid) =>
+    doc(getDb(), 'artifacts', getAppId(), 'public', 'data', 'users', uid),
 
   // CompetitionTypes
   competitionTypes: () =>
@@ -127,12 +138,64 @@ const paths = {
       'artifacts', getAppId(), 'public', 'data',
       'competitions', competitionId, 'participants', participantId
     ),
+
+  // Blocks (subcollectie onder competition) — wedstrijd → blok → onderdeel → reeks
+  blocks: (competitionId) =>
+    collection(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'blocks'
+    ),
+
+  block: (competitionId, blockId) =>
+    doc(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'blocks', blockId
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. CONVERTERS
 // Zet ruwe Firestore-snapshots om naar schone app-objecten en vice versa.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @typedef {Object} UserPermissions
+ * @property {boolean} speaker
+ * @property {boolean} backstage       groot scherm, opwarmruimte
+ * @property {boolean} podium
+ * @property {boolean} aanwezigheid
+ */
+
+/**
+ * @typedef {Object} AppUser
+ * @property {string} id                 Firebase Auth uid
+ * @property {string} username           login-naam, uniek
+ * @property {string} role               "beheerder" | "medewerker"
+ * @property {UserPermissions} permissions   enkel relevant voor "medewerker" — een
+ *                                            beheerder heeft altijd overal recht op
+ * @property {string} createdAt
+ */
+const EMPTY_PERMISSIONS = {
+  speaker: false, backstage: false, podium: false, aanwezigheid: false,
+};
+
+const userConverter = {
+  fromFirestore(snapshot) {
+    const d = snapshot.data();
+    return {
+      id:          snapshot.id,
+      username:    d.username    ?? '',
+      role:        d.role        ?? 'medewerker',
+      permissions: { ...EMPTY_PERMISSIONS, ...(d.permissions ?? {}) },
+      createdAt:   d.createdAt   ?? '',
+    };
+  },
+  toFirestore({ username, role, permissions }) {
+    return { username, role, permissions: { ...EMPTY_PERMISSIONS, ...permissions } };
+  },
+};
 
 /**
  * @typedef {Object} CompetitionType
@@ -217,24 +280,28 @@ const clubConverter = {
  * @property {string} typeId          ref → competitionTypes/{id}
  * @property {string} status          "open" | "bezig" | "beëindigd"
  * @property {Object.<string, number>} eventOrder   overschrijft defaultEventOrder
+ * @property {string[]} finishedEvents            eventIds volledig afgewerkt
+ * @property {Object.<string, number[]>} finishedSeries   seriesNrs afgewerkt per eventId
  * @property {string} createdAt
  */
 const competitionConverter = {
   fromFirestore(snapshot) {
     const d = snapshot.data();
     return {
-      id:          snapshot.id,
-      name:        d.name        ?? '',
-      date:        d.date        ?? '',
-      location:    d.location    ?? '',
-      typeId:      d.typeId      ?? '',
-      status:      d.status      ?? 'open',
-      eventOrder:  d.eventOrder  ?? {},
-      createdAt:   d.createdAt   ?? '',
+      id:               snapshot.id,
+      name:             d.name             ?? '',
+      date:             d.date             ?? '',
+      location:         d.location         ?? '',
+      typeId:           d.typeId           ?? '',
+      status:           d.status           ?? 'open',
+      eventOrder:       d.eventOrder       ?? {},
+      finishedEvents:   d.finishedEvents   ?? [],
+      finishedSeries:   d.finishedSeries   ?? {},
+      createdAt:        d.createdAt        ?? '',
     };
   },
-  toFirestore({ name, date, location, typeId, status, eventOrder }) {
-    return { name, date, location, typeId, status, eventOrder };
+  toFirestore({ name, date, location, typeId, status, eventOrder, finishedEvents = [], finishedSeries = {} }) {
+    return { name, date, location, typeId, status, eventOrder, finishedEvents, finishedSeries };
   },
 };
 
@@ -284,6 +351,57 @@ function normalizeEntry(raw) {
     scheduledTime: raw.scheduledTime ?? '',
     isScratched:   raw.isScratched   ?? false,
   };
+}
+
+/**
+ * @typedef {Object} Block
+ * @property {string} id
+ * @property {string} type           "heats" | "pauze" | "lunchpauze" | "deuren" |
+ *                                    "briefing" | "proefjury" | "prijsuitreiking"
+ * @property {string} eventId        ref → events/{id} — enkel bij type "heats"
+ * @property {string} label          vrije tekst — enkel bij een niet-heats type
+ * @property {string} scheduledTime  "HH:MM"
+ * @property {number} order          positie in de dagtijdlijn
+ * @property {string} status         "gepland" | "actief" | "afgewerkt"
+ */
+const blockConverter = {
+  fromFirestore(snapshot) {
+    const d = snapshot.data();
+    return {
+      id:            snapshot.id,
+      type:          d.type          ?? 'heats',
+      eventId:       d.eventId       ?? '',
+      label:         d.label         ?? '',
+      scheduledTime: d.scheduledTime ?? '',
+      order:         d.order         ?? 0,
+      status:        d.status        ?? 'gepland',
+    };
+  },
+  toFirestore({ type, eventId = '', label = '', scheduledTime = '', order = 0, status = 'gepland' }) {
+    return { type, eventId, label, scheduledTime, order, status };
+  },
+};
+
+/** Standaardlabel per bloktype, gebruikt wanneer een blok geen eigen label heeft. */
+export const BLOCK_TYPE_LABELS = {
+  pauze:           'Pauze',
+  lunchpauze:      'Lunchpauze',
+  deuren:          'Deuren open',
+  briefing:        'Jurybriefing',
+  proefjury:       'Proefjury',
+  prijsuitreiking: 'Prijsuitreiking',
+};
+
+/**
+ * Heeft deze gebruiker recht op een bepaald scherm?
+ * Een beheerder heeft altijd overal recht op — nooit apart opslaan.
+ * @param {AppUser|null} user
+ * @param {'speaker'|'backstage'|'podium'|'aanwezigheid'} key
+ * @returns {boolean}
+ */
+export function hasPermission(user, key) {
+  if (!user) return false;
+  return user.role === 'beheerder' || !!user.permissions?.[key];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -344,38 +462,10 @@ export const settingsFactory = {
     });
   },
 
-  /**
-   * Luister naar de live voortgang.
-   * @param {function} callback  cb({ finishedEvents, finishedSeries })
-   * @returns {function} unsubscribe
-   */
-  subscribeProgress(callback) {
-    return onSnapshot(paths.settingsProgress(), (snap) => {
-      callback(
-        snap.exists()
-          ? snap.data()
-          : { finishedEvents: [], finishedSeries: {} }
-      );
-    });
-  },
-
   /** Stel de actieve wedstrijd in (of wis met null). */
   setActiveCompetition(competitionId) {
     return setDoc(paths.settingsCompetition(), {
       activeCompetitionId: competitionId,
-    });
-  },
-
-  /** Sla voortgang op. */
-  saveProgress({ finishedEvents, finishedSeries }) {
-    return setDoc(paths.settingsProgress(), { finishedEvents, finishedSeries });
-  },
-
-  /** Reset voortgang (bij start nieuwe wedstrijd). */
-  resetProgress() {
-    return setDoc(paths.settingsProgress(), {
-      finishedEvents: [],
-      finishedSeries: {},
     });
   },
 };
@@ -633,6 +723,17 @@ export const competitionFactory = {
   },
 
   /**
+   * Sla de live voortgang van deze wedstrijd op.
+   * Leeft op het competition-document zelf — niet in een los singleton —
+   * zodat pauzeren en hervatten van dezelfde wedstrijd de voortgang bewaart.
+   * @param {string} competitionId
+   * @param {{ finishedEvents: string[], finishedSeries: Object.<string, number[]> }} progress
+   */
+  saveProgress(competitionId, { finishedEvents, finishedSeries }) {
+    return updateDoc(paths.competition(competitionId), { finishedEvents, finishedSeries });
+  },
+
+  /**
    * Verwijder een wedstrijd inclusief alle deelnemers.
    * @param {string} competitionId
    */
@@ -790,6 +891,147 @@ export const participantFactory = {
    */
   delete(competitionId, participantId) {
     return deleteDoc(paths.participant(competitionId, participantId));
+  },
+};
+
+// ── BLOCKS ────────────────────────────────────────────────────────────────────
+// wedstrijd → blok → onderdeel (optioneel, enkel bij type "heats") → reeks.
+// Reeksen zelf blijven afgeleid uit participant.entries[] — er is geen apart
+// heat-document. Vervangt de vroegere PAUZE_-naamhack (een nep-deelnemer om
+// een pauze te markeren) door een eerste-klas schema-item.
+
+export const blockFactory = {
+  /**
+   * Luister naar alle blokken van een wedstrijd, gesorteerd op order.
+   * @param {string} competitionId
+   * @param {function} callback  cb(Block[])
+   * @returns {function} unsubscribe
+   */
+  subscribe(competitionId, callback) {
+    return onSnapshot(paths.blocks(competitionId), (snap) => {
+      const sorted = snap.docs
+        .map(blockConverter.fromFirestore)
+        .sort((a, b) => a.order - b.order);
+      callback(sorted);
+    });
+  },
+
+  /**
+   * Maak een nieuw blok aan.
+   * @param {string} competitionId
+   * @param {{ type: string, eventId?: string, label?: string, scheduledTime?: string, order?: number }} data
+   * @returns {Promise<string>} nieuw id
+   */
+  async create(competitionId, data) {
+    const ref = await addDoc(
+      paths.blocks(competitionId),
+      blockConverter.toFirestore(data)
+    );
+    return ref.id;
+  },
+
+  /**
+   * Pas een bestaand blok aan.
+   * @param {string} competitionId
+   * @param {string} blockId
+   * @param {Partial<Block>} data
+   */
+  update(competitionId, blockId, data) {
+    return updateDoc(paths.block(competitionId, blockId), data);
+  },
+
+  /**
+   * Verander de status van een blok (bv. bij "volgende" in Speaker/Display).
+   * @param {string} competitionId
+   * @param {string} blockId
+   * @param {'gepland'|'actief'|'afgewerkt'} status
+   */
+  setStatus(competitionId, blockId, status) {
+    return updateDoc(paths.block(competitionId, blockId), { status });
+  },
+
+  /**
+   * Verwijder een blok.
+   * @param {string} competitionId
+   * @param {string} blockId
+   */
+  delete(competitionId, blockId) {
+    return deleteDoc(paths.block(competitionId, blockId));
+  },
+};
+
+// ── USERS ─────────────────────────────────────────────────────────────────────
+// Topcollectie, niet gebonden aan een wedstrijd — net als clubs. Doc-id is de
+// Firebase Auth uid. Een gebruiker wordt aangemaakt via een tijdelijke,
+// secundaire Firebase-app-instantie in de UI-laag (AppContext.createUser),
+// zodat de sessie van de beheerder die de aanmaak doet niet verstoord wordt —
+// dbSchema.js zelf raakt Firebase Auth niet aan, enkel Firestore.
+
+export const userFactory = {
+  /**
+   * Éénmalig alle gebruikers ophalen (bv. om te checken of er al een
+   * beheerder bestaat, zoals de bootstrap-stap op de seed-pagina doet).
+   * @returns {Promise<AppUser[]>}
+   */
+  async getAll() {
+    const snap = await getDocs(paths.users());
+    return snap.docs.map(userConverter.fromFirestore);
+  },
+
+  /**
+   * Luister naar alle gebruikers (voor het gebruikersbeheer-scherm).
+   * @param {function} callback  cb(AppUser[])
+   * @returns {function} unsubscribe
+   */
+  subscribe(callback) {
+    return onSnapshot(paths.users(), (snap) => {
+      callback(snap.docs.map(userConverter.fromFirestore));
+    });
+  },
+
+  /**
+   * Luister naar het profiel van één gebruiker (voor de ingelogde gebruiker zelf).
+   * @param {string} uid
+   * @param {function} callback  cb(AppUser|null)
+   * @returns {function} unsubscribe
+   */
+  subscribeOne(uid, callback) {
+    return onSnapshot(paths.user(uid), (snap) => {
+      callback(snap.exists() ? userConverter.fromFirestore(snap) : null);
+    });
+  },
+
+  /**
+   * Maak het Firestore-profiel voor een net aangemaakt Auth-account aan.
+   * @param {string} uid
+   * @param {{ username: string, role: string, permissions: UserPermissions }} data
+   */
+  create(uid, data) {
+    return setDoc(paths.user(uid), {
+      ...userConverter.toFirestore(data),
+      createdAt: new Date().toISOString(),
+    });
+  },
+
+  /**
+   * Pas rol en/of rechten van een gebruiker aan.
+   * @param {string} uid
+   * @param {{ role?: string, permissions?: UserPermissions }} data
+   */
+  update(uid, data) {
+    return updateDoc(paths.user(uid), data);
+  },
+
+  /**
+   * Verwijder het Firestore-profiel van een gebruiker.
+   * Verwijdert NIET het onderliggende Firebase Auth-account (dat vereist de
+   * Admin SDK, dus een backend) — de gebruiker kan zich nadien nog technisch
+   * aanmelden bij Firebase Auth, maar zonder profiel geeft de app geen enkel
+   * recht meer (hasPermission() geeft dan overal false).
+   * @param {string} uid
+   */
+  delete(uid) {
+    return deleteDoc(paths.user(uid));
   },
 };
 

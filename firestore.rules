@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// RopeScore Pro — Firestore security rules.
+//
+// Niet automatisch gedeployed door dit repo (geen firebase.json/.firebaserc
+// aanwezig) — kopieer dit handmatig naar Firebase Console → Firestore
+// Database → Rules, of zet `firebase deploy --only firestore:rules` op als
+// je de Firebase CLI aan dit project koppelt.
+//
+// Basisprincipe: elke ingelogde gebruiker (e-mail/wachtwoord — geen anonieme
+// auth meer voor de hoofd-app, wel nog voor het losse /seed.html-tool) mag
+// alles lezen en schrijven, BEHALVE de users-collectie: daar mag iedereen
+// zijn eigen profiel lezen (nodig voor hasPermission()), maar enkel een
+// beheerder mag gebruikers aanmaken, wijzigen of verwijderen. Dit is bewust
+// "basic" — bedoeld om vergissingen door nieuwsgierige gebruikers te
+// voorkomen, geen zware beveiliging.
+//
+// BEWUST GEEN bootstrap-uitzondering ("laat de eerste gebruiker zichzelf
+// beheerder maken"): dat zou elke Firebase Auth-account — ook eentje buiten
+// deze app aangemaakt — zichzelf beheerder laten maken zolang er nog geen
+// users/{uid}-document op zijn eigen uid bestaat. De allereerste beheerder
+// wordt daarom één keer manueel toegevoegd via de Firebase Console, ná het
+// aanmaken van het Auth-account op /seed.html (zie SeedPage.jsx).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBeheerder() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.role == 'beheerder';
+    }
+
+    match /artifacts/{appId}/public/data {
+
+      // Gebruikers: iedereen mag zijn eigen profiel lezen, enkel een
+      // beheerder mag de volledige lijst lezen of iets schrijven.
+      match /users/{uid} {
+        allow read:                 if isSignedIn() && (request.auth.uid == uid || isBeheerder());
+        allow create, update, delete: if isBeheerder();
+      }
+
+      // Overige collecties: elke ingelogde gebruiker mag lezen en schrijven.
+      // De permissions-checks per scherm gebeuren in de app
+      // (AppContext.hasPermission), niet hier — bewust basic.
+      match /settings/{docId} {
+        allow read, write: if isSignedIn();
+      }
+      match /competitionTypes/{id} {
+        allow read, write: if isSignedIn();
+      }
+      match /events/{id} {
+        allow read, write: if isSignedIn();
+      }
+      match /clubs/{id} {
+        allow read, write: if isSignedIn();
+      }
+      match /competitions/{id} {
+        allow read, write: if isSignedIn();
+
+        match /participants/{participantId} {
+          allow read, write: if isSignedIn();
+        }
+        match /blocks/{blockId} {
+          allow read, write: if isSignedIn();
+        }
+      }
+    }
+  }
+}

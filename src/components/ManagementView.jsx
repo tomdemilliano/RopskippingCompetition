@@ -10,10 +10,11 @@
  */
 
 import React, { useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Trophy, Users } from 'lucide-react';
 
 import CompetitionsOverview  from './management/CompetitionsOverview';
 import CompetitionDetail     from './management/CompetitionDetail';
+import UserManagement        from './management/UserManagement';
 import AddCompetitionModal   from './management/modals/AddCompetitionModal';
 import EditCompetitionModal  from './management/modals/EditCompetitionModal';
 import EditParticipantModal  from './management/modals/EditParticipantModal';
@@ -66,6 +67,27 @@ const s = {
     display: 'flex',
     overflow: 'hidden',
   },
+  sectionTabs: {
+    display: 'flex',
+    gap: '0.4rem',
+    padding: '0.6rem 1.5rem',
+    background: '#fff',
+    borderBottom: '1px solid #e2e8f0',
+    flexShrink: 0,
+  },
+  sectionTab: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    background: active ? '#eff6ff' : 'transparent',
+    color: active ? '#2563eb' : '#64748b',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '0.4rem 0.8rem',
+    fontWeight: 700,
+    fontSize: '0.8rem',
+    cursor: 'pointer',
+  }),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +95,9 @@ const s = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ManagementView() {
+  // 'wedstrijden' | 'gebruikers'
+  const [section, setSection] = useState('wedstrijden');
+
   // 'overview' | 'detail'
   const [view,            setView]            = useState('overview');
   const [selectedCompId,  setSelectedCompId]  = useState(null);
@@ -107,8 +132,20 @@ export default function ManagementView() {
 
   return (
     <div style={s.wrapper}>
+      {/* ── Sectie-tabs ── */}
+      <div style={s.sectionTabs}>
+        <button style={s.sectionTab(section === 'wedstrijden')} onClick={() => setSection('wedstrijden')}>
+          <Trophy size={14} /> Wedstrijden
+        </button>
+        <button style={s.sectionTab(section === 'gebruikers')} onClick={() => setSection('gebruikers')}>
+          <Users size={14} /> Gebruikers
+        </button>
+      </div>
+
+      {section === 'gebruikers' && <UserManagement />}
+
       {/* ── OVERZICHT ── */}
-      {view === 'overview' && (
+      {section === 'wedstrijden' && view === 'overview' && (
         <CompetitionsOverview
           onSelectCompetition={handleSelectCompetition}
           onNewCompetition={() => setShowAddModal(true)}
@@ -117,7 +154,7 @@ export default function ManagementView() {
       )}
 
       {/* ── DETAIL ── */}
-      {view === 'detail' && selectedCompId && (
+      {section === 'wedstrijden' && view === 'detail' && selectedCompId && (
         <>
           {/* Broodkruimel */}
           <div style={s.breadcrumb}>

@@ -45,7 +45,19 @@ export default function DisplayView({ onClose }) {
     getClub,
     finishedEvents,
     finishedSeries,
+    loadParticipants,
+    blocks,
+    loadBlocks,
+    blockTypeLabels,
   } = useAppContext();
+
+  // Deelnemers en dagtijdlijn laden voor de actieve wedstrijd — nodig omdat
+  // dit scherm rechtstreeks via zijn eigen route geopend kan worden, zonder
+  // eerst via Beheer te zijn gepasseerd (dat laadt ze anders zelf al).
+  useEffect(() => {
+    loadParticipants(activeCompetition?.id ?? null);
+    loadBlocks(activeCompetition?.id ?? null);
+  }, [activeCompetition?.id, loadParticipants, loadBlocks]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime,  setCurrentTime]  = useState(new Date());
@@ -108,8 +120,12 @@ export default function DisplayView({ onClose }) {
     return Math.floor((currentTime - planned) / 60000);
   }, [plannedTime, currentTime]);
 
-  // Is huidige reeks een pauze?
-  const isPause = currentSkippers.some(p => p.name?.startsWith('PAUZE_'));
+  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
+  const currentBlock = useMemo(() =>
+    [...blocks].sort((a, b) => a.order - b.order).find(b => b.status !== 'afgewerkt') ?? null,
+  [blocks]);
+  const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
+  const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
 
   // Volledig veldlijst (speed: aanvullen met lege velden)
   const fullFieldsList = useMemo(() => {
@@ -270,7 +286,7 @@ export default function DisplayView({ onClose }) {
           display: 'flex', flexDirection: 'column',
         }}>
           <div style={{ flex: 1 }}>
-            {!isPause && (
+            {!isBreakBlock && (
               <div style={{
                 color: '#94a3b8', fontSize: '0.875rem', fontWeight: 700,
                 marginBottom: '0.75rem', textTransform: 'uppercase',
@@ -279,7 +295,7 @@ export default function DisplayView({ onClose }) {
               </div>
             )}
 
-            {isPause ? (
+            {isBreakBlock ? (
               <div style={{
                 background: 'rgba(56,189,248,0.1)',
                 padding: '3rem 1rem', borderRadius: '12px',
@@ -288,8 +304,8 @@ export default function DisplayView({ onClose }) {
                 alignItems: 'center', gap: '1.5rem', marginTop: '1rem',
               }}>
                 <Coffee size={100} color="#38bdf8" strokeWidth={1.5} />
-                <div style={{ fontSize: '4rem', fontWeight: 900, color: '#38bdf8', letterSpacing: '4px' }}>
-                  PAUZE
+                <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#38bdf8', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                  {breakLabel}
                 </div>
               </div>
             ) : (
@@ -384,14 +400,11 @@ export default function DisplayView({ onClose }) {
               </thead>
               <tbody>
                 {nextList.map((p, idx) => {
-                  const isPauseRow = p.name?.startsWith('PAUZE_');
-                  const entry      = p._entry;
-                  const expected   = calcExpectedTime(entry?.scheduledTime, timeDiff);
+                  const entry    = p._entry;
+                  const expected = calcExpectedTime(entry?.scheduledTime, timeDiff);
                   return (
                     <tr key={idx} style={{
-                      background: isPauseRow
-                        ? 'rgba(56,189,248,0.1)'
-                        : 'rgba(30,41,59,0.4)',
+                      background: 'rgba(30,41,59,0.4)',
                       fontSize: '1.3rem',
                       opacity: p._isEmpty ? 0.5 : 1,
                     }}>
@@ -403,43 +416,29 @@ export default function DisplayView({ onClose }) {
                         {expected || '--:--'}
                       </td>
                       <td style={{ padding: '0.5rem 0.875rem' }}>
-                        {!isPauseRow && (
-                          <span style={{
-                            background: '#334155', color: '#fff',
-                            minWidth: '2rem', display: 'inline-block',
-                            textAlign: 'center', padding: '0.1rem 0.5rem',
-                            borderRadius: '5px',
-                          }}>
-                            {entry?.fieldNr ?? '-'}
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        colSpan={isPauseRow ? 2 : 1}
-                        style={{
-                          padding: '0.5rem 0.875rem',
-                          fontWeight: 800,
-                          fontStyle: (p._isEmpty || isPauseRow) ? 'italic' : 'normal',
-                        }}
-                      >
-                        {isPauseRow ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#38bdf8' }}>
-                            <Coffee size={22} /> PAUZE
-                          </div>
-                        ) : (
-                          p._isEmpty ? '---' : p.name
-                        )}
-                      </td>
-                      {!isPauseRow && (
-                        <td style={{
-                          padding: '0.5rem 0.875rem',
-                          borderRadius: '0 8px 8px 0',
-                          color: '#94a3b8', fontSize: '1.1rem',
+                        <span style={{
+                          background: '#334155', color: '#fff',
+                          minWidth: '2rem', display: 'inline-block',
+                          textAlign: 'center', padding: '0.1rem 0.5rem',
+                          borderRadius: '5px',
                         }}>
-                          {p.clubId ? getClub(p.clubId)?.name ?? '' : ''}
-                        </td>
-                      )}
-                      {isPauseRow && <td style={{ borderRadius: '0 8px 8px 0' }} />}
+                          {entry?.fieldNr ?? '-'}
+                        </span>
+                      </td>
+                      <td style={{
+                        padding: '0.5rem 0.875rem',
+                        fontWeight: 800,
+                        fontStyle: p._isEmpty ? 'italic' : 'normal',
+                      }}>
+                        {p._isEmpty ? '---' : p.name}
+                      </td>
+                      <td style={{
+                        padding: '0.5rem 0.875rem',
+                        borderRadius: '0 8px 8px 0',
+                        color: '#94a3b8', fontSize: '1.1rem',
+                      }}>
+                        {p.clubId ? getClub(p.clubId)?.name ?? '' : ''}
+                      </td>
                     </tr>
                   );
                 })}

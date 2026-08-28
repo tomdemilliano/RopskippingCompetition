@@ -13,6 +13,7 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronLeft, ChevronRight,
+  Plus,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 
@@ -187,6 +188,71 @@ const s = {
     alignItems: 'center',
   }),
 
+  // Programma (blocks)
+  blocksPanel: {
+    padding: '1rem 1.5rem',
+    background: '#fff',
+    borderBottom: '1px solid #e2e8f0',
+    flexShrink: 0,
+  },
+  blocksPanelLabel: {
+    fontSize: '0.65rem',
+    fontWeight: 900,
+    color: '#94a3b8',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    marginBottom: '0.6rem',
+  },
+  blockRow: (done) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    padding: '0.4rem 0.6rem',
+    borderRadius: '6px',
+    background: done ? '#f8fafc' : '#fff',
+    border: '1px solid #f1f5f9',
+    marginBottom: '4px',
+    fontSize: '0.8rem',
+    opacity: done ? 0.6 : 1,
+  }),
+  blockOrder: {
+    fontFamily: 'monospace',
+    color: '#94a3b8',
+    minWidth: '1.2rem',
+    textAlign: 'right',
+  },
+  blockTime: {
+    fontFamily: 'monospace',
+    fontWeight: 700,
+    color: '#475569',
+    minWidth: '3rem',
+  },
+  blockLabel: {
+    flex: 1,
+    fontWeight: 700,
+    color: '#1e293b',
+  },
+  blockTypeTag: {
+    fontSize: '0.65rem',
+    color: '#64748b',
+    background: '#f1f5f9',
+    padding: '2px 6px',
+    borderRadius: '4px',
+  },
+  addBlockForm: {
+    display: 'flex',
+    gap: '0.4rem',
+    marginTop: '0.6rem',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  addBlockInput: {
+    border: '1px solid #cbd5e1',
+    borderRadius: '6px',
+    padding: '0.35rem 0.5rem',
+    fontSize: '0.8rem',
+  },
+
   // Participants list
   participantsPanel: {
     flex: 1,
@@ -321,17 +387,51 @@ export default function CompetitionDetail({
     setPresence,
     scratchFromEvent,
     scratchFromAll,
+    blocks,
+    loadBlocks,
+    blockTypeLabels,
+    createBlock,
+    setBlockStatus,
+    deleteBlock,
   } = useAppContext();
 
   const [filterStatus, setFilterStatus] = useState('alle');
   const [searchTerm,   setSearchTerm]   = useState('');
 
+  const [newBlockType,    setNewBlockType]    = useState('pauze');
+  const [newBlockEventId, setNewBlockEventId] = useState('');
+  const [newBlockLabel,   setNewBlockLabel]   = useState('');
+  const [newBlockTime,    setNewBlockTime]    = useState('');
+
   const competition = competitions.find(c => c.id === competitionId) ?? null;
 
-  // Laad deelnemers bij selectie
+  // Laad deelnemers en programma (blocks) bij selectie
   useEffect(() => {
-    if (competitionId) loadParticipants(competitionId);
-  }, [competitionId, loadParticipants]);
+    if (competitionId) {
+      loadParticipants(competitionId);
+      loadBlocks(competitionId);
+    }
+  }, [competitionId, loadParticipants, loadBlocks]);
+
+  const sortedBlocks = useMemo(
+    () => [...blocks].sort((a, b) => a.order - b.order),
+    [blocks]
+  );
+
+  const handleAddBlock = async () => {
+    if (newBlockType === 'heats' && !newBlockEventId) return;
+    const maxOrder = sortedBlocks.reduce((m, b) => Math.max(m, b.order), 0);
+    await createBlock(competition.id, {
+      type:          newBlockType,
+      eventId:       newBlockType === 'heats' ? newBlockEventId : '',
+      label:         newBlockType === 'heats' ? '' : newBlockLabel,
+      scheduledTime: newBlockTime,
+      order:         maxOrder + 1,
+    });
+    setNewBlockEventId('');
+    setNewBlockLabel('');
+    setNewBlockTime('');
+  };
 
   const sortedEvents = useMemo(
     () => getSortedEvents(competition),
@@ -505,6 +605,90 @@ export default function CompetitionDetail({
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* ── Programma (dagtijdlijn) ── */}
+      <div style={s.blocksPanel}>
+        <div style={s.blocksPanelLabel}>Programma (dagtijdlijn)</div>
+
+        {sortedBlocks.length === 0 && (
+          <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic', marginBottom: '0.4rem' }}>
+            Nog geen blokken — komt automatisch mee bij PDF-import, of hieronder manueel toevoegen.
+          </div>
+        )}
+
+        {sortedBlocks.map(b => {
+          const done = b.status === 'afgewerkt';
+          const label = b.type === 'heats'
+            ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
+            : (b.label || blockTypeLabels[b.type] || b.type);
+          return (
+            <div key={b.id} style={s.blockRow(done)}>
+              <span style={s.blockOrder}>{b.order}</span>
+              <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
+              <span style={s.blockLabel}>{label}</span>
+              <span style={s.blockTypeTag}>{b.type}</span>
+              <button
+                style={s.actionBtn(done ? '#f59e0b' : '#10b981')}
+                title={done ? 'Heropenen' : 'Markeer afgewerkt'}
+                onClick={() => setBlockStatus(competition.id, b.id, done ? 'gepland' : 'afgewerkt')}
+              >
+                {done ? <RotateCcw size={15} /> : <Check size={15} />}
+              </button>
+              <button
+                style={s.actionBtn('#ef4444')}
+                title="Verwijderen"
+                onClick={() => deleteBlock(competition.id, b.id)}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          );
+        })}
+
+        <div style={s.addBlockForm}>
+          <select
+            style={s.addBlockInput}
+            value={newBlockType}
+            onChange={e => setNewBlockType(e.target.value)}
+          >
+            <option value="heats">Onderdeel (reeksen)</option>
+            {Object.entries(blockTypeLabels).map(([type, label]) => (
+              <option key={type} value={type}>{label}</option>
+            ))}
+          </select>
+
+          {newBlockType === 'heats' ? (
+            <select
+              style={s.addBlockInput}
+              value={newBlockEventId}
+              onChange={e => setNewBlockEventId(e.target.value)}
+            >
+              <option value="">Kies onderdeel…</option>
+              {sortedEvents.map(ev => (
+                <option key={ev.id} value={ev.id}>{ev.name}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              style={s.addBlockInput}
+              placeholder="Label (optioneel)"
+              value={newBlockLabel}
+              onChange={e => setNewBlockLabel(e.target.value)}
+            />
+          )}
+
+          <input
+            style={s.addBlockInput}
+            type="time"
+            value={newBlockTime}
+            onChange={e => setNewBlockTime(e.target.value)}
+          />
+
+          <button style={s.btnPrimary('#2563eb')} onClick={handleAddBlock}>
+            <Plus size={14} /> Blok
+          </button>
         </div>
       </div>
 

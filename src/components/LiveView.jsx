@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check,
-  Mic2, FastForward, Ghost, Clock,
+  Mic2, FastForward, Ghost, Clock, Coffee,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 
@@ -257,7 +257,32 @@ export default function LiveView() {
     finishedEvents,
     finishedSeries,
     finishSeries,
+    loadParticipants,
+    blocks,
+    loadBlocks,
+    blockTypeLabels,
+    setBlockStatus,
   } = useAppContext();
+
+  // Deelnemers en dagtijdlijn laden voor de actieve wedstrijd — nodig omdat
+  // dit scherm rechtstreeks via zijn eigen route geopend kan worden, zonder
+  // eerst via Beheer te zijn gepasseerd (dat laadt ze anders zelf al).
+  useEffect(() => {
+    loadParticipants(activeCompetition?.id ?? null);
+    loadBlocks(activeCompetition?.id ?? null);
+  }, [activeCompetition?.id, loadParticipants, loadBlocks]);
+
+  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
+  const currentBlock = useMemo(() =>
+    [...blocks].sort((a, b) => a.order - b.order).find(b => b.status !== 'afgewerkt') ?? null,
+  [blocks]);
+  const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
+  const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
+
+  const handleFinishBlock = () => {
+    if (!activeCompetition || !currentBlock) return;
+    setBlockStatus(activeCompetition.id, currentBlock.id, 'afgewerkt');
+  };
 
   const sortedEvents = getSortedEvents(activeCompetition);
 
@@ -384,6 +409,31 @@ export default function LiveView() {
             Start een wedstrijd in het beheerscherm om de live-view te activeren.
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // ── Huidig blok is een pauze/briefing/… i.p.v. reeksen ───────────────────
+  if (isBreakBlock) {
+    return (
+      <div style={s.emptyState}>
+        <div style={{
+          background: '#eff6ff', padding: '2rem', borderRadius: '50%',
+          border: '4px solid #bfdbfe',
+        }}>
+          <Coffee size={72} color="#2563eb" strokeWidth={1.5} />
+        </div>
+        <div>
+          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.4rem', marginBottom: '0.5rem' }}>
+            {breakLabel}
+          </div>
+          <div style={{ fontSize: '0.875rem', maxWidth: '280px', lineHeight: 1.6, margin: '0 auto' }}>
+            Het grote scherm toont dit ook aan de deelnemers.
+          </div>
+        </div>
+        <button style={s.nextBtn} onClick={handleFinishBlock}>
+          Volgende <ChevronRight size={18} />
+        </button>
       </div>
     );
   }
