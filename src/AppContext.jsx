@@ -22,6 +22,7 @@ import React, {
 } from 'react';
 import { initializeApp, getApps, deleteApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import {
   getAuth, onAuthStateChanged,
   signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword,
@@ -115,9 +116,10 @@ export function AppProvider({ children }) {
           ? initializeApp(firebaseConfig)
           : getApps()[0];
 
-        const auth = getAuth(app);
-        const db   = getFirestore(app);
-        initDb(db, APP_ID);
+        const auth    = getAuth(app);
+        const db      = getFirestore(app);
+        const storage = getStorage(app);
+        initDb(db, APP_ID, storage);
 
         // Geen automatische (anonieme) sign-in meer — de gebruiker moet
         // zich aanmelden via login(). We tonen enkel of er al een sessie is.
@@ -436,6 +438,14 @@ export function AppProvider({ children }) {
     return clubFactory.create(data);
   }, []);
 
+  const updateClub = useCallback((clubId, data) => {
+    return clubFactory.update(clubId, data);
+  }, []);
+
+  const uploadClubLogo = useCallback((clubId, file) => {
+    return clubFactory.uploadLogo(clubId, file);
+  }, []);
+
   const findClubByName = useCallback((name) => {
     return clubFactory.findByName(name, clubs);
   }, [clubs]);
@@ -532,6 +542,8 @@ export function AppProvider({ children }) {
 
     // Actions — clubs
     createClub,
+    updateClub,
+    uploadClubLogo,
     findClubByName,
 
     // Actions — blocks
