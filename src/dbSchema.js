@@ -48,6 +48,7 @@ import {
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. INITIALISATIE
@@ -55,6 +56,7 @@ import {
 
 let _db = null;
 let _appId = null;
+let _storage = null;
 
 /**
  * Initialiseer de DB-laag. Roep dit eenmalig aan vanuit App.jsx
@@ -62,10 +64,12 @@ let _appId = null;
  *
  * @param {import('firebase/firestore').Firestore} db
  * @param {string} appId
+ * @param {import('firebase/storage').FirebaseStorage} [storage]  enkel nodig voor clubFactory.uploadLogo()
  */
-export function initDb(db, appId) {
+export function initDb(db, appId, storage = null) {
   _db = db;
   _appId = appId;
+  _storage = storage;
 }
 
 function getDb() {
@@ -76,6 +80,11 @@ function getDb() {
 function getAppId() {
   if (!_appId) throw new Error('dbSchema: initDb() is nog niet aangeroepen.');
   return _appId;
+}
+
+function getStorageInstance() {
+  if (!_storage) throw new Error('dbSchema: initDb() werd aangeroepen zonder storage-instantie.');
+  return _storage;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -658,6 +667,23 @@ export const clubFactory = {
    */
   updateLogo(clubId, logoStoragePath, logoUrl) {
     return updateDoc(paths.club(clubId), { logoStoragePath, logoUrl });
+  },
+
+  /**
+   * Laad een logo-bestand op naar Firebase Storage en koppel het aan de club.
+   * Overschrijft een eventueel vorig logo (vast pad per club, geen opruiming nodig).
+   * @param {string} clubId
+   * @param {File} file
+   * @returns {Promise<string>} de nieuwe logoUrl
+   */
+  async uploadLogo(clubId, file) {
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+    const path = `clubs/${clubId}/logo.${ext}`;
+    const ref = storageRef(getStorageInstance(), path);
+    await uploadBytes(ref, file);
+    const url = await getDownloadURL(ref);
+    await updateDoc(paths.club(clubId), { logoStoragePath: path, logoUrl: url });
+    return url;
   },
 };
 

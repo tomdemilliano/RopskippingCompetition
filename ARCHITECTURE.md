@@ -15,7 +15,7 @@ elk met een eigen route en een eigen recht (zie "Authenticatie & rechten"):
 | Scherm       | Route            | Recht          | Doel |
 |--------------|-------------------|----------------|------|
 | Beheer       | `/beheer`         | beheerder-only | wedstrijden en deelnemers aanmaken, CSV-import, clubs, blokken, gebruikers |
-| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel (Fase 1 — nu nog een placeholder) |
+| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden/afwezig melden |
 | Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (reeksen markeren) |
 | Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (toont huidige en volgende reeks) |
 | Podium       | `/scherm/podium`  | `podium`       | podium-onthulling voor de prijsuitreiking (Fase 3 — nu nog een placeholder) |
@@ -34,7 +34,7 @@ login en enkel toegang tot de schermen waar dat account recht op heeft.
 | Styling     | Inline CSS via stijlobjecten — geen Tailwind, geen CSS modules |
 | Database    | Firebase Firestore (NoSQL, realtime) |
 | Auth        | Firebase Auth, e-mail/wachtwoord — rollen + rechten in `users/{uid}` |
-| Storage     | Firebase Storage (club-logo's) — gepland, nog niet aangesloten |
+| Storage     | Firebase Storage — clublogo's (`clubs/{clubId}/logo.*`) via `clubFactory.uploadLogo()` |
 | Hosting     | Vercel                               |
 | Taal        | Nederlands (alle UI-strings)         |
 
@@ -54,16 +54,17 @@ src/
 
   components/
     LoginView.jsx                  # Inlogscherm — vóór elk ander scherm
-    ManagementView.jsx              # Beheerscherm orchestrator (wedstrijden + gebruikers)
+    ManagementView.jsx              # Beheerscherm orchestrator (wedstrijden + clubs + gebruikers)
     LiveView.jsx                    # Speaker — operatorscherm live wedstrijd
     DisplayView.jsx                 # Groot scherm (backstage) live wedstrijd
-    AttendanceView.jsx              # Aanwezigheidsregistratie (Fase 1 — placeholder)
+    AttendanceView.jsx              # Aanwezigheidsregistratie — kiosk voor de inkomtafel
     PodiumView.jsx                  # Podium-onthulling (Fase 3 — placeholder)
 
     management/
       CompetitionsOverview.jsx      # Startpagina — lijst van alle wedstrijden
       CompetitionList.jsx           # Tabs + wedstrijdkaartjes
       CompetitionDetail.jsx         # Events + programma (blocks) + deelnemerslijst
+      ClubManagement.jsx            # Clubbeheer — stamdata + logo-upload (Storage)
       UserManagement.jsx            # Gebruikersbeheer — rollen + rechten toekennen
 
       modals/
@@ -161,16 +162,19 @@ Geëxporteerde factories:
 - `userFactory` — CRUD + subscribe (lijst) + subscribeOne (eigen profiel) + getAll
 - `competitionTypeFactory` — CRUD + subscribe
 - `eventFactory` — CRUD + subscribe
-- `clubFactory` — CRUD + subscribe + findByName (fuzzy matching)
+- `clubFactory` — CRUD + subscribe + findByName (fuzzy matching) + uploadLogo (Storage)
 - `competitionFactory` — CRUD + setStatus + saveEventOrder + saveProgress
 - `participantFactory` — subscribe + setPresence + setScratchedForEvent/All + importBatch
 - `blockFactory` — CRUD + subscribe + setStatus
 
-`dbSchema.js` raakt enkel Firestore aan, nooit Firebase Auth — het aanmaken en
-inloggen van gebruikers gebeurt in `AppContext.jsx` (zie hieronder), want dat
-vereist Auth-SDK-calls (`signInWithEmailAndPassword`, een tijdelijke secundaire
-app-instantie om nieuwe accounts aan te maken) die niets met Firestore te maken
-hebben.
+`dbSchema.js` raakt Firestore én Firebase Storage aan (`clubFactory.uploadLogo`)
+maar nooit Firebase Auth — het aanmaken en inloggen van gebruikers gebeurt in
+`AppContext.jsx` (zie hieronder), want dat vereist Auth-SDK-calls
+(`signInWithEmailAndPassword`, een tijdelijke secundaire app-instantie om
+nieuwe accounts aan te maken) die niets met Firestore/Storage te maken hebben.
+`initDb(db, appId, storage)` krijgt de Storage-instantie mee vanuit
+`AppContext.jsx`, dezelfde plek waar ook Firestore en Auth geïnitialiseerd
+worden — één Firebase-app-instantie voor alles.
 
 ---
 

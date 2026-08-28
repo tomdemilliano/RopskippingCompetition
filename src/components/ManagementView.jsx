@@ -1,20 +1,22 @@
 /**
  * ManagementView.jsx — RopeScore Pro
  *
- * Beheerscherm. Twee subpagina's:
- *   - CompetitionsOverview  (startpagina — lijst van alle wedstrijden)
- *   - CompetitionDetail     (na selectie — details + deelnemers + acties)
+ * Beheerscherm, drie secties (sectionTabs):
+ *   - Wedstrijden  → CompetitionsOverview (lijst) / CompetitionDetail (na selectie)
+ *   - Clubs        → ClubManagement (stamdata + logo-upload)
+ *   - Gebruikers   → UserManagement (rollen + rechten)
  *
- * Navigatie verloopt via lokale state (view + selectedCompId).
+ * Navigatie verloopt via lokale state (section, view + selectedCompId).
  * Modals: aanmaken, bewerken wedstrijd, deelnemer bewerken, import.
  */
 
 import React, { useState } from 'react';
-import { ChevronLeft, Trophy, Users } from 'lucide-react';
+import { ChevronLeft, Trophy, Users, Building2 } from 'lucide-react';
 
 import CompetitionsOverview  from './management/CompetitionsOverview';
 import CompetitionDetail     from './management/CompetitionDetail';
 import UserManagement        from './management/UserManagement';
+import ClubManagement        from './management/ClubManagement';
 import AddCompetitionModal   from './management/modals/AddCompetitionModal';
 import EditCompetitionModal  from './management/modals/EditCompetitionModal';
 import EditParticipantModal  from './management/modals/EditParticipantModal';
@@ -137,12 +139,16 @@ export default function ManagementView() {
         <button style={s.sectionTab(section === 'wedstrijden')} onClick={() => setSection('wedstrijden')}>
           <Trophy size={14} /> Wedstrijden
         </button>
+        <button style={s.sectionTab(section === 'clubs')} onClick={() => setSection('clubs')}>
+          <Building2 size={14} /> Clubs
+        </button>
         <button style={s.sectionTab(section === 'gebruikers')} onClick={() => setSection('gebruikers')}>
           <Users size={14} /> Gebruikers
         </button>
       </div>
 
       {section === 'gebruikers' && <UserManagement />}
+      {section === 'clubs' && <ClubManagement />}
 
       {/* ── OVERZICHT ── */}
       {section === 'wedstrijden' && view === 'overview' && (
