@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
+import { timeToMinutes } from '../timeUtils';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -273,10 +274,20 @@ export default function LiveView() {
     loadBlocks(activeCompetition?.id ?? null);
   }, [activeCompetition?.id, loadParticipants, loadBlocks]);
 
-  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
-  const currentBlock = useMemo(() =>
-    [...blocks].sort((a, b) => a.order - b.order).find(b => b.status !== 'afgewerkt') ?? null,
+  // Dagtijdlijn, op volgorde. Huidig blok = eerste blok dat nog niet
+  // afgewerkt is — dit bepaalt zowel de pauzeschermen als, hieronder, welk
+  // onderdeel/tijdvenster de speaker nu moet doorlopen.
+  const sortedBlocks = useMemo(() =>
+    [...blocks].sort((a, b) => a.order - b.order),
   [blocks]);
+  const currentBlock = useMemo(() =>
+    sortedBlocks.find(b => b.status !== 'afgewerkt') ?? null,
+  [sortedBlocks]);
+  const nextBlock = useMemo(() => {
+    if (!currentBlock) return null;
+    const idx = sortedBlocks.findIndex(b => b.id === currentBlock.id);
+    return idx >= 0 ? (sortedBlocks[idx + 1] ?? null) : null;
+  }, [sortedBlocks, currentBlock]);
   const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
   const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
 
@@ -291,17 +302,26 @@ export default function LiveView() {
   const firstActiveEvent = sortedEvents.find(ev => !finishedEvents.includes(ev.id)) ?? sortedEvents[0];
   const [activeEventId, setActiveEventId] = useState(null);
 
+  // Volg de dagtijdlijn: zodra het huidige blok een "heats"-blok is, schakelt
+  // de speaker automatisch naar dát onderdeel over — ook wanneer een pauze
+  // net afgesloten is en het volgende blok hetzelfde of een ander onderdeel
+  // hervat. Zonder blokken (bv. een wedstrijd zonder dagtijdlijn) valt dit
+  // terug op het klassieke "eerste niet-voltooide event".
   useEffect(() => {
-    if (sortedEvents.length > 0 && !activeEventId) {
+    if (currentBlock?.type === 'heats' && currentBlock.eventId) {
+      if (activeEventId !== currentBlock.eventId) setActiveEventId(currentBlock.eventId);
+    } else if (!currentBlock && !activeEventId && sortedEvents.length > 0) {
       setActiveEventId(firstActiveEvent?.id ?? sortedEvents[0].id);
     }
-  }, [sortedEvents.length]);
+  }, [currentBlock?.id, currentBlock?.type, currentBlock?.eventId, sortedEvents.length]);
 
   const activeEvent = events.find(e => e.id === activeEventId) ?? null;
   const isFreestyle = activeEvent?.scoringType === 'freestyle';
 
-  // Deelnemers voor het actieve event, gesorteerd op seriesNr dan fieldNr
-  const eventParticipants = useMemo(() => {
+  // Alle deelnemers voor het actieve event (ongescoped), gesorteerd op
+  // seriesNr dan fieldNr — o.a. nodig om te bepalen of een reeks echt de
+  // LAATSTE van het hele onderdeel is (i.p.v. enkel van het huidige blok).
+  const allEventParticipants = useMemo(() => {
     if (!activeEventId) return [];
     return participants
       .filter(p => p.entries.some(e => e.eventId === activeEventId && !e.isScratched))
@@ -315,24 +335,58 @@ export default function LiveView() {
       });
   }, [participants, activeEventId]);
 
-  // Unieke reeksnummers voor dit event
+  const allSeriesNrs = useMemo(() =>
+    [...new Set(allEventParticipants.map(p => p._entry.seriesNr).filter(Boolean))].sort((a, b) => a - b),
+  [allEventParticipants]);
+
+  // Eén onderdeel kan over meerdere fysieke blokken lopen (bv. Freestyles
+  // onderbroken door pauzes, of Speed/Endurance met zoveel velden dat ze
+  // over 2 kolomblokken verdeeld staan maar toch 1 blok vormen — zie
+  // pdfSchedule.js). Enkel wanneer een onderdeel ECHT meerdere blokken heeft,
+  // wordt de deelnemerslijst afgebakend tot het tijdvenster van het huidige
+  // blok — zo blijft een simpel, handmatig beheerd onderdeel (nog altijd het
+  // gangbare geval) ongewijzigd zichtbaar, en verschijnt de juiste pauze
+  // precies op het moment dat dát ene blok klaar is.
+  const blocksForActiveEvent = useMemo(
+    () => sortedBlocks.filter(b => b.type === 'heats' && b.eventId === activeEventId),
+    [sortedBlocks, activeEventId]
+  );
+  const inSyncWithBlock = !!currentBlock && currentBlock.type === 'heats' && currentBlock.eventId === activeEventId;
+  const needsBlockWindow = inSyncWithBlock && blocksForActiveEvent.length > 1;
+
+  const eventParticipants = useMemo(() => {
+    if (!needsBlockWindow) return allEventParticipants;
+    const startMin = timeToMinutes(currentBlock.scheduledTime);
+    const endMin = nextBlock?.scheduledTime ? timeToMinutes(nextBlock.scheduledTime) : null;
+    return allEventParticipants.filter(p => {
+      const mins = timeToMinutes(p._entry.scheduledTime);
+      if (mins === null || startMin === null) return true; // niet te bepalen — liever tonen dan verbergen
+      if (mins < startMin) return false;
+      if (endMin !== null && mins >= endMin) return false;
+      return true;
+    });
+  }, [needsBlockWindow, allEventParticipants, currentBlock, nextBlock]);
+
+  // Unieke reeksnummers binnen het huidige (eventueel afgebakende) venster
   const seriesNrs = useMemo(() =>
     [...new Set(eventParticipants.map(p => p._entry.seriesNr).filter(Boolean))].sort((a, b) => a - b),
   [eventParticipants]);
 
-  // Actieve reeks — initialiseer op eerste niet-voltooide reeks
+  // Actieve reeks — initialiseer op eerste niet-voltooide reeks (zie effect hieronder)
   const doneInEvent = finishedSeries[activeEventId] ?? [];
-  const firstActiveSeries = seriesNrs.find(nr => !doneInEvent.includes(nr)) ?? seriesNrs[0] ?? 1;
   const [activeSeriesNr, setActiveSeriesNr] = useState(1);
 
-  // Reset reeks bij event-wissel
+  // Reset reeks bij event-wissel of bij een blok-wissel binnen hetzelfde
+  // onderdeel (bv. van het eerste naar het tweede Freestyles-blok na een
+  // pauze) — anders blijft activeSeriesNr hangen op de net afgesloten reeks
+  // van het vorige venster.
   useEffect(() => {
     if (activeEventId) {
       const done = finishedSeries[activeEventId] ?? [];
       const first = seriesNrs.find(nr => !done.includes(nr)) ?? seriesNrs[0] ?? 1;
       setActiveSeriesNr(first);
     }
-  }, [activeEventId]);
+  }, [activeEventId, currentBlock?.id]);
 
   // Deelnemers in de actieve reeks
   const currentSeriesParticipants = useMemo(() =>
@@ -378,17 +432,32 @@ export default function LiveView() {
   [eventParticipants, activeSeriesNr]);
 
   const handleFinishSeries = async () => {
-    const isLastInEvent = isLastSeries;
+    // "Klaar" voor het hele onderdeel (finishedEvents) betekent de ECHTE
+    // laatste reeks over al zijn blokken heen — niet enkel de laatste binnen
+    // het huidige, eventueel afgebakende tijdvenster.
+    const isLastInEvent = activeSeriesNr === allSeriesNrs[allSeriesNrs.length - 1];
     await finishSeries(activeEventId, activeSeriesNr, isLastInEvent);
 
     if (!isLastSeries) {
       setActiveSeriesNr(seriesNrs[seriesIdx + 1]);
-    } else {
-      // Ga naar volgend event
-      const eventIdx = sortedEvents.findIndex(e => e.id === activeEventId);
-      if (eventIdx < sortedEvents.length - 1) {
-        setActiveEventId(sortedEvents[eventIdx + 1].id);
-      }
+      return;
+    }
+
+    if (inSyncWithBlock && currentBlock) {
+      // Dit blok (bij een enkelvoudig blok meteen ook het hele onderdeel) is
+      // klaar — de dagtijdlijn schuift door naar het volgende blok (pauze of
+      // een volgend/hervat onderdeel); activeEventId/activeSeriesNr volgen
+      // automatisch zodra blocks vernieuwt (zie de effects hierboven).
+      await setBlockStatus(activeCompetition.id, currentBlock.id, 'afgewerkt');
+      return;
+    }
+
+    // Geen (gesynchroniseerd) blok voor dit onderdeel — bv. handmatige
+    // navigatie naar een ander onderdeel dan wat de dagtijdlijn aangeeft.
+    // Val terug op het klassieke gedrag: gewoon naar het volgend event.
+    const eventIdx = sortedEvents.findIndex(e => e.id === activeEventId);
+    if (eventIdx < sortedEvents.length - 1) {
+      setActiveEventId(sortedEvents[eventIdx + 1].id);
     }
   };
 
