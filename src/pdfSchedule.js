@@ -251,7 +251,15 @@ export function parseSchedule(pages, events) {
 
       const header = classifyHeaderRow(items);
       if (header) {
-        flushHeatsBlock();
+        // Bewust GEEN flushHeatsBlock() hier: een "Veld"-kopregel kan
+        // meermaals terugkeren voor hetzelfde, nog lopende onderdeel — bv.
+        // Speed/Endurance met zoveel velden dat ze niet naast elkaar op de
+        // pagina passen (Veld 1-5, dan een aparte kopregel Veld 6-10 voor
+        // exact diezelfde reeksen). Zo'n herhaling is een kolomblok, geen
+        // nieuw fysiek blok — enkel een echte onderdeelnaam-regel of een
+        // pauze/label-regel sluit het huidige heats-blok af (zie hieronder).
+        // Zonder deze aanpassing zou elke kolomblok-herhaling een eigen,
+        // overbodige dagtijdlijn-blok opleveren voor exact hetzelfde tijdslot.
         activeColumns = { kind: header.kind, boundaries: columnBoundaries(header.columns) };
         continue;
       }
