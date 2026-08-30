@@ -14,6 +14,7 @@ import {
   Mic2, FastForward, Ghost, Clock, Coffee,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { color, radius, shadow, font } from '../theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -27,18 +28,18 @@ const s = {
     overflow: 'hidden',
   },
   leftPanel: {
-    background: '#fff',
-    borderRight: '1px solid #e2e8f0',
+    background: color.surface,
+    borderRight: `1px solid ${color.border}`,
     display: 'flex',
     flexDirection: 'column',
     overflowY: 'auto',
   },
   leftHeader: {
     padding: '1rem 1.25rem',
-    borderBottom: '1px solid #eee',
+    borderBottom: `1px solid ${color.borderSoft}`,
     fontSize: '0.7rem',
     fontWeight: 900,
-    color: '#94a3b8',
+    color: color.faint,
     letterSpacing: '0.08em',
     textTransform: 'uppercase',
     flexShrink: 0,
@@ -46,11 +47,11 @@ const s = {
   eventRow: (active, done) => ({
     padding: '0.9rem 1.25rem',
     cursor: 'pointer',
-    borderBottom: '1px solid #f8fafc',
-    background: active ? '#f0f7ff' : done ? '#f8fafc' : '#fff',
-    color: active ? '#2563eb' : done ? '#94a3b8' : '#475569',
+    borderBottom: `1px solid ${color.surfaceAlt}`,
+    background: active ? color.primarySoft : done ? color.surfaceAlt : color.surface,
+    color: active ? color.primary : done ? color.faint : color.body,
     fontWeight: active ? 700 : 400,
-    borderLeft: active ? '4px solid #2563eb' : '4px solid transparent',
+    borderLeft: active ? `4px solid ${color.primary}` : '4px solid transparent',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -59,7 +60,7 @@ const s = {
   content: {
     padding: '1.5rem',
     overflowY: 'auto',
-    background: '#f8fafc',
+    background: color.surfaceAlt,
     display: 'flex',
     flexDirection: 'column',
     gap: '1.5rem',
@@ -68,12 +69,12 @@ const s = {
     textAlign: 'center',
     fontSize: '0.7rem',
     fontWeight: 900,
-    color: '#94a3b8',
+    color: color.faint,
     letterSpacing: '0.1em',
     textTransform: 'uppercase',
   },
   navCard: {
-    background: '#fff',
+    background: color.surface,
     borderRadius: '12px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
     padding: '1rem 1.5rem',
@@ -88,8 +89,8 @@ const s = {
     gap: '1rem',
   },
   navBtn: (disabled) => ({
-    background: '#fff',
-    border: '1px solid #cbd5e1',
+    background: color.surface,
+    border: `1px solid ${color.faintest}`,
     borderRadius: '8px',
     padding: '0.5rem',
     cursor: disabled ? 'not-allowed' : 'pointer',
@@ -102,41 +103,41 @@ const s = {
   seriesLabel: (done) => ({
     fontSize: '1.8rem',
     fontWeight: 900,
-    color: done ? '#10b981' : '#1e293b',
+    color: done ? color.success : color.inkSoft,
     textAlign: 'center',
   }),
   seriesCount: {
-    color: '#94a3b8',
+    color: color.faint,
     fontWeight: 400,
     fontSize: '1.2rem',
     marginLeft: '4px',
   },
   timeInfo: {
     fontSize: '0.85rem',
-    color: '#64748b',
+    color: color.muted,
     fontWeight: 700,
     textAlign: 'center',
   },
   timeDelta: (late) => ({
-    color: late ? '#ef4444' : '#10b981',
+    color: late ? color.danger : color.success,
     marginLeft: '6px',
   }),
   doneTag: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    color: '#10b981',
+    color: color.success,
     fontWeight: 900,
-    background: '#f0fdf4',
+    background: color.successSoft,
     padding: '0.5rem 1.5rem',
     borderRadius: '8px',
-    border: '2px solid #bbf7d0',
+    border: `2px solid ${color.successBorder}`,
     fontSize: '0.875rem',
     justifyContent: 'center',
   },
   nextBtn: {
-    background: '#10b981',
-    color: '#fff',
+    background: color.success,
+    color: color.surface,
     border: 'none',
     borderRadius: '8px',
     padding: '0.6rem 2rem',
@@ -158,10 +159,10 @@ const s = {
     margin: '0 auto',
   },
   fieldCard: (hasSkipper, done) => ({
-    background: done ? '#f1f5f9' : hasSkipper ? '#fff' : 'transparent',
+    background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
     padding: '0.6rem 1rem',
     borderRadius: '10px',
-    border: hasSkipper ? '1px solid #cbd5e1' : '1px dashed #cbd5e1',
+    border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
     display: 'flex',
     alignItems: 'center',
     gap: '1rem',
@@ -170,8 +171,8 @@ const s = {
     opacity: done ? 0.6 : 1,
   }),
   fieldNrBadge: (hasSkipper, done) => ({
-    background: hasSkipper ? (done ? '#94a3b8' : '#2563eb') : '#cbd5e1',
-    color: '#fff',
+    background: hasSkipper ? (done ? color.faint : color.primary) : color.faintest,
+    color: color.surface,
     width: '32px',
     height: '32px',
     borderRadius: '8px',
@@ -192,15 +193,15 @@ const s = {
     width: '100%',
   },
   currentCard: (done) => ({
-    background: done ? '#f1f5f9' : '#334155',
-    color: done ? '#94a3b8' : '#fff',
+    background: done ? color.borderSoft : color.slate,
+    color: done ? color.faint : color.surface,
     padding: '1.2rem 2rem',
     borderRadius: '16px',
-    border: done ? '1px solid #e2e8f0' : 'none',
+    border: done ? `1px solid ${color.border}` : 'none',
   }),
   nextCard: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
+    background: color.surface,
+    border: `1px solid ${color.border}`,
     padding: '1rem 1.5rem',
     borderRadius: '16px',
     display: 'flex',
@@ -212,8 +213,8 @@ const s = {
     maxHeight: '320px',
     overflowY: 'auto',
     borderRadius: '12px',
-    border: '1px solid #e2e8f0',
-    background: '#fff',
+    border: `1px solid ${color.border}`,
+    background: color.surface,
   },
   emptyState: {
     display: 'flex',
@@ -221,7 +222,7 @@ const s = {
     alignItems: 'center',
     justifyContent: 'center',
     height: '60vh',
-    color: '#94a3b8',
+    color: color.faint,
     textAlign: 'center',
     gap: '1.5rem',
   },
@@ -396,13 +397,13 @@ export default function LiveView() {
     return (
       <div style={s.emptyState}>
         <div style={{
-          background: '#f1f5f9', padding: '2rem', borderRadius: '50%',
-          border: '4px solid #e2e8f0',
+          background: color.borderSoft, padding: '2rem', borderRadius: '50%',
+          border: `4px solid ${color.border}`,
         }}>
-          <Ghost size={72} color="#cbd5e1" strokeWidth={1.5} />
+          <Ghost size={72} color={color.faintest} strokeWidth={1.5} />
         </div>
         <div>
-          <div style={{ fontWeight: 800, color: '#475569', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+          <div style={{ fontWeight: 800, color: color.body, fontSize: '1.1rem', marginBottom: '0.5rem' }}>
             Geen actieve wedstrijd
           </div>
           <div style={{ fontSize: '0.875rem', maxWidth: '280px', lineHeight: 1.6 }}>
@@ -418,13 +419,13 @@ export default function LiveView() {
     return (
       <div style={s.emptyState}>
         <div style={{
-          background: '#eff6ff', padding: '2rem', borderRadius: '50%',
-          border: '4px solid #bfdbfe',
+          background: color.primarySoft, padding: '2rem', borderRadius: '50%',
+          border: `4px solid ${color.primaryBorder}`,
         }}>
-          <Coffee size={72} color="#2563eb" strokeWidth={1.5} />
+          <Coffee size={72} color={color.primary} strokeWidth={1.5} />
         </div>
         <div>
-          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.4rem', marginBottom: '0.5rem' }}>
+          <div style={{ fontWeight: 800, color: color.inkSoft, fontSize: '1.4rem', marginBottom: '0.5rem' }}>
             {breakLabel}
           </div>
           <div style={{ fontSize: '0.875rem', maxWidth: '280px', lineHeight: 1.6, margin: '0 auto' }}>
@@ -453,7 +454,7 @@ export default function LiveView() {
               onClick={() => setActiveEventId(ev.id)}
             >
               <span>{ev.name}</span>
-              {done && <Check size={14} color="#10b981" />}
+              {done && <Check size={14} color={color.success} />}
             </div>
           );
         })}
@@ -528,12 +529,12 @@ export default function LiveView() {
                   <div style={{ flex: 1, overflow: 'hidden' }}>
                     <div style={{
                       fontWeight: 800, fontSize: '1rem',
-                      color: skipper ? '#1e293b' : '#cbd5e1',
+                      color: skipper ? color.inkSoft : color.faintest,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
                       {skipper?.name ?? '---'}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '0.75rem', color: color.faint }}>
                       {club?.name ?? ''}
                     </div>
                   </div>
@@ -584,20 +585,20 @@ export default function LiveView() {
                 <div style={s.nextCard}>
                   <div>
                     <div style={{
-                      color: '#64748b', fontWeight: 700, fontSize: '0.65rem',
+                      color: color.muted, fontWeight: 700, fontSize: '0.65rem',
                       display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px',
                     }}>
                       <FastForward size={13} /> VOLGENDE
                     </div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
                       {upcomingParticipants[0].name}
                     </div>
-                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                    <div style={{ fontSize: '0.85rem', color: color.muted }}>
                       {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right', color: '#64748b' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
+                  <div style={{ textAlign: 'right', color: color.muted }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.slate }}>
                       VELD {upcomingParticipants[0]._entry.fieldNr}
                     </div>
                     <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
@@ -611,15 +612,15 @@ export default function LiveView() {
                 {upcomingParticipants.length > 1 && (
                   <div>
                     <div style={{
-                      fontSize: '0.7rem', fontWeight: 900, color: '#94a3b8',
+                      fontSize: '0.7rem', fontWeight: 900, color: color.faint,
                       marginBottom: '0.5rem', letterSpacing: '0.05em',
                     }}>
                       VERDER PROGRAMMA
                     </div>
                     <div style={s.programTable}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                        <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
-                          <tr style={{ color: '#64748b', borderBottom: '2px solid #f1f5f9' }}>
+                        <thead style={{ position: 'sticky', top: 0, background: color.surfaceAlt, zIndex: 1 }}>
+                          <tr style={{ color: color.muted, borderBottom: `2px solid ${color.borderSoft}` }}>
                             <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Tijd</th>
                             <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Veld</th>
                             <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Skipper</th>
@@ -631,19 +632,19 @@ export default function LiveView() {
                             const expected  = calcExpectedTime(p._entry.scheduledTime, timeDiff);
                             const isDelayed = expected !== p._entry.scheduledTime;
                             return (
-                              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '0.6rem 1rem', color: isDelayed ? '#ef4444' : '#64748b' }}>
+                              <tr key={idx} style={{ borderBottom: `1px solid ${color.borderSoft}` }}>
+                                <td style={{ padding: '0.6rem 1rem', color: isDelayed ? color.danger : color.muted }}>
                                   <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <Clock size={11} /> {expected}
                                   </span>
                                 </td>
-                                <td style={{ padding: '0.6rem 1rem', fontWeight: 700, color: '#334155' }}>
+                                <td style={{ padding: '0.6rem 1rem', fontWeight: 700, color: color.slate }}>
                                   {p._entry.fieldNr}
                                 </td>
-                                <td style={{ padding: '0.6rem 1rem', fontWeight: 800, color: '#1e293b' }}>
+                                <td style={{ padding: '0.6rem 1rem', fontWeight: 800, color: color.inkSoft }}>
                                   {p.name}
                                 </td>
-                                <td style={{ padding: '0.6rem 1rem', color: '#64748b' }}>
+                                <td style={{ padding: '0.6rem 1rem', color: color.muted }}>
                                   {getClub(p.clubId)?.name ?? ''}
                                 </td>
                               </tr>
