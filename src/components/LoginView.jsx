@@ -1,5 +1,5 @@
 /**
- * LoginView.jsx — RopeScore Pro
+ * LoginView.jsx — SkipFlow
  *
  * Inlogscherm. Wordt getoond zodra Firebase klaar is maar er nog niemand
  * ingelogd is — vóór elk ander scherm.

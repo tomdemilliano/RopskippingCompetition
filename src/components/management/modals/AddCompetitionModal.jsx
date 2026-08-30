@@ -1,5 +1,5 @@
 /**
- * AddCompetitionModal.jsx — RopeScore Pro
+ * AddCompetitionModal.jsx — SkipFlow
  */
 
 import React, { useState } from 'react';

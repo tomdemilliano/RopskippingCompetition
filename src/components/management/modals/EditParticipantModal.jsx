@@ -1,5 +1,5 @@
 /**
- * EditParticipantModal.jsx — RopeScore Pro
+ * EditParticipantModal.jsx — SkipFlow
  *
  * Bewerken van naam, club en schrapstatus per onderdeel.
  */

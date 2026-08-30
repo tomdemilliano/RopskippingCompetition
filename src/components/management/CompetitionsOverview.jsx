@@ -1,5 +1,5 @@
 /**
- * CompetitionsOverview.jsx — RopeScore Pro
+ * CompetitionsOverview.jsx — SkipFlow
  *
  * Startpagina van de beheer-view.
  * Toont alle wedstrijden gesorteerd op datum (oplopend),
@@ -9,13 +9,15 @@
  * Klikken op een kaart navigeert naar CompetitionDetail.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   Plus, Calendar, MapPin, Trophy, ChevronRight,
-  Trash2, Edit2, Users, AlertCircle, CheckCircle2,
-  Radio, Flag,
+  Trash2, Edit2, Radio, Flag,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
+import { color, radius, shadow } from '../../theme';
+import Button from '../ui/Button';
+import Badge from '../ui/Badge';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -25,38 +27,31 @@ const s = {
   page: {
     flex: 1,
     overflowY: 'auto',
-    background: '#f1f5f9',
-    padding: '2rem',
+    background: color.bg,
+    padding: '2rem 1.75rem',
+  },
+  inner: {
+    maxWidth: '1080px',
+    margin: '0 auto',
   },
   topBar: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '2rem',
+    flexWrap: 'wrap',
+    gap: '1rem',
   },
   heading: {
-    fontSize: '1.5rem',
+    fontSize: '1.4rem',
     fontWeight: 900,
-    color: '#0f172a',
+    color: color.ink,
     margin: 0,
   },
   subheading: {
     fontSize: '0.85rem',
-    color: '#94a3b8',
+    color: color.faint,
     marginTop: '2px',
-  },
-  newBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    background: '#2563eb',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '0.6rem 1.25rem',
-    fontWeight: 700,
-    fontSize: '0.875rem',
-    cursor: 'pointer',
   },
 
   // Sectie
@@ -64,9 +59,9 @@ const s = {
     marginBottom: '2rem',
   },
   sectionLabel: {
-    fontSize: '0.65rem',
+    fontSize: '0.68rem',
     fontWeight: 900,
-    color: '#94a3b8',
+    color: color.faint,
     letterSpacing: '0.1em',
     textTransform: 'uppercase',
     marginBottom: '0.75rem',
@@ -74,45 +69,36 @@ const s = {
     alignItems: 'center',
     gap: '6px',
   },
-  sectionDot: (color) => ({
+  sectionDot: (c) => ({
     width: '7px',
     height: '7px',
     borderRadius: '50%',
-    background: color,
+    background: c,
     flexShrink: 0,
   }),
 
   // Kaarten grid
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
     gap: '1rem',
   },
 
   // Wedstrijdkaart
-  card: (isLive, isDone, isSelected) => ({
-    background: '#fff',
-    borderRadius: '12px',
-    border: '2px solid',
-    borderColor: isLive
-      ? '#ef4444'
-      : isSelected
-        ? '#2563eb'
-        : isDone
-          ? '#e2e8f0'
-          : '#e2e8f0',
+  card: (isLive, isDone) => ({
+    background: color.surface,
+    borderRadius: radius.lg,
+    border: `1px solid ${isLive ? color.dangerBorder : color.border}`,
     cursor: 'pointer',
-    transition: 'all 0.15s',
+    transition: 'transform 0.12s ease, box-shadow 0.12s ease',
     overflow: 'hidden',
     opacity: isDone ? 0.75 : 1,
-    boxShadow: isLive
-      ? '0 0 0 3px rgba(239,68,68,0.15)'
-      : '0 1px 3px rgba(0,0,0,0.06)',
+    boxShadow: isLive ? shadow.focus(color.danger) : shadow.sm,
   }),
   cardTop: (isLive) => ({
     padding: '1rem 1.25rem',
-    borderBottom: '1px solid #f1f5f9',
-    background: isLive ? '#fef2f2' : 'transparent',
+    borderBottom: `1px solid ${color.borderSoft}`,
+    background: isLive ? color.dangerSoft : 'transparent',
   }),
   cardTitleRow: {
     display: 'flex',
@@ -124,37 +110,10 @@ const s = {
   cardName: (isDone) => ({
     fontWeight: 800,
     fontSize: '1rem',
-    color: isDone ? '#64748b' : '#1e293b',
+    color: isDone ? color.muted : color.inkSoft,
     lineHeight: 1.2,
     flex: 1,
   }),
-  badges: {
-    display: 'flex',
-    gap: '4px',
-    flexShrink: 0,
-    alignItems: 'center',
-  },
-  badgeLive: {
-    background: '#ef4444',
-    color: '#fff',
-    fontSize: '0.55rem',
-    padding: '3px 7px',
-    borderRadius: '4px',
-    fontWeight: 900,
-    letterSpacing: '0.08em',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '3px',
-  },
-  badgeDone: {
-    background: '#94a3b8',
-    color: '#fff',
-    fontSize: '0.55rem',
-    padding: '3px 7px',
-    borderRadius: '4px',
-    fontWeight: 700,
-    letterSpacing: '0.05em',
-  },
   metaRow: {
     display: 'flex',
     gap: '1rem',
@@ -165,7 +124,7 @@ const s = {
     alignItems: 'center',
     gap: '4px',
     fontSize: '0.75rem',
-    color: '#64748b',
+    color: color.muted,
   },
 
   // Kaart onderkant
@@ -175,22 +134,17 @@ const s = {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  statsRow: {
-    display: 'flex',
-    gap: '1rem',
-    alignItems: 'center',
-  },
-  statChip: (color) => ({
+  statChip: (active) => ({
     display: 'flex',
     alignItems: 'center',
     gap: '4px',
     fontSize: '0.75rem',
     fontWeight: 700,
-    color: color ?? '#475569',
-    background: color ? `${color}15` : '#f8fafc',
+    color: active ? color.primaryDark : color.muted,
+    background: active ? color.primarySoft : color.surfaceAlt,
     padding: '3px 8px',
     borderRadius: '6px',
-    border: `1px solid ${color ? `${color}30` : '#e2e8f0'}`,
+    border: `1px solid ${active ? color.primaryBorder : color.border}`,
   }),
   cardActions: {
     display: 'flex',
@@ -199,8 +153,8 @@ const s = {
   actionBtn: (danger) => ({
     background: 'none',
     border: '1px solid',
-    borderColor: danger ? '#fecaca' : '#e2e8f0',
-    color: danger ? '#ef4444' : '#94a3b8',
+    borderColor: danger ? color.dangerBorder : color.border,
+    color: danger ? color.danger : color.faint,
     padding: '5px',
     borderRadius: '6px',
     cursor: 'pointer',
@@ -208,26 +162,11 @@ const s = {
     alignItems: 'center',
   }),
 
-  // Open wedstrijd knop
-  detailBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    color: '#475569',
-    fontSize: '0.75rem',
-    fontWeight: 700,
-    padding: '5px 10px',
-    borderRadius: '6px',
-    cursor: 'pointer',
-  },
-
   // Lege staat
   empty: {
     textAlign: 'center',
     padding: '3rem',
-    color: '#94a3b8',
+    color: color.faint,
     fontSize: '0.875rem',
   },
 };
@@ -250,9 +189,6 @@ export default function CompetitionsOverview({
   const {
     competitions,
     competitionTypes,
-    participants,
-    participantsCompId,
-    loadParticipants,
     deleteCompetition,
   } = useAppContext();
 
@@ -266,14 +202,10 @@ export default function CompetitionsOverview({
     }),
   [competitions]);
 
-  const live    = sorted.filter(c => c.status === 'bezig');
-  const open    = sorted.filter(c => c.status === 'open');
-  const done    = sorted.filter(c => c.status === 'beëindigd');
+  const live = sorted.filter(c => c.status === 'bezig');
+  const open = sorted.filter(c => c.status === 'open');
+  const done = sorted.filter(c => c.status === 'beëindigd');
 
-  // Deelnemerstelling: laad lazy per wedstrijd op hover/click
-  // We gebruiken een simpele teller: het aantal participants dat momenteel
-  // geladen is via de context voor een wedstrijd. Voor een snelle indicatie
-  // tonen we of er al data beschikbaar is.
   const getTypeName = (typeId) =>
     competitionTypes.find(t => t.id === typeId)?.name ?? '—';
 
@@ -302,80 +234,49 @@ export default function CompetitionsOverview({
     return (
       <div
         key={comp.id}
-        style={s.card(isLive, isDone, false)}
+        style={s.card(isLive, isDone)}
         onClick={() => onSelectCompetition(comp.id)}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'none'; }}
       >
-        {/* Bovenste deel */}
         <div style={s.cardTop(isLive)}>
           <div style={s.cardTitleRow}>
             <div style={s.cardName(isDone)}>{comp.name}</div>
-            <div style={s.badges}>
-              {isLive && (
-                <span style={s.badgeLive}>
-                  <Radio size={8} /> LIVE
-                </span>
-              )}
-              {isDone && (
-                <span style={s.badgeDone}>VOLTOOID</span>
-              )}
-            </div>
+            {isLive && <Badge tone="solidDanger" icon={<Radio size={8} />}>LIVE</Badge>}
+            {isDone && <Badge tone="neutral">VOLTOOID</Badge>}
           </div>
 
           <div style={s.metaRow}>
             {comp.date && (
-              <span style={s.metaItem}>
-                <Calendar size={12} color="#94a3b8" />
-                {comp.date}
-              </span>
+              <span style={s.metaItem}><Calendar size={12} />{comp.date}</span>
             )}
             {comp.location && (
-              <span style={s.metaItem}>
-                <MapPin size={12} color="#94a3b8" />
-                {comp.location}
-              </span>
+              <span style={s.metaItem}><MapPin size={12} />{comp.location}</span>
             )}
-            <span style={s.metaItem}>
-              <Trophy size={12} color="#94a3b8" />
-              {typeName}
-            </span>
+            <span style={s.metaItem}><Trophy size={12} />{typeName}</span>
           </div>
         </div>
 
-        {/* Onderste deel */}
         <div style={s.cardBottom}>
-          <div style={s.statsRow}>
-            <span style={s.statChip(eventCount > 0 ? '#2563eb' : '#94a3b8')}>
-              <Flag size={11} />
-              {eventCount} onderdelen
-            </span>
-          </div>
+          <span style={s.statChip(eventCount > 0)}>
+            <Flag size={11} />
+            {eventCount} onderdelen
+          </span>
 
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            {/* Acties — niet tonen voor live wedstrijden */}
             {!isLive && (
               <div style={s.cardActions} onClick={e => e.stopPropagation()}>
-                <button
-                  style={s.actionBtn(false)}
-                  title="Bewerken"
-                  onClick={(e) => handleEdit(e, comp.id)}
-                >
+                <button style={s.actionBtn(false)} title="Bewerken" onClick={(e) => handleEdit(e, comp.id)}>
                   <Edit2 size={13} />
                 </button>
-                {!isLive && (
-                  <button
-                    style={s.actionBtn(true)}
-                    title="Verwijderen"
-                    onClick={(e) => handleDelete(e, comp)}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                )}
+                <button style={s.actionBtn(true)} title="Verwijderen" onClick={(e) => handleDelete(e, comp)}>
+                  <Trash2 size={13} />
+                </button>
               </div>
             )}
-
-            <button style={s.detailBtn}>
+            <Button variant="secondary" size="sm">
               Openen <ChevronRight size={13} />
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -386,68 +287,49 @@ export default function CompetitionsOverview({
 
   return (
     <div style={s.page}>
-      {/* Header */}
-      <div style={s.topBar}>
-        <div>
-          <h1 style={s.heading}>Wedstrijden</h1>
-          <div style={s.subheading}>
-            {totalCount === 0
-              ? 'Nog geen wedstrijden aangemaakt'
-              : `${totalCount} wedstrijd${totalCount !== 1 ? 'en' : ''} in totaal`}
+      <div style={s.inner}>
+        <div style={s.topBar}>
+          <div>
+            <h1 style={s.heading}>Wedstrijden</h1>
+            <div style={s.subheading}>
+              {totalCount === 0
+                ? 'Nog geen wedstrijden aangemaakt'
+                : `${totalCount} wedstrijd${totalCount !== 1 ? 'en' : ''} in totaal`}
+            </div>
           </div>
+          <Button variant="primary" icon={<Plus size={16} />} onClick={onNewCompetition}>
+            Nieuwe wedstrijd
+          </Button>
         </div>
-        <button style={s.newBtn} onClick={onNewCompetition}>
-          <Plus size={16} />
-          Nieuwe wedstrijd
-        </button>
+
+        {live.length > 0 && (
+          <div style={s.section}>
+            <div style={s.sectionLabel}><div style={s.sectionDot(color.danger)} />Nu bezig</div>
+            <div style={s.grid}>{live.map(renderCard)}</div>
+          </div>
+        )}
+
+        {open.length > 0 && (
+          <div style={s.section}>
+            <div style={s.sectionLabel}><div style={s.sectionDot(color.primary)} />Gepland</div>
+            <div style={s.grid}>{open.map(renderCard)}</div>
+          </div>
+        )}
+
+        {done.length > 0 && (
+          <div style={s.section}>
+            <div style={s.sectionLabel}><div style={s.sectionDot(color.faint)} />Voltooid</div>
+            <div style={s.grid}>{done.map(renderCard)}</div>
+          </div>
+        )}
+
+        {totalCount === 0 && (
+          <div style={s.empty}>
+            <div style={{ marginBottom: '0.5rem', fontSize: '2rem' }}>🏆</div>
+            Nog geen wedstrijden. Klik op "Nieuwe wedstrijd" om te beginnen.
+          </div>
+        )}
       </div>
-
-      {/* Live */}
-      {live.length > 0 && (
-        <div style={s.section}>
-          <div style={s.sectionLabel}>
-            <div style={s.sectionDot('#ef4444')} />
-            Nu bezig
-          </div>
-          <div style={s.grid}>
-            {live.map(renderCard)}
-          </div>
-        </div>
-      )}
-
-      {/* Gepland */}
-      {open.length > 0 && (
-        <div style={s.section}>
-          <div style={s.sectionLabel}>
-            <div style={s.sectionDot('#2563eb')} />
-            Gepland
-          </div>
-          <div style={s.grid}>
-            {open.map(renderCard)}
-          </div>
-        </div>
-      )}
-
-      {/* Voltooid */}
-      {done.length > 0 && (
-        <div style={s.section}>
-          <div style={s.sectionLabel}>
-            <div style={s.sectionDot('#94a3b8')} />
-            Voltooid
-          </div>
-          <div style={s.grid}>
-            {done.map(renderCard)}
-          </div>
-        </div>
-      )}
-
-      {/* Leeg */}
-      {totalCount === 0 && (
-        <div style={s.empty}>
-          <div style={{ marginBottom: '0.5rem', fontSize: '2rem' }}>🏆</div>
-          Nog geen wedstrijden. Klik op "Nieuwe wedstrijd" om te beginnen.
-        </div>
-      )}
     </div>
   );
 }

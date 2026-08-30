@@ -1,29 +1,34 @@
 /**
- * App.jsx — RopeScore Pro
+ * App.jsx — SkipFlow
  *
  * Dunne shell. Verantwoordelijk voor:
  *   - Auth-wachtstatus en inlogscherm tonen
- *   - Routing tussen de schermen (beheer / aanwezigheid / speaker / scherm / scherm/podium),
- *     elk bewaakt door hasPermission() uit AppContext
- *   - Klok + uitlogknop in de header
+ *   - Routing: "/" is de landingspagina (tegels), elk scherm daarna heeft
+ *     zijn eigen URL, bewaakt door hasPermission() uit AppContext
+ *   - Header: logo (→ terug naar landingspagina), klok, gebruiker + afmelden
  *
- * Elk scherm heeft een eigen URL (hash-routing — geen server-rewrites nodig op Vercel),
- * zodat elke fysieke werkplek (inkomtafel, speakertafel, groot scherm) er los naartoe
- * kan navigeren zonder eerst door Beheer te moeten — mits die gebruiker het recht heeft.
+ * Navigatie tussen schermen gebeurt uitsluitend via de landingspagina —
+ * de header zelf bevat geen kruis-scherm knoppen meer.
+ *
+ * Elk scherm heeft een eigen URL (hash-routing — geen server-rewrites nodig op
+ * Vercel), zodat elke fysieke werkplek (inkomtafel, speakertafel, groot scherm)
+ * er los naartoe kan navigeren.
  *
  * Alle data en acties komen uit AppContext.
  * Alle Firebase-toegang verloopt via dbSchema.js.
  */
 
 import React, { useState, useEffect } from 'react';
-import { Ghost, LogOut, ShieldOff } from 'lucide-react';
+import { Ghost, LogOut, ShieldOff, Home } from 'lucide-react';
 import {
   HashRouter, Routes, Route, Navigate,
-  Outlet, useLocation, useNavigate,
+  Outlet, useNavigate,
 } from 'react-router-dom';
 
 import { AppProvider, useAppContext } from './AppContext';
+import { color, font } from './theme';
 import LoginView from './components/LoginView';
+import HubView from './components/HubView';
 import ManagementView from './components/ManagementView';
 import LiveView from './components/LiveView';
 import DisplayView from './components/DisplayView';
@@ -39,68 +44,72 @@ const styles = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#f1f5f9',
-    fontFamily: 'sans-serif',
+    backgroundColor: color.bg,
+    fontFamily: font.body,
   },
   header: {
     height: '60px',
-    background: '#fff',
+    background: color.surface,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0 1.5rem',
-    borderBottom: '1px solid #e2e8f0',
+    borderBottom: `1px solid ${color.border}`,
+    flexShrink: 0,
+  },
+  homeLink: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: 0,
+  },
+  homeIcon: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    background: color.ink,
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     flexShrink: 0,
   },
   logo: {
     fontWeight: 900,
-    fontSize: '1rem',
+    fontSize: '1.02rem',
+    color: color.ink,
+    letterSpacing: '-0.01em',
   },
-  navBtn: (active) => ({
-    background: active ? '#2563eb' : '#fff',
-    color: active ? '#fff' : '#475569',
-    border: '1px solid #cbd5e1',
-    padding: '0.5rem 1rem',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: active ? 700 : 400,
-    fontSize: '0.85rem',
-  }),
-  displayBtn: (active) => ({
-    background: active ? '#38bdf8' : '#fff',
-    color: active ? '#0f172a' : '#475569',
-    border: '1px solid #cbd5e1',
-    padding: '0.5rem 1rem',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: active ? 700 : 400,
-    fontSize: '0.85rem',
-  }),
   clock: {
-    fontWeight: 700,
-    fontSize: '0.9rem',
-    background: '#f8fafc',
-    padding: '0.5rem 0.8rem',
+    fontFamily: font.mono,
+    fontWeight: 600,
+    fontSize: '0.85rem',
+    background: color.surfaceAlt,
+    padding: '0.45rem 0.8rem',
     borderRadius: '6px',
-    color: '#64748b',
-    border: '1px solid #e2e8f0',
-    minWidth: '65px',
+    color: color.body,
+    border: `1px solid ${color.border}`,
+    minWidth: '62px',
     textAlign: 'center',
   },
   userChip: {
-    fontSize: '0.8rem',
-    color: '#64748b',
+    fontSize: '0.82rem',
+    color: color.body,
+    fontWeight: 600,
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: '0.6rem',
   },
   logoutBtn: {
     background: 'none',
-    border: '1px solid #cbd5e1',
+    border: `1px solid ${color.faintest}`,
     borderRadius: '6px',
-    padding: '0.45rem',
+    padding: '0.42rem',
     cursor: 'pointer',
-    color: '#64748b',
+    color: color.muted,
     display: 'flex',
     alignItems: 'center',
   },
@@ -110,29 +119,18 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#94a3b8',
+    color: color.faint,
     gap: '1rem',
   },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NAVIGATIE — schermen binnen de normale layout (met header), per rechten-key
-// ─────────────────────────────────────────────────────────────────────────────
-
-const NAV_ITEMS = [
-  { path: '/beheer',       label: 'Beheer',        perm: null },            // enkel beheerder
-  { path: '/aanwezigheid', label: 'Aanwezigheid',  perm: 'aanwezigheid' },
-  { path: '/speaker',      label: 'Speaker',       perm: 'speaker' },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SHELL LAYOUT — header + klok + nav, rendert het actieve scherm via <Outlet/>
+// SHELL LAYOUT — header + klok, rendert het actieve scherm via <Outlet/>
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ShellLayout() {
-  const location = useLocation();
   const navigate = useNavigate();
-  const { userProfile, hasPermission, logout } = useAppContext();
+  const { userProfile, logout } = useAppContext();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -144,36 +142,17 @@ function ShellLayout() {
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
 
-  const isAdmin = userProfile?.role === 'beheerder';
-  const visibleNavItems = NAV_ITEMS.filter(item =>
-    item.perm === null ? isAdmin : hasPermission(item.perm)
-  );
-
   return (
     <div style={styles.wrapper}>
       <header style={styles.header}>
-        <div style={styles.logo}>
-          ROPESCORE <span style={{ color: '#2563eb' }}>PRO</span>
-        </div>
+        <button style={styles.homeLink} onClick={() => navigate('/')} title="Terug naar overzicht">
+          <div style={styles.homeIcon}><Home size={16} /></div>
+          <div style={styles.logo}>
+            SKIP<span style={{ color: color.primary }}>FLOW</span>
+          </div>
+        </button>
 
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          {visibleNavItems.map(item => (
-            <button
-              key={item.path}
-              style={styles.navBtn(location.pathname === item.path)}
-              onClick={() => navigate(item.path)}
-            >
-              {item.label}
-            </button>
-          ))}
-          {hasPermission('backstage') && (
-            <button
-              style={styles.displayBtn(false)}
-              onClick={() => navigate('/scherm')}
-            >
-              Display
-            </button>
-          )}
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <div style={styles.clock}>{timeStr}</div>
           <div style={styles.userChip}>
             {userProfile?.username ?? '…'}
@@ -196,9 +175,9 @@ function ShellLayout() {
 function NoAccess() {
   return (
     <div style={styles.centered}>
-      <ShieldOff size={56} color="#cbd5e1" strokeWidth={1.5} />
+      <ShieldOff size={56} color={color.faintest} strokeWidth={1.5} />
       <div>
-        <div style={{ fontWeight: 800, color: '#475569', fontSize: '1.05rem', marginBottom: '0.4rem' }}>
+        <div style={{ fontWeight: 800, color: color.body, fontSize: '1.05rem', marginBottom: '0.4rem' }}>
           Geen toegang
         </div>
         <div style={{ fontSize: '0.85rem' }}>
@@ -220,14 +199,14 @@ function RequireAdmin({ children }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FULLSCHERM-ROUTES — geen header, eigen "terug naar beheer"-knop
+// FULLSCHERM-ROUTES — geen header, eigen "terug naar overzicht"-knop
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DisplayRoute() {
   const navigate = useNavigate();
   return (
     <RequirePermission perm="backstage">
-      <DisplayView onClose={() => navigate('/beheer')} />
+      <DisplayView onClose={() => navigate('/')} />
     </RequirePermission>
   );
 }
@@ -236,7 +215,7 @@ function PodiumRoute() {
   const navigate = useNavigate();
   return (
     <RequirePermission perm="podium">
-      <PodiumView onClose={() => navigate('/beheer')} />
+      <PodiumView onClose={() => navigate('/')} />
     </RequirePermission>
   );
 }
@@ -244,17 +223,6 @@ function PodiumRoute() {
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT — auth-status, inloggen, dan de routes
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Eerste scherm waar deze gebruiker effectief recht op heeft. */
-function useDefaultPath() {
-  const { userProfile, hasPermission } = useAppContext();
-  if (userProfile?.role === 'beheerder') return '/beheer';
-  if (hasPermission('speaker'))          return '/speaker';
-  if (hasPermission('backstage'))        return '/scherm';
-  if (hasPermission('aanwezigheid'))     return '/aanwezigheid';
-  if (hasPermission('podium'))           return '/scherm/podium';
-  return '/beheer'; // toont NoAccess — duidelijker dan een lege pagina
-}
 
 function AppRoutes() {
   const { authReady, authError, currentUser } = useAppContext();
@@ -265,7 +233,7 @@ function AppRoutes() {
       <div style={styles.wrapper}>
         <div style={styles.centered}>
           <div style={{
-            background: '#fef2f2', border: '1px solid #fecaca',
+            background: color.dangerSoft, border: `1px solid ${color.dangerBorder}`,
             borderRadius: '10px', padding: '2rem', maxWidth: '400px',
             textAlign: 'center', color: '#991b1b',
           }}>
@@ -296,15 +264,10 @@ function AppRoutes() {
     return <LoginView />;
   }
 
-  return <LoggedInRoutes />;
-}
-
-function LoggedInRoutes() {
-  const defaultPath = useDefaultPath();
-
   return (
     <Routes>
       <Route element={<ShellLayout />}>
+        <Route path="/" element={<HubView />} />
         <Route path="/beheer" element={
           <RequireAdmin><ManagementView /></RequireAdmin>
         } />
@@ -319,7 +282,7 @@ function LoggedInRoutes() {
       <Route path="/scherm"         element={<DisplayRoute />} />
       <Route path="/scherm/podium"  element={<PodiumRoute />} />
 
-      <Route path="*" element={<Navigate to={defaultPath} replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

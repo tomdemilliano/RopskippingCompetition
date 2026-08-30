@@ -1,5 +1,5 @@
 /**
- * AppContext.jsx — RopeScore Pro
+ * AppContext.jsx — SkipFlow
  *
  * Centrale React context voor alle Firebase-data en globale app-state.
  * Componenten lezen data via useAppContext() — nooit rechtstreeks via factories.

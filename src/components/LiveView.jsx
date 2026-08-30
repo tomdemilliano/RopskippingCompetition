@@ -1,5 +1,5 @@
 /**
- * LiveView.jsx — RopeScore Pro
+ * LiveView.jsx — SkipFlow
  *
  * Operatorscherm tijdens een actieve wedstrijd.
  * Toont per event en reeks wie er springt, bewaakt tijdsverloop,

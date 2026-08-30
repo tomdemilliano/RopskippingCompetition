@@ -1,5 +1,5 @@
 /**
- * DisplayView.jsx — RopeScore Pro
+ * DisplayView.jsx — SkipFlow
  *
  * Groot scherm voor in de zaal. Toont de huidige reeks en wie er
  * straks aan de beurt zijn, met tijdsindicatie.

@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — RopeScore Pro
+# ARCHITECTURE.md — SkipFlow
 
 Beschrijvend overzicht van de applicatie-architectuur. Dit bestand documenteert
 hoe de app gebouwd is en waarom bepaalde keuzes gemaakt zijn.
@@ -6,9 +6,9 @@ Zie CLAUDE.md voor de imperatieve regels die altijd gevolgd moeten worden.
 
 ---
 
-## Wat is RopeScore Pro?
+## Wat is SkipFlow?
 
-RopeScore Pro is een wedstrijdbeheersysteem voor competitief touwspringen.
+SkipFlow is een wedstrijdbeheersysteem voor competitief touwspringen.
 Het beheert wedstrijden, deelnemers, clubs en onderdelen, en biedt vijf schermen,
 elk met een eigen route en een eigen recht (zie "Authenticatie & rechten"):
 

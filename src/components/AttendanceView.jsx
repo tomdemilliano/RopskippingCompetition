@@ -1,5 +1,5 @@
 /**
- * AttendanceView.jsx — RopeScore Pro
+ * AttendanceView.jsx — SkipFlow
  *
  * Aanwezigheidsregistratie voor de inkomtafel. Kiosk-scherm: grote taps,
  * één druk om aan te melden. Afwezig melden schrapt de deelnemer uit alle

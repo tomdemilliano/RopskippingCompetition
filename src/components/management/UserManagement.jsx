@@ -1,5 +1,5 @@
 /**
- * UserManagement.jsx — RopeScore Pro
+ * UserManagement.jsx — SkipFlow
  *
  * Gebruikersbeheer — enkel bereikbaar voor de beheerder-rol (zie ManagementView).
  * Maakt gebruikers aan (username/wachtwoord) en kent per gebruiker rechten toe

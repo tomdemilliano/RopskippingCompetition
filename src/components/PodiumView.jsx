@@ -1,5 +1,5 @@
 /**
- * PodiumView.jsx — RopeScore Pro
+ * PodiumView.jsx — SkipFlow
  *
  * Podium- en prijsuitreikingsscherm voor het grote scherm.
  * Placeholder voor Fase 3 — de route en het rechtenmodel zijn al aangesloten,

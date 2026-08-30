@@ -1,5 +1,5 @@
 /**
- * ImportModal.jsx — RopeScore Pro
+ * ImportModal.jsx — SkipFlow
  *
  * CSV-import voor één event met club-matching flow.
  *

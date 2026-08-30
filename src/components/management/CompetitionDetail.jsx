@@ -1,10 +1,11 @@
 /**
- * CompetitionDetail.jsx — RopeScore Pro
+ * CompetitionDetail.jsx — SkipFlow
  *
  * Rechterkolom van de beheer-view.
  * Toont de geselecteerde wedstrijd met:
  *   - Header: naam, type, status, actieknoppen
  *   - EventsPanel: onderdelen met upload-knop per event
+ *   - Programma: dagtijdlijn (blocks)
  *   - ParticipantsList: gefilterde deelnemerslijst met aanwezigheid en schrappen
  */
 
@@ -13,9 +14,12 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronLeft, ChevronRight,
-  Plus,
+  Plus, ListTodo,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
+import { color, radius, shadow } from '../../theme';
+import Button from '../ui/Button';
+import Badge from '../ui/Badge';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -33,13 +37,13 @@ const s = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#94a3b8',
+    color: color.faint,
     fontSize: '0.9rem',
   },
   header: {
-    padding: '1.25rem 1.5rem',
-    background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
+    padding: '1.4rem 1.75rem',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
     flexShrink: 0,
   },
   headerTop: {
@@ -47,27 +51,21 @@ const s = {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: '0.25rem',
+    flexWrap: 'wrap',
+    gap: '0.75rem',
   },
   compName: {
-    fontSize: '1.2rem',
+    fontSize: '1.25rem',
     fontWeight: 900,
-    color: '#1e293b',
+    color: color.inkSoft,
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '10px',
   },
   compMeta: {
-    fontSize: '0.8rem',
-    color: '#64748b',
-    marginTop: '2px',
-  },
-  badgeLive: {
-    background: '#ef4444',
-    color: '#fff',
-    fontSize: '0.6rem',
-    padding: '2px 6px',
-    borderRadius: '4px',
-    fontWeight: 900,
+    fontSize: '0.82rem',
+    color: color.muted,
+    marginTop: '3px',
   },
   actions: {
     display: 'flex',
@@ -75,57 +73,37 @@ const s = {
     alignItems: 'center',
     flexShrink: 0,
   },
-  btnIcon: (danger) => ({
-    background: '#fff',
-    color: danger ? '#ef4444' : '#475569',
-    border: '1px solid #cbd5e1',
-    padding: '0.4rem',
-    borderRadius: '6px',
+  iconBtn: (danger) => ({
+    background: color.surface,
+    color: danger ? color.danger : color.body,
+    border: `1px solid ${danger ? color.dangerBorder : color.faintest}`,
+    padding: '0.45rem',
+    borderRadius: radius.sm,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
   }),
-  btnPrimary: (color) => ({
-    background: color ?? '#2563eb',
-    color: '#fff',
-    border: 'none',
-    padding: '0.5rem 1rem',
-    borderRadius: '6px',
-    fontWeight: 700,
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-  }),
-  btnSecondary: {
-    background: '#fff',
-    color: '#475569',
-    border: '1px solid #cbd5e1',
-    padding: '0.5rem 1rem',
-    borderRadius: '6px',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
+
+  // Panel-koppen (hergebruikt door Onderdelen/Programma)
+  panel: {
+    padding: '1.1rem 1.75rem',
+    background: color.surfaceAlt,
+    borderBottom: `1px solid ${color.border}`,
+    flexShrink: 0,
+  },
+  panelLabel: {
+    fontSize: '0.68rem',
+    fontWeight: 900,
+    color: color.faint,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    marginBottom: '0.7rem',
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
   },
 
   // Events panel
-  eventsPanel: {
-    padding: '1rem 1.5rem',
-    background: '#f8fafc',
-    borderBottom: '1px solid #e2e8f0',
-    flexShrink: 0,
-  },
-  eventsPanelLabel: {
-    fontSize: '0.65rem',
-    fontWeight: 900,
-    color: '#94a3b8',
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    marginBottom: '0.6rem',
-  },
   eventsScroll: {
     display: 'flex',
     gap: '0.75rem',
@@ -133,24 +111,28 @@ const s = {
     paddingBottom: '4px',
   },
   eventCard: (hasParticipants) => ({
-    minWidth: '200px',
-    padding: '0.75rem',
-    background: '#fff',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0',
-    borderLeft: `4px solid ${hasParticipants ? '#10b981' : '#f59e0b'}`,
+    minWidth: '190px',
+    padding: '0.8rem',
+    background: color.surface,
+    borderRadius: radius.md,
+    border: `1px solid ${color.border}`,
+    borderTop: `3px solid ${hasParticipants ? color.success : color.warning}`,
     flexShrink: 0,
+    boxShadow: shadow.sm,
   }),
   eventCardName: {
-    fontWeight: 900,
-    fontSize: '0.8rem',
-    color: '#1e293b',
+    fontWeight: 800,
+    fontSize: '0.82rem',
+    color: color.inkSoft,
     marginBottom: '4px',
   },
   eventCardMeta: {
-    fontSize: '0.65rem',
-    color: '#94a3b8',
-    marginBottom: '6px',
+    fontSize: '0.68rem',
+    color: color.faint,
+    marginBottom: '8px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    fontWeight: 700,
   },
   eventCardFooter: {
     display: 'flex',
@@ -158,16 +140,16 @@ const s = {
     alignItems: 'center',
   },
   eventCount: {
-    fontSize: '0.7rem',
+    fontSize: '0.72rem',
     fontWeight: 700,
-    color: '#475569',
+    color: color.body,
   },
   uploadBtn: {
-    background: '#2563eb',
+    background: color.primary,
     color: '#fff',
     border: 'none',
-    borderRadius: '4px',
-    padding: '4px 6px',
+    borderRadius: '5px',
+    padding: '5px 7px',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
@@ -175,12 +157,12 @@ const s = {
   orderBtns: {
     display: 'flex',
     gap: '2px',
-    marginBottom: '4px',
+    marginBottom: '5px',
   },
   orderBtn: (disabled) => ({
-    background: '#f1f5f9',
+    background: color.borderSoft,
     border: 'none',
-    borderRadius: '3px',
+    borderRadius: '4px',
     padding: '2px 4px',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.4 : 1,
@@ -189,68 +171,50 @@ const s = {
   }),
 
   // Programma (blocks)
-  blocksPanel: {
-    padding: '1rem 1.5rem',
-    background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
-    flexShrink: 0,
-  },
-  blocksPanelLabel: {
-    fontSize: '0.65rem',
-    fontWeight: 900,
-    color: '#94a3b8',
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    marginBottom: '0.6rem',
-  },
   blockRow: (done) => ({
     display: 'flex',
     alignItems: 'center',
-    gap: '0.6rem',
-    padding: '0.4rem 0.6rem',
-    borderRadius: '6px',
-    background: done ? '#f8fafc' : '#fff',
-    border: '1px solid #f1f5f9',
+    gap: '0.7rem',
+    padding: '0.5rem 0.75rem',
+    borderRadius: radius.sm,
+    background: done ? color.surfaceAlt : color.surface,
+    border: `1px solid ${color.borderSoft}`,
     marginBottom: '4px',
-    fontSize: '0.8rem',
+    fontSize: '0.82rem',
     opacity: done ? 0.6 : 1,
   }),
   blockOrder: {
-    fontFamily: 'monospace',
-    color: '#94a3b8',
+    fontFamily: "'IBM Plex Mono', monospace",
+    color: color.faint,
     minWidth: '1.2rem',
     textAlign: 'right',
+    fontSize: '0.78rem',
   },
   blockTime: {
-    fontFamily: 'monospace',
+    fontFamily: "'IBM Plex Mono', monospace",
     fontWeight: 700,
-    color: '#475569',
+    color: color.body,
     minWidth: '3rem',
+    fontSize: '0.78rem',
   },
   blockLabel: {
     flex: 1,
     fontWeight: 700,
-    color: '#1e293b',
-  },
-  blockTypeTag: {
-    fontSize: '0.65rem',
-    color: '#64748b',
-    background: '#f1f5f9',
-    padding: '2px 6px',
-    borderRadius: '4px',
+    color: color.inkSoft,
   },
   addBlockForm: {
     display: 'flex',
     gap: '0.4rem',
-    marginTop: '0.6rem',
+    marginTop: '0.7rem',
     flexWrap: 'wrap',
     alignItems: 'center',
   },
   addBlockInput: {
-    border: '1px solid #cbd5e1',
-    borderRadius: '6px',
-    padding: '0.35rem 0.5rem',
+    border: `1px solid ${color.faintest}`,
+    borderRadius: radius.sm,
+    padding: '0.4rem 0.55rem',
     fontSize: '0.8rem',
+    background: color.surface,
   },
 
   // Participants list
@@ -259,14 +223,14 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    background: '#fff',
+    background: color.surface,
   },
   filterBar: {
-    padding: '0.75rem 1.5rem',
-    borderBottom: '1px solid #f1f5f9',
+    padding: '0.9rem 1.75rem',
+    borderBottom: `1px solid ${color.borderSoft}`,
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.6rem',
+    gap: '0.7rem',
     flexShrink: 0,
   },
   filterBtns: {
@@ -275,26 +239,28 @@ const s = {
     flexWrap: 'wrap',
     alignItems: 'center',
   },
-  filterBtn: (active, color) => ({
+  filterBtn: (active, c) => ({
     display: 'flex',
     alignItems: 'center',
     gap: '5px',
-    padding: '0.3rem 0.7rem',
-    borderRadius: '6px',
-    fontSize: '0.75rem',
+    padding: '0.35rem 0.75rem',
+    borderRadius: radius.pill,
+    fontSize: '0.76rem',
     fontWeight: 700,
     cursor: 'pointer',
-    border: `1px solid ${active ? color : '#e2e8f0'}`,
-    background: active ? `${color}18` : '#fff',
-    color: active ? color : '#64748b',
+    border: `1px solid ${active ? c : color.border}`,
+    background: active ? `${c}15` : color.surface,
+    color: active ? c : color.muted,
+    transition: 'all 0.12s',
   }),
   searchBar: {
     display: 'flex',
     alignItems: 'center',
-    background: '#f1f5f9',
-    padding: '0.4rem 0.75rem',
-    borderRadius: '6px',
+    background: color.surfaceAlt,
+    padding: '0.55rem 0.85rem',
+    borderRadius: radius.sm,
     gap: '0.5rem',
+    maxWidth: '360px',
   },
   searchInput: {
     border: 'none',
@@ -302,6 +268,7 @@ const s = {
     outline: 'none',
     width: '100%',
     fontSize: '0.85rem',
+    color: color.inkSoft,
   },
   tableWrap: {
     flex: 1,
@@ -313,39 +280,40 @@ const s = {
     fontSize: '0.85rem',
   },
   th: {
-    padding: '0.6rem 1rem',
+    padding: '0.7rem 1.75rem',
     textAlign: 'left',
-    color: '#94a3b8',
-    fontSize: '0.7rem',
-    fontWeight: 700,
-    letterSpacing: '0.05em',
+    color: color.faint,
+    fontSize: '0.68rem',
+    fontWeight: 800,
+    letterSpacing: '0.06em',
     position: 'sticky',
     top: 0,
-    background: '#fff',
-    borderBottom: '1px solid #eee',
+    background: color.surface,
+    borderBottom: `1px solid ${color.borderSoft}`,
     zIndex: 1,
   },
   td: {
-    padding: '0.65rem 1rem',
-    borderBottom: '1px solid #f8fafc',
+    padding: '0.7rem 1.75rem',
+    borderBottom: `1px solid ${color.borderSoft}`,
   },
-  actionBtn: (color) => ({
+  actionBtn: (c) => ({
     border: 'none',
     background: 'none',
-    color: color ?? '#94a3b8',
+    color: c ?? color.faint,
     cursor: 'pointer',
-    padding: '2px',
+    padding: '3px',
     display: 'inline-flex',
     alignItems: 'center',
   }),
   eventBadge: (scratched) => ({
     display: 'inline-block',
-    fontSize: '0.6rem',
-    background: scratched ? '#fee2e2' : '#f1f5f9',
-    color: scratched ? '#ef4444' : '#475569',
+    fontSize: '0.62rem',
+    fontWeight: 700,
+    background: scratched ? color.dangerSoft : color.borderSoft,
+    color: scratched ? color.danger : color.body,
     textDecoration: scratched ? 'line-through' : 'none',
-    padding: '2px 5px',
-    borderRadius: '3px',
+    padding: '2px 6px',
+    borderRadius: '4px',
     marginRight: '3px',
     marginBottom: '2px',
   }),
@@ -373,7 +341,6 @@ export default function CompetitionDetail({
     competitionTypes,
     events,
     participants,
-    participantsCompId,
     loadParticipants,
     getSortedEvents,
     getClub,
@@ -385,7 +352,6 @@ export default function CompetitionDetail({
     deleteCompetition,
     saveEventOrder,
     setPresence,
-    scratchFromEvent,
     scratchFromAll,
     blocks,
     loadBlocks,
@@ -507,6 +473,13 @@ export default function CompetitionDetail({
   const isDone  = competition.status === 'beëindigd';
   const compTypeName = competitionTypes.find(t => t.id === competition.typeId)?.name ?? '—';
 
+  const FILTERS = [
+    { key: 'alle',           label: 'Alle',           icon: <Users size={13} />,     c: color.primary },
+    { key: 'niet-aangemeld', label: 'Niet aangemeld', icon: <UserPlus size={13} />,  c: color.warning },
+    { key: 'aangemeld',      label: 'Aangemeld',      icon: <UserCheck size={13} />, c: color.success },
+    { key: 'geschrapt',      label: 'Geschrapt',      icon: <UserX size={13} />,     c: color.danger },
+  ];
+
   return (
     <div style={s.content}>
       {/* ── Header ── */}
@@ -515,7 +488,7 @@ export default function CompetitionDetail({
           <div>
             <div style={s.compName}>
               {competition.name}
-              {isLive && <span style={s.badgeLive}>LIVE</span>}
+              {isLive && <Badge tone="solidDanger">LIVE</Badge>}
             </div>
             <div style={s.compMeta}>
               {compTypeName}
@@ -527,10 +500,10 @@ export default function CompetitionDetail({
           <div style={s.actions}>
             {!isLive && !isDone && (
               <>
-                <button style={s.btnIcon(false)} title="Bewerken" onClick={onEdit}>
+                <button style={s.iconBtn(false)} title="Bewerken" onClick={onEdit}>
                   <Edit2 size={15} />
                 </button>
-                <button style={s.btnIcon(true)} title="Verwijderen" onClick={handleDelete}>
+                <button style={s.iconBtn(true)} title="Verwijderen" onClick={handleDelete}>
                   <Trash2 size={15} />
                 </button>
               </>
@@ -538,35 +511,29 @@ export default function CompetitionDetail({
 
             {isLive ? (
               <>
-                <button
-                  style={{ ...s.btnSecondary, color: '#ef4444', borderColor: '#fca5a5' }}
-                  onClick={() => stopCompetitionLive(competition.id)}
-                >
-                  <Ghost size={15} /> Stop live
-                </button>
-                <button
-                  style={s.btnPrimary('#ef4444')}
-                  onClick={() => endCompetition(competition.id)}
-                >
-                  <Square size={14} /> Beëindig
-                </button>
+                <Button variant="outlineDanger" icon={<Ghost size={15} />} onClick={() => stopCompetitionLive(competition.id)}>
+                  Stop live
+                </Button>
+                <Button variant="danger" icon={<Square size={14} />} onClick={() => endCompetition(competition.id)}>
+                  Beëindig
+                </Button>
               </>
             ) : isDone ? (
-              <button style={{ ...s.btnPrimary('#94a3b8'), cursor: 'default' }} disabled>
-                <Check size={14} /> Voltooid
-              </button>
+              <Button variant="ghost" icon={<Check size={14} />} disabled>
+                Voltooid
+              </Button>
             ) : (
-              <button style={s.btnPrimary('#10b981')} onClick={handleStart}>
-                <Play size={14} /> Start wedstrijd
-              </button>
+              <Button variant="success" icon={<Play size={14} />} onClick={handleStart}>
+                Start wedstrijd
+              </Button>
             )}
           </div>
         </div>
       </div>
 
       {/* ── Events panel ── */}
-      <div style={s.eventsPanel}>
-        <div style={s.eventsPanelLabel}>Onderdelen</div>
+      <div style={s.panel}>
+        <div style={s.panelLabel}>Onderdelen</div>
         <div style={s.eventsScroll}>
           {sortedEvents.map((ev, idx) => {
             const count = participantCountByEvent[ev.id] ?? 0;
@@ -609,11 +576,11 @@ export default function CompetitionDetail({
       </div>
 
       {/* ── Programma (dagtijdlijn) ── */}
-      <div style={s.blocksPanel}>
-        <div style={s.blocksPanelLabel}>Programma (dagtijdlijn)</div>
+      <div style={s.panel}>
+        <div style={s.panelLabel}><ListTodo size={12} /> Programma (dagtijdlijn)</div>
 
         {sortedBlocks.length === 0 && (
-          <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic', marginBottom: '0.4rem' }}>
+          <div style={{ fontSize: '0.8rem', color: color.faint, fontStyle: 'italic', marginBottom: '0.4rem' }}>
             Nog geen blokken — komt automatisch mee bij PDF-import, of hieronder manueel toevoegen.
           </div>
         )}
@@ -628,16 +595,16 @@ export default function CompetitionDetail({
               <span style={s.blockOrder}>{b.order}</span>
               <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
               <span style={s.blockLabel}>{label}</span>
-              <span style={s.blockTypeTag}>{b.type}</span>
+              <Badge tone="neutral">{b.type}</Badge>
               <button
-                style={s.actionBtn(done ? '#f59e0b' : '#10b981')}
+                style={s.actionBtn(done ? color.warning : color.success)}
                 title={done ? 'Heropenen' : 'Markeer afgewerkt'}
                 onClick={() => setBlockStatus(competition.id, b.id, done ? 'gepland' : 'afgewerkt')}
               >
                 {done ? <RotateCcw size={15} /> : <Check size={15} />}
               </button>
               <button
-                style={s.actionBtn('#ef4444')}
+                style={s.actionBtn(color.danger)}
                 title="Verwijderen"
                 onClick={() => deleteBlock(competition.id, b.id)}
               >
@@ -686,9 +653,9 @@ export default function CompetitionDetail({
             onChange={e => setNewBlockTime(e.target.value)}
           />
 
-          <button style={s.btnPrimary('#2563eb')} onClick={handleAddBlock}>
-            <Plus size={14} /> Blok
-          </button>
+          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={handleAddBlock}>
+            Blok
+          </Button>
         </div>
       </div>
 
@@ -696,27 +663,22 @@ export default function CompetitionDetail({
       <div style={s.participantsPanel}>
         <div style={s.filterBar}>
           <div style={s.filterBtns}>
-            {[
-              { key: 'alle',          label: 'Alle',          icon: <Users size={13} />,     color: '#2563eb' },
-              { key: 'niet-aangemeld',label: 'Niet aangemeld',icon: <UserPlus size={13} />,   color: '#f59e0b' },
-              { key: 'aangemeld',     label: 'Aangemeld',     icon: <UserCheck size={13} />,  color: '#10b981' },
-              { key: 'geschrapt',     label: 'Geschrapt',     icon: <UserX size={13} />,      color: '#ef4444' },
-            ].map(f => (
+            {FILTERS.map(f => (
               <button
                 key={f.key}
-                style={s.filterBtn(filterStatus === f.key, f.color)}
+                style={s.filterBtn(filterStatus === f.key, f.c)}
                 onClick={() => setFilterStatus(f.key)}
               >
                 {f.icon} {f.label}
               </button>
             ))}
-            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>
+            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: color.body, fontWeight: 700 }}>
               {filteredParticipants.length} skippers
             </span>
           </div>
 
           <div style={s.searchBar}>
-            <Search size={15} color="#94a3b8" />
+            <Search size={15} color={color.faint} />
             <input
               style={s.searchInput}
               placeholder="Zoek op naam of club…"
@@ -746,19 +708,20 @@ export default function CompetitionDetail({
                     key={p.id}
                     style={{
                       opacity: fullyScratched ? 0.5 : 1,
-                      borderLeft: p.isPresent ? '3px solid #10b981' : '3px solid transparent',
+                      borderLeft: `3px solid ${p.isPresent ? color.success : 'transparent'}`,
                     }}
                   >
                     <td style={s.td}>
                       <span style={{
                         fontWeight: 700,
+                        color: color.inkSoft,
                         textDecoration: fullyScratched ? 'line-through' : 'none',
                       }}>
                         {p.name}
                       </span>
                     </td>
 
-                    <td style={{ ...s.td, color: '#64748b' }}>
+                    <td style={{ ...s.td, color: color.muted }}>
                       {club?.name ?? '—'}
                     </td>
 
@@ -778,7 +741,7 @@ export default function CompetitionDetail({
                     <td style={{ ...s.td, textAlign: 'right' }}>
                       {/* Aanwezigheid */}
                       <button
-                        style={s.actionBtn(p.isPresent ? '#10b981' : '#cbd5e1')}
+                        style={s.actionBtn(p.isPresent ? color.success : color.faintest)}
                         title={p.isPresent ? 'Aangemeld' : 'Niet aangemeld'}
                         onClick={() => setPresence(competition.id, p.id, !p.isPresent)}
                       >
@@ -787,7 +750,7 @@ export default function CompetitionDetail({
 
                       {/* Bewerken */}
                       <button
-                        style={{ ...s.actionBtn('#2563eb'), marginLeft: '6px' }}
+                        style={{ ...s.actionBtn(color.primary), marginLeft: '6px' }}
                         title="Bewerken"
                         onClick={() => onEditParticipant(p)}
                       >
@@ -796,7 +759,7 @@ export default function CompetitionDetail({
 
                       {/* Schrappen / herstellen */}
                       <button
-                        style={{ ...s.actionBtn(fullyScratched ? '#10b981' : '#ef4444'), marginLeft: '6px' }}
+                        style={{ ...s.actionBtn(fullyScratched ? color.success : color.danger), marginLeft: '6px' }}
                         title={fullyScratched ? 'Herstellen' : 'Schrappen'}
                         onClick={() => scratchFromAll(competition.id, p, !fullyScratched)}
                       >

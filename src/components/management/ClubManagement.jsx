@@ -1,5 +1,5 @@
 /**
- * ClubManagement.jsx — RopeScore Pro
+ * ClubManagement.jsx — SkipFlow
  *
  * Clubbeheer — stamdata-sectie in Beheer. Nu: naam, kortnaam, plaats, land
  * en logo (voor het podiumscherm in Fase 3). Bewust opgezet als uitbreidbare
