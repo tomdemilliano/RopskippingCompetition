@@ -58,6 +58,7 @@ src/
   constants.js                     # APP_ID, getFirebaseConfig, emailForUsername
   seedData.js                      # Éénmalige seed voor events + competitionTypes
   theme.js                         # Design tokens: color, radius, shadow, font, space, statusColor
+  timeUtils.js                     # timeToMinutes("HH:MM") — gedeeld door pdfSchedule.js en LiveView.jsx
   pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
   pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
   pdfImport.js                     # Browserlaag (pdfjs-worker) — enige toegangspunt voor componenten
@@ -496,6 +497,32 @@ Nu heeft elke wedstrijd gewoon haar eigen, permanente voortgangsvelden
 
 `LiveView` gebruikt deze data om de operator-cursor te initialiseren.
 `DisplayView` volgt dezelfde data volledig autonoom om het officiële scherm te tonen.
+
+### Blok-gedreven navigatie in LiveView
+
+`LiveView` volgt de dagtijdlijn actief, niet enkel bij het tonen van een
+pauzescherm: zodra de laatste reeks van het huidige blok voltooid is, wordt
+dát blok zelf op `'afgewerkt'` gezet (`setBlockStatus`) i.p.v. rechtstreeks
+naar het volgende onderdeel te springen. Zo schuift `currentBlock` vanzelf
+door naar wat ook in de dagtijdlijn volgt — een pauze/briefing/prijsuitreiking
+(pauzescherm) of een volgend/hervat onderdeel (reeksen). `activeEventId`
+synchroniseert automatisch met `currentBlock.eventId` via een effect; de
+linkerkolom (onderdelenlijst) blijft een handmatige "overschrijf-optie" om
+naar eender welk onderdeel te springen, los van de dagtijdlijn.
+
+Eén onderdeel kan over **meerdere fysieke blokken** lopen — Freestyles
+onderbroken door pauzes, of Speed/Endurance met een reeks die over twee
+kolomblokken verdeeld staat maar tot exact hetzelfde fysieke blok behoort
+(zie "PDF-import" hierboven). Omdat `entries[]` geen `blockId` bijhoudt, wordt
+in dat geval de deelnemerslijst afgebakend tot het **tijdvenster** van het
+huidige blok (`[currentBlock.scheduledTime, volgendBlok.scheduledTime)`,
+via `timeUtils.js#timeToMinutes` om "8:45" correct te vergelijken met "13:05").
+Deze afbakening gebeurt bewust **enkel** wanneer een onderdeel écht meerdere
+blokken heeft — bij het gangbare geval (één blok per onderdeel, ook na een
+CSV-import zonder dagtijdlijn) blijft de volledige, ongescopede deelnemers-
+lijst zichtbaar zoals voorheen. `finishedEvents` (het complete-onderdeel-vlag)
+blijft wel gebaseerd op de ECHTE laatste reeks over alle blokken van het
+onderdeel heen, niet enkel de laatste van het huidige tijdvenster.
 
 ---
 

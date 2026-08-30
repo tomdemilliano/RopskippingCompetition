@@ -26,17 +26,14 @@
  *     uiteindelijke seriesNr-toekenning.
  */
 
+import { timeToMinutes } from './timeUtils';
+
 export const TIME_RE = /^(\d{1,2}):(\d{2})$/;
 const VELD_NUM_RE = /^Veld\s+(\d+)\s*$/i;
 const VELD_LETTER_RE = /^Veld\s+([A-Za-z])\b\s*-?\s*(.*)$/i;
 const TITLE_RE = /^Individuele wedstrijd/i;
 
-/** "8:45" -> 525 (minuten sinds middernacht), voor chronologisch sorteren. */
-export function timeToMinutes(time) {
-  const m = TIME_RE.exec((time ?? '').trim());
-  if (!m) return null;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-}
+export { timeToMinutes };
 
 function normalizeForMatch(text) {
   return text
