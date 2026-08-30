@@ -9,16 +9,23 @@ Zie CLAUDE.md voor de imperatieve regels die altijd gevolgd moeten worden.
 ## Wat is SkipFlow?
 
 SkipFlow is een wedstrijdbeheersysteem voor competitief touwspringen.
-Het beheert wedstrijden, deelnemers, clubs en onderdelen, en biedt vijf schermen,
-elk met een eigen route en een eigen recht (zie "Authenticatie & rechten"):
+Het beheert wedstrijden, deelnemers, clubs en onderdelen. Na het inloggen komt
+elke gebruiker op de landingspagina (`/`, `HubView`) terecht — een tegeloverzicht
+dat enkel de schermen toont waar het account recht op heeft. Elk scherm heeft
+daarna zijn eigen route en een eigen recht (zie "Authenticatie & rechten"):
 
 | Scherm       | Route            | Recht          | Doel |
 |--------------|-------------------|----------------|------|
+| *(landingspagina)* | `/`         | ingelogd       | tegeloverzicht — enige plek waarvandaan tussen schermen genavigeerd wordt |
 | Beheer       | `/beheer`         | beheerder-only | wedstrijden en deelnemers aanmaken, CSV-import, clubs, blokken, gebruikers |
 | Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden/afwezig melden |
 | Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (reeksen markeren) |
 | Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (toont huidige en volgende reeks) |
 | Podium       | `/scherm/podium`  | `podium`       | podium-onthulling voor de prijsuitreiking (Fase 3 — nu nog een placeholder) |
+
+De Speaker- en Display-tegels op de landingspagina tonen altijd of, en welke,
+wedstrijd er live staat (`activeCompetition` uit `AppContext`) — zo is meteen
+duidelijk vanaf elk toestel of er iets bezig is, zonder het scherm te openen.
 
 Primaire gebruiker: Antwerp Ropes. De app is gebouwd voor gebruik op meerdere
 toestellen tegelijk (inkomtafel, speakertafel, groot scherm), elk met een eigen
@@ -31,7 +38,7 @@ login en enkel toegang tot de schermen waar dat account recht op heeft.
 | Laag        | Technologie                          |
 |-------------|--------------------------------------|
 | Frontend    | React 18, Vite, `react-router-dom` (hash-routing — geen server-rewrites nodig op Vercel) |
-| Styling     | Inline CSS via stijlobjecten — geen Tailwind, geen CSS modules |
+| Styling     | Inline CSS via stijlobjecten, opgebouwd uit `theme.js`-tokens — geen Tailwind, geen CSS modules |
 | Database    | Firebase Firestore (NoSQL, realtime) |
 | Auth        | Firebase Auth, e-mail/wachtwoord — rollen + rechten in `users/{uid}` |
 | Storage     | Firebase Storage — clublogo's (`clubs/{clubId}/logo.*`) via `clubFactory.uploadLogo()` |
@@ -44,31 +51,37 @@ login en enkel toegang tot de schermen waar dat account recht op heeft.
 
 ```
 src/
-  App.jsx                          # Router-shell: auth-gate, routes + permissie-guards, klok
+  App.jsx                          # Router-shell: auth-gate, routes + permissie-guards, klok, home-link
   AppContext.jsx                   # Centrale React context: data + actions
   dbSchema.js                      # ENIGE toegangspunt voor Firestore
-  constants.js                     # APP_ID, getFirebaseConfig
+  constants.js                     # APP_ID, getFirebaseConfig, emailForUsername
   seedData.js                      # Éénmalige seed voor events + competitionTypes
-  index.css                        # Tailwind base (minimaal gebruikt)
+  theme.js                         # Design tokens: color, radius, shadow, font, space, statusColor
+  index.css                        # Fontinstelling + minimale resets (geen Tailwind)
   main.jsx                         # React entry point
 
   components/
     LoginView.jsx                  # Inlogscherm — vóór elk ander scherm
+    HubView.jsx                    # Landingspagina ("/") — tegels naar elk scherm met toegang
     ManagementView.jsx              # Beheerscherm orchestrator (wedstrijden + clubs + gebruikers)
     LiveView.jsx                    # Speaker — operatorscherm live wedstrijd
     DisplayView.jsx                 # Groot scherm (backstage) live wedstrijd
     AttendanceView.jsx              # Aanwezigheidsregistratie — kiosk voor de inkomtafel
     PodiumView.jsx                  # Podium-onthulling (Fase 3 — placeholder)
 
+    ui/
+      Button.jsx                   # Gedeelde knop (variant/size/icon), gebouwd uit theme.js
+      Card.jsx                     # Gedeelde kaartcontainer
+      Badge.jsx                    # Statuslabel/pill (tone + optioneel icoon)
+
     management/
-      CompetitionsOverview.jsx      # Startpagina — lijst van alle wedstrijden
-      CompetitionList.jsx           # Tabs + wedstrijdkaartjes
+      CompetitionsOverview.jsx      # Startpagina van Beheer — lijst van alle wedstrijden
       CompetitionDetail.jsx         # Events + programma (blocks) + deelnemerslijst
       ClubManagement.jsx            # Clubbeheer — stamdata + logo-upload (Storage)
       UserManagement.jsx            # Gebruikersbeheer — rollen + rechten toekennen
 
       modals/
-        modalStyles.js              # Gedeelde stijlen voor alle modals
+        modalStyles.js              # Gedeelde stijlen voor alle modals, gebouwd uit theme.js
         AddCompetitionModal.jsx
         EditCompetitionModal.jsx
         EditParticipantModal.jsx
@@ -214,8 +227,10 @@ Routing (`App.jsx`) hangt elke route achter een guard:
   op de bijhorende key uit de tabel bovenaan dit document
 
 Zonder het recht toont de route een "Geen toegang"-scherm i.p.v. de inhoud.
-De navigatiebalk in de header toont enkel de knoppen waar de ingelogde
-gebruiker effectief recht op heeft.
+De landingspagina (`HubView`) toont enkel tegels voor de schermen waar de
+ingelogde gebruiker effectief recht op heeft — de guards in `App.jsx` blijven
+de eigenlijke bewaking (rechtstreeks naar een URL navigeren zonder recht
+toont alsnog "Geen toegang").
 
 ---
 
@@ -261,11 +276,46 @@ listener zou zo'n scherm leeg blijven.
 ## Routing
 
 `react-router-dom` met `HashRouter` (geen server-side rewrites nodig op
-Vercel). `/beheer`, `/aanwezigheid` en `/speaker` delen een `ShellLayout`
-(header met nav + klok + logout, `<Outlet/>` voor de inhoud). `/scherm` en
-`/scherm/podium` zijn fullscreen, zonder header, met een eigen "terug naar
-beheer"-knop. Een onbekend pad valt terug op het eerste scherm waar de
-ingelogde gebruiker effectief recht op heeft (`useDefaultPath()` in `App.jsx`).
+Vercel). `/`, `/beheer`, `/aanwezigheid` en `/speaker` delen een `ShellLayout`
+(header met logo/home-link + klok + gebruiker/logout, `<Outlet/>` voor de
+inhoud). De header bevat bewust géén kruis-scherm navigatieknoppen meer —
+navigeren tussen schermen gebeurt uitsluitend via de tegels op de
+landingspagina (`/`, `HubView`); de home-link in de header brengt je daar
+altijd naar terug. `/scherm` en `/scherm/podium` zijn fullscreen, zonder
+header, met een eigen "terug naar overzicht"-knop die naar `/` navigeert.
+Een onbekend pad valt terug op `/`.
+
+Binnen Beheer (`ManagementView`) geldt dezelfde regel: de knoppen om naar
+Aanwezigheid, Speaker, Display of Podium te gaan staan daar niet — dat kan
+vanaf de landingspagina. De sectie-tabs (Wedstrijden/Clubs/Gebruikers)
+zijn geen "andere schermen" maar subsecties van Beheer zelf en blijven dus
+gewoon zichtbaar.
+
+---
+
+## Design systeem (`theme.js` + UI-kit)
+
+Alle styling blijft inline stijlobjecten per CLAUDE.md — geen Tailwind, geen
+CSS modules — maar bouwt voortaan op gedeelde tokens in `theme.js` in plaats
+van losse hexcodes te herhalen in elk bestand:
+
+```
+color        merkkleuren (primary/success/danger/warning/info) + neutralen
+             (ink/body/muted/faint/border/surface/bg) + donkere "stage"-tokens
+             voor Display/Podium/Login (stage/stageAlt/stageInk/stageMuted)
+radius       sm/md/lg/xl/pill
+shadow       sm/md/lg + focus(kleur) voor een gekleurde focus-ring
+font         body (Inter) en mono (IBM Plex Mono) — daadwerkelijk geladen
+             via Google Fonts in index.html
+space        herbruikbare spacing-stappen
+statusColor  kleur per wedstrijdstatus (open/bezig/beëindigd)
+```
+
+Drie gedeelde componenten in `components/ui/` bouwen op deze tokens:
+`Button` (variant/size/icon), `Card` en `Badge` (tone + optioneel icoon).
+Beheer-schermen en de landingspagina gebruiken deze consequent; Display/
+Podium/Login gebruiken vooral de kleur- en fonttokens rechtstreeks (eigen,
+donkere layout — geen kandidaat voor de lichte Button/Badge-stijl).
 
 ---
 
