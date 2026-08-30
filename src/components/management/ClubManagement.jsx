@@ -9,6 +9,8 @@
 import React, { useState, useRef } from 'react';
 import { Plus, Edit2, Upload, Check, X } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
+import { color, radius, shadow } from '../../theme';
+import Button from '../ui/Button';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -18,13 +20,14 @@ const s = {
   wrapper: {
     flex: 1,
     overflowY: 'auto',
-    padding: '1.5rem',
-    background: '#f8fafc',
+    padding: '2rem 1.75rem',
+    background: color.bg,
   },
   card: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '12px',
+    background: color.surface,
+    border: `1px solid ${color.border}`,
+    borderRadius: radius.lg,
+    boxShadow: shadow.sm,
     padding: '1.25rem 1.5rem',
     marginBottom: '1.5rem',
     maxWidth: '760px',
@@ -32,7 +35,7 @@ const s = {
   cardTitle: {
     fontSize: '0.7rem',
     fontWeight: 900,
-    color: '#94a3b8',
+    color: color.faint,
     letterSpacing: '0.08em',
     textTransform: 'uppercase',
     marginBottom: '1rem',
@@ -43,36 +46,23 @@ const s = {
     alignItems: 'center',
     marginBottom: '1rem',
   },
-  newBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    background: '#0f9d70',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '0.45rem 0.9rem',
-    fontWeight: 700,
-    fontSize: '0.8rem',
-    cursor: 'pointer',
-  },
   row: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.8rem',
-    padding: '0.6rem 0',
-    borderBottom: '1px solid #f1f5f9',
+    padding: '0.65rem 0',
+    borderBottom: `1px solid ${color.borderSoft}`,
   },
   logoThumb: (hasLogo) => ({
     width: '40px',
     height: '40px',
-    borderRadius: '8px',
-    background: hasLogo ? '#fff' : '#eaf1ff',
-    border: '1px solid #e2e8f0',
+    borderRadius: radius.md,
+    background: hasLogo ? color.surface : color.primarySoft,
+    border: `1px solid ${color.border}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#2563eb',
+    color: color.primary,
     fontWeight: 800,
     fontSize: '0.7rem',
     flexShrink: 0,
@@ -86,35 +76,35 @@ const s = {
   clubName: {
     fontWeight: 700,
     fontSize: '0.88rem',
-    color: '#1e293b',
+    color: color.inkSoft,
   },
   clubMeta: {
     fontSize: '0.75rem',
-    color: '#64748b',
+    color: color.muted,
   },
   logoStatus: (missing) => ({
     fontSize: '0.72rem',
     fontWeight: 700,
-    color: missing ? '#ef4444' : '#0f9d70',
+    color: missing ? color.danger : color.success,
     minWidth: '110px',
   }),
   iconBtn: {
-    border: '1px solid #cbd5e1',
-    background: '#fff',
+    border: `1px solid ${color.border}`,
+    background: color.surface,
     borderRadius: '6px',
     padding: '0.4rem',
     cursor: 'pointer',
-    color: '#475569',
+    color: color.body,
     display: 'flex',
     alignItems: 'center',
   },
   uploadLabel: {
-    border: '1px solid #cbd5e1',
-    background: '#fff',
+    border: `1px solid ${color.border}`,
+    background: color.surface,
     borderRadius: '6px',
     padding: '0.4rem',
     cursor: 'pointer',
-    color: '#2563eb',
+    color: color.primary,
     display: 'flex',
     alignItems: 'center',
   },
@@ -126,45 +116,29 @@ const s = {
   label: {
     fontSize: '0.7rem',
     fontWeight: 700,
-    color: '#64748b',
+    color: color.muted,
     marginBottom: '0.3rem',
     display: 'block',
   },
   input: {
     width: '100%',
     boxSizing: 'border-box',
-    border: '1px solid #cbd5e1',
+    border: `1px solid ${color.border}`,
     borderRadius: '6px',
     padding: '0.5rem 0.6rem',
     fontSize: '0.85rem',
+    color: color.ink,
   },
   formActions: {
     gridColumn: '1 / -1',
     display: 'flex',
     gap: '0.5rem',
   },
-  submitBtn: {
-    background: '#2563eb',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '0.6rem 1.2rem',
-    fontWeight: 700,
+  empty: {
     fontSize: '0.85rem',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-  },
-  cancelBtn: {
-    background: '#fff',
-    color: '#64748b',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    padding: '0.6rem 1.2rem',
-    fontWeight: 700,
-    fontSize: '0.85rem',
-    cursor: 'pointer',
+    color: color.faint,
+    fontStyle: 'italic',
+    padding: '0.6rem 0',
   },
 };
 
@@ -233,9 +207,9 @@ export default function ClubManagement() {
         <div style={s.headerRow}>
           <div style={{ ...s.cardTitle, marginBottom: 0 }}>Clubs ({clubs.length})</div>
           {editingId === null && (
-            <button style={s.newBtn} onClick={openNew}>
-              <Plus size={14} /> Nieuwe club
-            </button>
+            <Button variant="success" size="sm" icon={<Plus size={14} />} onClick={openNew}>
+              Nieuwe club
+            </Button>
           )}
         </div>
 
@@ -281,7 +255,7 @@ export default function ClubManagement() {
         })}
 
         {clubs.length === 0 && editingId === null && (
-          <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic', padding: '0.6rem 0' }}>
+          <div style={s.empty}>
             Nog geen clubs — clubs ontstaan ook automatisch bij het importeren van deelnemers.
           </div>
         )}
@@ -324,12 +298,12 @@ export default function ClubManagement() {
               />
             </div>
             <div style={s.formActions}>
-              <button style={s.submitBtn} onClick={handleSubmit} disabled={busy}>
-                <Check size={15} /> {busy ? 'Bezig…' : 'Opslaan'}
-              </button>
-              <button style={s.cancelBtn} onClick={closeForm}>
-                <X size={15} /> Annuleren
-              </button>
+              <Button variant="primary" icon={<Check size={15} />} onClick={handleSubmit} disabled={busy}>
+                {busy ? 'Bezig…' : 'Opslaan'}
+              </Button>
+              <Button variant="secondary" icon={<X size={15} />} onClick={closeForm}>
+                Annuleren
+              </Button>
             </div>
           </div>
         </div>

@@ -14,6 +14,7 @@ import {
   Search, Calendar, ChevronLeft, Check, UserPlus, UserX, RotateCcw,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { color, radius, shadow } from '../theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -25,14 +26,14 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    background: '#f8fafc',
+    background: color.bg,
   },
 
   // Wedstrijdkeuze
   pickerWrap: {
     flex: 1,
     overflowY: 'auto',
-    padding: '1.5rem',
+    padding: '2rem 1.5rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '0.75rem',
@@ -41,33 +42,35 @@ const s = {
     width: '100%',
   },
   pickerTitle: {
-    fontSize: '1rem',
-    fontWeight: 800,
-    color: '#1e293b',
-    marginBottom: '0.25rem',
+    fontSize: '1.1rem',
+    fontWeight: 900,
+    color: color.ink,
+    marginBottom: '0.5rem',
   },
   pickerCard: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
+    background: color.surface,
+    border: `1px solid ${color.border}`,
+    borderRadius: radius.lg,
+    boxShadow: shadow.sm,
     padding: '1rem 1.2rem',
     cursor: 'pointer',
+    transition: 'transform 0.12s ease',
   },
   pickerName: {
     fontWeight: 700,
     fontSize: '0.95rem',
-    color: '#1e293b',
+    color: color.inkSoft,
   },
   pickerMeta: {
     display: 'flex',
     alignItems: 'center',
     gap: '5px',
     fontSize: '0.8rem',
-    color: '#64748b',
+    color: color.muted,
     marginTop: '3px',
   },
   emptyPicker: {
-    color: '#94a3b8',
+    color: color.faint,
     fontSize: '0.85rem',
     fontStyle: 'italic',
     textAlign: 'center',
@@ -80,8 +83,8 @@ const s = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0.9rem 1.5rem',
-    background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
     flexShrink: 0,
     gap: '1rem',
     flexWrap: 'wrap',
@@ -92,30 +95,32 @@ const s = {
     gap: '4px',
     background: 'none',
     border: 'none',
-    color: '#2563eb',
+    color: color.primary,
     fontWeight: 700,
     fontSize: '0.85rem',
     cursor: 'pointer',
+    padding: 0,
+    marginBottom: '2px',
   },
   compTitle: {
     fontWeight: 800,
     fontSize: '1rem',
-    color: '#1e293b',
+    color: color.ink,
   },
   counter: {
-    background: '#0f9d70',
+    background: color.success,
     color: '#fff',
     fontWeight: 700,
     fontSize: '0.85rem',
     padding: '0.4rem 0.9rem',
-    borderRadius: '99px',
+    borderRadius: radius.pill,
   },
 
   // Filterbalk
   filterBar: {
     padding: '0.85rem 1.5rem',
-    background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
     display: 'flex',
     flexDirection: 'column',
     gap: '0.6rem',
@@ -124,9 +129,9 @@ const s = {
   searchBar: {
     display: 'flex',
     alignItems: 'center',
-    background: '#f1f5f9',
+    background: color.surfaceAlt,
     padding: '0.6rem 0.9rem',
-    borderRadius: '8px',
+    borderRadius: radius.md,
     gap: '0.5rem',
   },
   searchInput: {
@@ -135,6 +140,7 @@ const s = {
     outline: 'none',
     width: '100%',
     fontSize: '0.95rem',
+    color: color.ink,
   },
   chipRow: {
     display: 'flex',
@@ -142,13 +148,13 @@ const s = {
     flexWrap: 'wrap',
   },
   chip: (active) => ({
-    background: active ? '#2563eb' : '#fff',
-    color: active ? '#fff' : '#475569',
-    border: `1px solid ${active ? '#2563eb' : '#e2e8f0'}`,
+    background: active ? color.primary : color.surface,
+    color: active ? '#fff' : color.body,
+    border: `1px solid ${active ? color.primary : color.border}`,
     fontSize: '0.75rem',
     fontWeight: 700,
     padding: '0.3rem 0.75rem',
-    borderRadius: '99px',
+    borderRadius: radius.pill,
     cursor: 'pointer',
   }),
 
@@ -166,61 +172,62 @@ const s = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '1rem',
-    background: '#fff',
-    border: '1px solid #e2e8f0',
+    background: color.surface,
+    border: `1px solid ${color.border}`,
     borderLeft: `4px solid ${borderColor}`,
-    borderRadius: '10px',
+    borderRadius: radius.lg,
     padding: '0.9rem 1.1rem',
+    boxShadow: shadow.sm,
   }),
   rowName: {
     fontWeight: 700,
     fontSize: '0.95rem',
-    color: '#1e293b',
+    color: color.inkSoft,
   },
   rowClub: {
     fontSize: '0.8rem',
-    color: '#64748b',
+    color: color.muted,
     marginTop: '2px',
   },
   statusPresent: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    background: '#e7f8f1',
-    color: '#0f9d70',
+    background: color.successSoft,
+    color: color.successDark,
     fontWeight: 700,
     fontSize: '0.8rem',
     padding: '0.5rem 0.9rem',
-    borderRadius: '99px',
+    borderRadius: radius.pill,
   },
   statusAbsent: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    background: '#fdeceb',
-    color: '#dc3545',
+    background: color.dangerSoft,
+    color: color.danger,
     fontWeight: 700,
     fontSize: '0.8rem',
     padding: '0.5rem 0.9rem',
-    borderRadius: '99px',
+    borderRadius: radius.pill,
   },
   meldAanBtn: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    background: '#2563eb',
+    background: color.primary,
     color: '#fff',
     border: 'none',
     fontWeight: 700,
     fontSize: '0.85rem',
     padding: '0.55rem 1rem',
-    borderRadius: '8px',
+    borderRadius: radius.md,
     cursor: 'pointer',
   },
   secondaryAction: {
     background: 'none',
     border: 'none',
-    color: '#94a3b8',
+    color: color.faint,
     fontSize: '0.75rem',
     cursor: 'pointer',
     textDecoration: 'underline',
@@ -237,8 +244,8 @@ const s = {
     alignItems: 'center',
     gap: '5px',
     background: 'none',
-    border: '1px solid #cbd5e1',
-    color: '#64748b',
+    border: `1px solid ${color.border}`,
+    color: color.muted,
     fontSize: '0.72rem',
     fontWeight: 700,
     padding: '0.3rem 0.6rem',
@@ -246,7 +253,7 @@ const s = {
     cursor: 'pointer',
   },
   emptyList: {
-    color: '#94a3b8',
+    color: color.faint,
     fontSize: '0.85rem',
     fontStyle: 'italic',
     textAlign: 'center',
@@ -327,7 +334,13 @@ export default function AttendanceView() {
             <div style={s.emptyPicker}>Geen wedstrijden om aanwezigheid voor te registreren.</div>
           )}
           {selectableCompetitions.map(comp => (
-            <div key={comp.id} style={s.pickerCard} onClick={() => setSelectedCompId(comp.id)}>
+            <div
+              key={comp.id}
+              style={s.pickerCard}
+              onClick={() => setSelectedCompId(comp.id)}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; }}
+            >
               <div style={s.pickerName}>{comp.name}</div>
               <div style={s.pickerMeta}>
                 <Calendar size={13} />
@@ -356,7 +369,7 @@ export default function AttendanceView() {
 
       <div style={s.filterBar}>
         <div style={s.searchBar}>
-          <Search size={16} color="#94a3b8" />
+          <Search size={16} color={color.faint} />
           <input
             style={s.searchInput}
             placeholder="Zoek op naam of club…"
@@ -394,7 +407,7 @@ export default function AttendanceView() {
           return (
             <div
               key={participant.id}
-              style={s.row(scratched ? '#dc3545' : participant.isPresent ? '#0f9d70' : 'transparent')}
+              style={s.row(scratched ? color.danger : participant.isPresent ? color.success : 'transparent')}
             >
               <div>
                 <div style={s.rowName}>{participant.name}</div>

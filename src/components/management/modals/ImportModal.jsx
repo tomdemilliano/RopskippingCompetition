@@ -15,6 +15,7 @@ import React, { useState, useMemo } from 'react';
 import { X, AlertTriangle, CheckCircle, Plus } from 'lucide-react';
 import { useAppContext } from '../../../AppContext';
 import { modalStyles as s } from './modalStyles';
+import { color } from '../../../theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CSV PARSER
@@ -103,14 +104,14 @@ function StepIndicator({ current }) {
                 width: '28px', height: '28px', borderRadius: '50%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 700, fontSize: '0.75rem',
-                background: done ? '#10b981' : active ? '#2563eb' : '#e2e8f0',
-                color: (done || active) ? '#fff' : '#94a3b8',
+                background: done ? color.success : active ? color.primary : color.border,
+                color: (done || active) ? '#fff' : color.faint,
               }}>
                 {done ? '✓' : idx}
               </div>
               <div style={{
                 fontSize: '0.65rem', marginTop: '4px', fontWeight: active ? 700 : 400,
-                color: active ? '#2563eb' : '#94a3b8',
+                color: active ? color.primary : color.faint,
               }}>
                 {label}
               </div>
@@ -118,7 +119,7 @@ function StepIndicator({ current }) {
             {i < steps.length - 1 && (
               <div style={{
                 height: '2px', flex: 1, marginBottom: '18px',
-                background: done ? '#10b981' : '#e2e8f0',
+                background: done ? color.success : color.border,
               }} />
             )}
           </div>
@@ -303,15 +304,15 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
           {/* ── Stap 1: CSV plakken ── */}
           {step === 1 && (
             <>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+              <p style={{ fontSize: '0.85rem', color: color.body, marginTop: 0 }}>
                 Plak de CSV-inhoud hieronder. Verwacht formaat:
               </p>
 
               {event?.scoringType === 'freestyle' ? (
                 <div style={{
-                  background: '#f8fafc', border: '1px dashed #cbd5e1',
+                  background: color.surfaceAlt, border: '1px dashed #cbd5e1',
                   borderRadius: '6px', padding: '0.6rem', fontFamily: 'monospace',
-                  fontSize: '0.75rem', color: '#475569', marginBottom: '1rem',
+                  fontSize: '0.75rem', color: color.body, marginBottom: '1rem',
                 }}>
                   reeks,uur,veld,skipper,club<br />
                   1,09:00,A,Jan Janssen,Antwerp Ropes<br />
@@ -319,9 +320,9 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
                 </div>
               ) : (
                 <div style={{
-                  background: '#f8fafc', border: '1px dashed #cbd5e1',
+                  background: color.surfaceAlt, border: '1px dashed #cbd5e1',
                   borderRadius: '6px', padding: '0.6rem', fontFamily: 'monospace',
-                  fontSize: '0.75rem', color: '#475569', marginBottom: '1rem',
+                  fontSize: '0.75rem', color: color.body, marginBottom: '1rem',
                 }}>
                   reeks,uur,skipper_veld1,club_veld1,skipper_veld2,club_veld2,...<br />
                   1,09:00,Jan Janssen,Antwerp Ropes,Piet Pieters,Jump Club
@@ -350,10 +351,10 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
           {/* ── Stap 2: Controleer rijen ── */}
           {step === 2 && (
             <>
-              <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.85rem', color: color.body, marginBottom: '1rem' }}>
                 {importRows.length} deelnemers gevonden.
                 {unknownClubNames.length > 0 && (
-                  <span style={{ color: '#f59e0b', fontWeight: 700, marginLeft: '6px' }}>
+                  <span style={{ color: color.warning, fontWeight: 700, marginLeft: '6px' }}>
                     {unknownClubNames.length} onbekende club(s) — stap 3 vereist.
                   </span>
                 )}
@@ -362,12 +363,12 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
               <div style={{ maxHeight: '320px', overflowY: 'auto', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc' }}>
-                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Naam</th>
-                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Club</th>
-                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Reeks</th>
-                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Veld</th>
-                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Tijd</th>
+                    <tr style={{ background: color.surfaceAlt }}>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: color.body, borderBottom: '1px solid #e2e8f0' }}>Naam</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: color.body, borderBottom: '1px solid #e2e8f0' }}>Club</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: color.body, borderBottom: '1px solid #e2e8f0' }}>Reeks</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: color.body, borderBottom: '1px solid #e2e8f0' }}>Veld</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: color.body, borderBottom: '1px solid #e2e8f0' }}>Tijd</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -379,16 +380,16 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
                           <td style={{ padding: '0.4rem 0.75rem', fontWeight: 600 }}>{row.name}</td>
                           <td style={{ padding: '0.4rem 0.75rem' }}>
                             <span style={{
-                              color: clubUnknown ? '#f59e0b' : '#475569',
+                              color: clubUnknown ? color.warning : color.body,
                               fontWeight: clubUnknown ? 700 : 400,
                             }}>
                               {row.clubName || '—'}
                               {clubUnknown && ' ⚠'}
                             </span>
                           </td>
-                          <td style={{ padding: '0.4rem 0.75rem', color: '#64748b' }}>{row.seriesNr}</td>
-                          <td style={{ padding: '0.4rem 0.75rem', color: '#64748b' }}>{row.fieldNr}</td>
-                          <td style={{ padding: '0.4rem 0.75rem', color: '#64748b' }}>{row.scheduledTime}</td>
+                          <td style={{ padding: '0.4rem 0.75rem', color: color.body }}>{row.seriesNr}</td>
+                          <td style={{ padding: '0.4rem 0.75rem', color: color.body }}>{row.fieldNr}</td>
+                          <td style={{ padding: '0.4rem 0.75rem', color: color.body }}>{row.scheduledTime}</td>
                         </tr>
                       );
                     })}
@@ -401,7 +402,7 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
           {/* ── Stap 3: Club-resolutie ── */}
           {step === 3 && (
             <>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+              <p style={{ fontSize: '0.85rem', color: color.body, marginTop: 0 }}>
                 De volgende clubs zijn niet gevonden. Kies een bestaande club of maak een nieuwe aan.
               </p>
 
@@ -411,7 +412,7 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
                   return (
                     <div key={clubName} style={{
                       border: '1px solid #e2e8f0', borderRadius: '8px',
-                      padding: '1rem', background: '#f8fafc',
+                      padding: '1rem', background: color.surfaceAlt,
                     }}>
                       <div style={{ fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <AlertTriangle size={15} color="#f59e0b" />
@@ -421,7 +422,7 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
                       {/* Fuzzy match suggestie */}
                       {r.fuzzyMatches?.length > 0 && (
                         <div style={{
-                          background: '#fffbeb', border: '1px solid #fef08a',
+                          background: color.warningSoft, border: '1px solid #fef08a',
                           borderRadius: '6px', padding: '0.6rem 0.75rem',
                           marginBottom: '0.75rem', fontSize: '0.8rem', color: '#854d0e',
                         }}>
@@ -499,15 +500,15 @@ export default function ImportModal({ competitionId, eventId, onClose }) {
           {step === 4 && (
             <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
               {importing && (
-                <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
+                <div style={{ color: color.body, fontSize: '0.9rem' }}>
                   Importeren…
                 </div>
               )}
               {importResult?.success && (
                 <div style={{ color: '#166534' }}>
-                  <CheckCircle size={48} style={{ marginBottom: '1rem', color: '#10b981' }} />
+                  <CheckCircle size={48} style={{ marginBottom: '1rem', color: color.success }} />
                   <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>Klaar!</div>
-                  <div style={{ fontSize: '0.85rem', marginTop: '0.5rem', color: '#64748b' }}>
+                  <div style={{ fontSize: '0.85rem', marginTop: '0.5rem', color: color.body }}>
                     {importResult.count} deelnemers geïmporteerd voor {event?.name}.
                   </div>
                 </div>
