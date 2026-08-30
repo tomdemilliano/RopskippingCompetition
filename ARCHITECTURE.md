@@ -38,6 +38,7 @@ login en enkel toegang tot de schermen waar dat account recht op heeft.
 | Laag        | Technologie                          |
 |-------------|--------------------------------------|
 | Frontend    | React 18, Vite, `react-router-dom` (hash-routing — geen server-rewrites nodig op Vercel) |
+| PDF-import  | `pdfjs-dist`, client-side (zie "PDF-import" hieronder) — geen backend nodig |
 | Styling     | Inline CSS via stijlobjecten, opgebouwd uit `theme.js`-tokens — geen Tailwind, geen CSS modules |
 | Database    | Firebase Firestore (NoSQL, realtime) |
 | Auth        | Firebase Auth, e-mail/wachtwoord — rollen + rechten in `users/{uid}` |
@@ -57,6 +58,9 @@ src/
   constants.js                     # APP_ID, getFirebaseConfig, emailForUsername
   seedData.js                      # Éénmalige seed voor events + competitionTypes
   theme.js                         # Design tokens: color, radius, shadow, font, space, statusColor
+  pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
+  pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
+  pdfImport.js                     # Browserlaag (pdfjs-worker) — enige toegangspunt voor componenten
   index.css                        # Fontinstelling + minimale resets (geen Tailwind)
   main.jsx                         # React entry point
 
@@ -85,7 +89,8 @@ src/
         AddCompetitionModal.jsx
         EditCompetitionModal.jsx
         EditParticipantModal.jsx
-        ImportModal.jsx             # CSV-import met club-matching flow
+        ImportModal.jsx             # CSV-import met club-matching flow (per onderdeel)
+        PdfImportModal.jsx          # Volledig wedstrijdschema (PDF) importeren, zie "PDF-import" hieronder
 
   admin/
     seed-main.jsx                   # Standalone Firebase init voor seed-pagina
@@ -132,7 +137,9 @@ name, clubId → clubs, externalId ("{name}_{clubId}"), isPresent, entries[], cr
 
 **`entry` (embedded object in participant.entries[])**
 ```
-eventId → events, seriesNr, fieldNr, scheduledTime "HH:MM", isScratched
+eventId → events, seriesNr, fieldNr, scheduledTime "HH:MM", isScratched,
+categoryLabel ("13-15j M (ANT)", enkel bij freestyle — podium-groepering,
+Fase 3; leeg bij CSV-import, gevuld door PDF-import)
 ```
 
 **`block/{id}`** (subcollectie van competition — zie "Dagtijdlijn (blocks)")
@@ -178,7 +185,7 @@ Geëxporteerde factories:
 - `clubFactory` — CRUD + subscribe + findByName (fuzzy matching) + uploadLogo (Storage)
 - `competitionFactory` — CRUD + setStatus + saveEventOrder + saveProgress
 - `participantFactory` — subscribe + setPresence + setScratchedForEvent/All + importBatch
-- `blockFactory` — CRUD + subscribe + setStatus
+- `blockFactory` — CRUD + subscribe + setStatus + importBatch (PDF-import)
 
 `dbSchema.js` raakt Firestore én Firebase Storage aan (`clubFactory.uploadLogo`)
 maar nooit Firebase Auth — het aanmaken en inloggen van gebruikers gebeurt in
@@ -342,8 +349,105 @@ CSV-formaat freestyle:
 reeks,uur,veld,skipper,club
 ```
 
-PDF-import (Fase 2) hergebruikt dit stramien met een nieuwe stap 0 ervoor
-(PDF → geparseerde rijen); zie ARCHITECTURE-blueprint voor het volledige plan.
+---
+
+## PDF-import (volledig wedstrijdschema)
+
+Naast CSV per onderdeel kan binnen Beheer ook het volledige, door Gymfed
+aangeleverde wedstrijdschema (PDF) in één keer geïmporteerd worden — inclusief
+de dagtijdlijn (`blocks`: pauzes, briefing, proefjury, prijsuitreiking) en
+alle reeksen/deelnemers per onderdeel. Knop: "Wedstrijdschema (PDF)" in de
+header van `CompetitionDetail` (enkel zichtbaar zolang de wedstrijd nog niet
+live of afgewerkt is) → opent `PdfImportModal.jsx`.
+
+### Bestandenlaag
+
+```
+pdfSchedule.js   pure grammatica-parser — geen pdfjs-dist, werkt op gewone
+                 rij/kolom-objecten, dus ook buiten de browser testbaar
+pdfExtract.js    pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken,
+                 gegroepeerd in rijen/kolommen op (x, y)-positie
+pdfImport.js     browserlaag: stelt de pdfjs-worker in (Vite `?url`-import)
+                 en koppelt pdfExtract.js aan pdfSchedule.js — enige
+                 toegangspunt dat een component mag gebruiken
+```
+
+Dezelfde scheiding als dbSchema.js/AppContext.jsx: componenten gebruiken enkel
+`pdfImport.js`'s `parseCompetitionPdf(file, events)`, nooit pdfjs-dist
+rechtstreeks.
+
+### Grammatica
+
+Elke pagina begint met "Individuele wedstrijd" gevolgd door een dagdeel-titel
+(bv. "B-niveau 13-15 jaar (...)") — een wissel van die titel opent een nieuwe
+**sectie**. Eén PDF kan dus meerdere dagdelen/wedstrijden bevatten;
+`PdfImportModal` laat de gebruiker kiezen welke sectie bij de geopende
+wedstrijd hoort zodra er meer dan één is.
+
+Binnen een sectie:
+- Een onderdeelnaam-regel (bv. "Speed Sprint (30 seconden)") opent een nieuw
+  blok van type `"heats"` en zet het "huidige onderdeel" — matching tegen de
+  `events`-collectie gebeurt via een tolerante bevat-check (niet exact: Gymfed
+  gebruikt vaak een uitgebreidere naam dan wat in de app geregistreerd staat).
+  Geen match → het blok komt in de nakijkstap met een lege "koppel aan"-keuze
+  te staan, importeren is geblokkeerd tot dat opgelost is.
+- Een `"Veld N"`-kopregel (speed, 5 kolommen per kopregel) of
+  `"Veld A/B - categorie"`-kopregel (freestyle, 2 parallelle kolommen) opent
+  een **kolomblok** — kan meermaals terugkeren onder hetzelfde onderdeel
+  (bv. Veld 1-5 gevolgd door een aparte Veld 6-10-kopregel voor dezelfde
+  reeksen).
+- Een losse `tijd + tekst`-regel zonder geldig kolomblok erna (geen volledig
+  club+naam-paar) is een pauze/briefing/deuren/proefjury/prijsuitreiking-blok
+  — het bloktype wordt gegokt op trefwoorden in het label, altijd corrigeerbaar
+  in de nakijkstap.
+
+Reeksen worden **nooit** per kolomblok genummerd:
+- **Speed** — alle rijen van hetzelfde onderdeel (over meerdere kolomblokken
+  én meerdere fysieke blokken heen, bv. onderbroken door een pauze) worden
+  eerst verzameld en dan gegroepeerd op exact tijdstip; elke tijdgroep wordt
+  chronologisch één `seriesNr`. Twee kolomblokken die hetzelfde beginuur delen
+  (Veld 1-5 en Veld 6-10) vormen zo automatisch één reeks van 10 velden i.p.v.
+  twee reeksen van 5.
+- **Freestyle** — elke deelnemer is zijn eigen reeks (solo-optreden).
+  `seriesNr` loopt globaal door over alle categorieën/kolommen (A/B) heen,
+  chronologisch op tijdstip — nooit per categorie herstart, anders zouden twee
+  gelijktijdig lopende categorieën dezelfde `seriesNr` delen en zou de
+  reeks-afleiding (`eventId` + `seriesNr`) ze foutief samenvoegen tot één
+  reeks. `categoryLabel` blijft wel per entry bewaard (zie `entries[]`
+  hierboven) voor latere podium-groepering.
+
+Voettekst (zaalnaam + adres, telkens onderaan elke pagina) wordt structureel
+herkend: de adresregel bevat altijd een `dd/mm/jjjj`-datumstempel die verder
+nergens in het schema voorkomt — die regel én de regel erboven (de zaalnaam)
+worden genegeerd, ongeacht hun tekst.
+
+### Doorstreping = al geschrapt
+
+Sommige namen in het schema staan doorstreept (de organisatie kende de
+afwezigheid al voor de wedstrijddag). Doorstreping wordt gedetecteerd via de
+PDF-tekeninstructies zelf: een doorstreping is een losse horizontale lijn
+(moveTo+lineTo, geen rechthoek) direct gevolgd door een stroke-instructie,
+overlappend met de tekst-bounding-box. Betrouwbaar gebleken tegen een echt
+Gymfed-schema, maar niet 100% gegarandeerd — daarom altijd zichtbaar en
+aanpasbaar (checkbox per rij) in de nakijkstap, nooit stilzwijgend toegepast.
+
+### PdfImportModal — stappen
+
+Hergebruikt zoveel mogelijk van het bestaande CSV-stramien (`ImportModal`):
+
+0. **Upload** — PDF kiezen, meteen client-side geparseerd (geen backend nodig)
+1. **Dagdeel kiezen** — enkel getoond bij meerdere secties in de PDF
+2. **Nakijken** — elk blok tonen in schema-volgorde; onderdeel-blokken koppelen
+   aan een bestaand `events`-document (verplicht), bloktype van pauze/label-
+   blokken corrigeren, geschrapt-checkbox per deelnemer bevestigen/aanpassen,
+   een blok desnoods volledig uitsluiten van import
+3. **Clubs koppelen** — exact dezelfde flow als CSV-import: fuzzy matching
+   (`clubFactory.findByName`) + keuze bestaande club of nieuwe aanmaken
+4. **Importeren** — nieuwe clubs eerst aanmaken, dan `participantFactory.
+   importBatch()` één keer per gekozen onderdeel (alle entries van alle
+   meegenomen blokken voor dat onderdeel samen), dan
+   `blockFactory.importBatch()` voor de volledige dagtijdlijn in één
+   Firestore-batch
 
 ---
 

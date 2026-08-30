@@ -469,6 +469,10 @@ export function AppProvider({ children }) {
     return blockFactory.delete(competitionId, blockId);
   }, []);
 
+  const importBlocks = useCallback((competitionId, blocksData) => {
+    return blockFactory.importBatch(competitionId, blocksData);
+  }, []);
+
   // ─────────────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
   // ─────────────────────────────────────────────────────────────────────────
@@ -550,6 +554,7 @@ export function AppProvider({ children }) {
     updateBlock,
     setBlockStatus,
     deleteBlock,
+    importBlocks,
   };
 
   return (
