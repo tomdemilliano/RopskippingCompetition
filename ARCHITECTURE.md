@@ -395,7 +395,11 @@ Binnen een sectie:
   `"Veld A/B - categorie"`-kopregel (freestyle, 2 parallelle kolommen) opent
   een **kolomblok** — kan meermaals terugkeren onder hetzelfde onderdeel
   (bv. Veld 1-5 gevolgd door een aparte Veld 6-10-kopregel voor dezelfde
-  reeksen).
+  reeksen, wanneer een reeks te veel velden heeft om naast elkaar op de
+  pagina te passen). Zo'n herhaling opent bewust **geen** nieuw fysiek blok
+  in de dagtijdlijn — enkel een onderdeelnaam-regel of een pauze/label-regel
+  doet dat. Zonder die uitzondering zou eenzelfde heat (bv. 10 velden om
+  8:45) als twee losse, overlappende dagtijdlijn-blokken eindigen i.p.v. één.
 - Een losse `tijd + tekst`-regel zonder geldig kolomblok erna (geen volledig
   club+naam-paar) is een pauze/briefing/deuren/proefjury/prijsuitreiking-blok
   — het bloktype wordt gegokt op trefwoorden in het label, altijd corrigeerbaar
