@@ -22,6 +22,7 @@ import AddCompetitionModal   from './management/modals/AddCompetitionModal';
 import EditCompetitionModal  from './management/modals/EditCompetitionModal';
 import EditParticipantModal  from './management/modals/EditParticipantModal';
 import ImportModal           from './management/modals/ImportModal';
+import PdfImportModal        from './management/modals/PdfImportModal';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -117,6 +118,7 @@ export default function ManagementView() {
   // editCompId is de wedstrijd die bewerkt wordt vanuit de modal
   const [editCompId,      setEditCompId]      = useState(null);
   const [importEventId,   setImportEventId]   = useState(null);
+  const [showPdfImport,   setShowPdfImport]   = useState(false);
   const [editParticipant, setEditParticipant] = useState(null);
 
   // Navigeer naar detailscherm
@@ -189,6 +191,7 @@ export default function ManagementView() {
               competitionId={selectedCompId}
               onEdit={handleEditFromDetail}
               onImport={(eventId) => setImportEventId(eventId)}
+              onImportPdf={() => setShowPdfImport(true)}
               onEditParticipant={(p) => setEditParticipant(p)}
             />
           </div>
@@ -218,6 +221,13 @@ export default function ManagementView() {
           competitionId={selectedCompId}
           eventId={importEventId}
           onClose={() => setImportEventId(null)}
+        />
+      )}
+
+      {showPdfImport && selectedCompId && (
+        <PdfImportModal
+          competitionId={selectedCompId}
+          onClose={() => setShowPdfImport(false)}
         />
       )}
 

@@ -328,12 +328,14 @@ const s = {
  * @param {string}   props.competitionId
  * @param {function} props.onEdit          — opent EditCompetitionModal
  * @param {function} props.onImport        — cb(eventId) opent ImportModal
+ * @param {function} props.onImportPdf     — opent PdfImportModal (volledig wedstrijdschema)
  * @param {function} props.onEditParticipant — cb(participant) opent EditParticipantModal
  */
 export default function CompetitionDetail({
   competitionId,
   onEdit,
   onImport,
+  onImportPdf,
   onEditParticipant,
 }) {
   const {
@@ -500,6 +502,9 @@ export default function CompetitionDetail({
           <div style={s.actions}>
             {!isLive && !isDone && (
               <>
+                <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={onImportPdf}>
+                  Wedstrijdschema (PDF)
+                </Button>
                 <button style={s.iconBtn(false)} title="Bewerken" onClick={onEdit}>
                   <Edit2 size={15} />
                 </button>

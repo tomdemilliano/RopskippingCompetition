@@ -321,6 +321,9 @@ const competitionConverter = {
  * @property {number|string}   fieldNr         1-10 voor speed, "A"/"B" voor freestyle
  * @property {string}          scheduledTime   "HH:MM"
  * @property {boolean}         isScratched
+ * @property {string}          categoryLabel   bv. "13-15j M (ANT)" — enkel relevant bij freestyle
+ *                                              (podium-groepering, Fase 3); PDF-import vult dit,
+ *                                              CSV-import laat het leeg
  */
 
 /**
@@ -359,6 +362,7 @@ function normalizeEntry(raw) {
     fieldNr:       raw.fieldNr       ?? '',
     scheduledTime: raw.scheduledTime ?? '',
     isScratched:   raw.isScratched   ?? false,
+    categoryLabel: raw.categoryLabel ?? '',
   };
 }
 
@@ -866,6 +870,8 @@ export const participantFactory = {
    *   seriesNr: number,
    *   fieldNr: number|string,
    *   scheduledTime: string,
+   *   categoryLabel?: string,
+   *   isScratched?: boolean,
    *   isPause?: boolean
    * }>} rows
    */
@@ -878,7 +884,8 @@ export const participantFactory = {
         seriesNr:      row.seriesNr,
         fieldNr:       row.fieldNr,
         scheduledTime: row.scheduledTime,
-        isScratched:   false,
+        isScratched:   row.isScratched ?? false,
+        categoryLabel: row.categoryLabel ?? '',
       });
 
       const existing = existingParticipants.find(
@@ -983,6 +990,24 @@ export const blockFactory = {
    */
   delete(competitionId, blockId) {
     return deleteDoc(paths.block(competitionId, blockId));
+  },
+
+  /**
+   * Maak meerdere blokken in één keer aan, in de opgegeven volgorde.
+   * Gebruikt door PDF-import (zie pdfImport.js): elke herkende blokgrens
+   * in het wedstrijdschema (onderdeel-sectie of losse pauze/briefing/
+   * prijsuitreiking-regel) wordt hier één document.
+   *
+   * @param {string} competitionId
+   * @param {Array<{ type: string, eventId?: string, label?: string, scheduledTime?: string, order: number }>} blocksData
+   */
+  async importBatch(competitionId, blocksData) {
+    const batch = writeBatch(getDb());
+    for (const data of blocksData) {
+      const newRef = doc(paths.blocks(competitionId));
+      batch.set(newRef, blockConverter.toFirestore(data));
+    }
+    return batch.commit();
   },
 };
 
