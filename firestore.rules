@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// RopeScore Pro — Firestore security rules.
+// SkipFlow — Firestore security rules.
 //
 // Niet automatisch gedeployed door dit repo (geen firebase.json/.firebaserc
 // aanwezig) — kopieer dit handmatig naar Firebase Console → Firestore

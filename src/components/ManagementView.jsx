@@ -1,5 +1,5 @@
 /**
- * ManagementView.jsx — RopeScore Pro
+ * ManagementView.jsx — SkipFlow
  *
  * Beheerscherm, drie secties (sectionTabs):
  *   - Wedstrijden  → CompetitionsOverview (lijst) / CompetitionDetail (na selectie)
@@ -12,6 +12,7 @@
 
 import React, { useState } from 'react';
 import { ChevronLeft, Trophy, Users, Building2 } from 'lucide-react';
+import { color, radius } from '../theme';
 
 import CompetitionsOverview  from './management/CompetitionsOverview';
 import CompetitionDetail     from './management/CompetitionDetail';
@@ -38,9 +39,9 @@ const s = {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    padding: '0.6rem 1.5rem',
-    background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
+    padding: '0.7rem 1.75rem',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
     flexShrink: 0,
   },
   backBtn: {
@@ -49,19 +50,19 @@ const s = {
     gap: '4px',
     background: 'none',
     border: 'none',
-    color: '#2563eb',
+    color: color.primary,
     fontWeight: 700,
-    fontSize: '0.8rem',
+    fontSize: '0.82rem',
     cursor: 'pointer',
     padding: '4px 0',
   },
   breadcrumbSep: {
-    color: '#cbd5e1',
+    color: color.faintest,
     fontSize: '0.8rem',
   },
   breadcrumbCurrent: {
-    fontSize: '0.8rem',
-    color: '#475569',
+    fontSize: '0.82rem',
+    color: color.body,
     fontWeight: 600,
   },
   detailWrapper: {
@@ -69,26 +70,34 @@ const s = {
     display: 'flex',
     overflow: 'hidden',
   },
-  sectionTabs: {
-    display: 'flex',
-    gap: '0.4rem',
-    padding: '0.6rem 1.5rem',
-    background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
+  sectionTabsBar: {
+    padding: '0.9rem 1.75rem 0',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
     flexShrink: 0,
+  },
+  sectionTabs: {
+    display: 'inline-flex',
+    gap: '2px',
+    background: color.surfaceAlt,
+    padding: '3px',
+    borderRadius: radius.md,
+    marginBottom: '0.9rem',
   },
   sectionTab: (active) => ({
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    background: active ? '#eff6ff' : 'transparent',
-    color: active ? '#2563eb' : '#64748b',
+    background: active ? color.surface : 'transparent',
+    color: active ? color.ink : color.muted,
+    boxShadow: active ? '0 1px 2px rgba(15,23,42,0.08)' : 'none',
     border: 'none',
-    borderRadius: '6px',
-    padding: '0.4rem 0.8rem',
+    borderRadius: '8px',
+    padding: '0.5rem 1rem',
     fontWeight: 700,
-    fontSize: '0.8rem',
+    fontSize: '0.82rem',
     cursor: 'pointer',
+    transition: 'background 0.12s, color 0.12s',
   }),
 };
 
@@ -135,16 +144,18 @@ export default function ManagementView() {
   return (
     <div style={s.wrapper}>
       {/* ── Sectie-tabs ── */}
-      <div style={s.sectionTabs}>
-        <button style={s.sectionTab(section === 'wedstrijden')} onClick={() => setSection('wedstrijden')}>
-          <Trophy size={14} /> Wedstrijden
-        </button>
-        <button style={s.sectionTab(section === 'clubs')} onClick={() => setSection('clubs')}>
-          <Building2 size={14} /> Clubs
-        </button>
-        <button style={s.sectionTab(section === 'gebruikers')} onClick={() => setSection('gebruikers')}>
-          <Users size={14} /> Gebruikers
-        </button>
+      <div style={s.sectionTabsBar}>
+        <div style={s.sectionTabs}>
+          <button style={s.sectionTab(section === 'wedstrijden')} onClick={() => setSection('wedstrijden')}>
+            <Trophy size={14} /> Wedstrijden
+          </button>
+          <button style={s.sectionTab(section === 'clubs')} onClick={() => setSection('clubs')}>
+            <Building2 size={14} /> Clubs
+          </button>
+          <button style={s.sectionTab(section === 'gebruikers')} onClick={() => setSection('gebruikers')}>
+            <Users size={14} /> Gebruikers
+          </button>
+        </div>
       </div>
 
       {section === 'gebruikers' && <UserManagement />}

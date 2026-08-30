@@ -1,5 +1,5 @@
 /**
- * SeedPage.jsx — RopeScore Pro
+ * SeedPage.jsx — SkipFlow
  *
  * Eénmalige admin-pagina om de Firestore-collecties `events` en
  * `competitionTypes` te seeden. Toegankelijk via /admin/seed.

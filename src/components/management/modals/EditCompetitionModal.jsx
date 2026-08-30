@@ -1,5 +1,5 @@
 /**
- * EditCompetitionModal.jsx — RopeScore Pro
+ * EditCompetitionModal.jsx — SkipFlow
  */
 
 import React, { useState } from 'react';

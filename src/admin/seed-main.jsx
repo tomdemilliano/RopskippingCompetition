@@ -1,5 +1,5 @@
 /**
- * seed-main.jsx — RopeScore Pro
+ * seed-main.jsx — SkipFlow
  *
  * Standalone entry point voor de seed-pagina.
  * Bereikbaar via /seed.html tijdens ontwikkeling.

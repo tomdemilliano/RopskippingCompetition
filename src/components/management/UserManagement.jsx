@@ -1,5 +1,5 @@
 /**
- * UserManagement.jsx — RopeScore Pro
+ * UserManagement.jsx — SkipFlow
  *
  * Gebruikersbeheer — enkel bereikbaar voor de beheerder-rol (zie ManagementView).
  * Maakt gebruikers aan (username/wachtwoord) en kent per gebruiker rechten toe
@@ -9,6 +9,9 @@
 import React, { useEffect, useState } from 'react';
 import { UserPlus, Trash2, Shield } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
+import { color, radius, shadow } from '../../theme';
+import Button from '../ui/Button';
+import Badge from '../ui/Badge';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -18,13 +21,14 @@ const s = {
   wrapper: {
     flex: 1,
     overflowY: 'auto',
-    padding: '1.5rem',
-    background: '#f8fafc',
+    padding: '2rem 1.75rem',
+    background: color.bg,
   },
   card: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '12px',
+    background: color.surface,
+    border: `1px solid ${color.border}`,
+    borderRadius: radius.lg,
+    boxShadow: shadow.sm,
     padding: '1.25rem 1.5rem',
     marginBottom: '1.5rem',
     maxWidth: '760px',
@@ -32,7 +36,7 @@ const s = {
   cardTitle: {
     fontSize: '0.7rem',
     fontWeight: 900,
-    color: '#94a3b8',
+    color: color.faint,
     letterSpacing: '0.08em',
     textTransform: 'uppercase',
     marginBottom: '1rem',
@@ -45,33 +49,23 @@ const s = {
   th: {
     textAlign: 'left',
     padding: '0.5rem 0.6rem',
-    color: '#94a3b8',
+    color: color.faint,
     fontSize: '0.65rem',
     fontWeight: 900,
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
-    borderBottom: '1px solid #eee',
+    borderBottom: `1px solid ${color.border}`,
   },
   td: {
     padding: '0.55rem 0.6rem',
-    borderBottom: '1px solid #f8fafc',
+    borderBottom: `1px solid ${color.borderSoft}`,
+    color: color.body,
   },
   checkbox: {
     width: '17px',
     height: '17px',
     cursor: 'pointer',
   },
-  roleBadge: (isAdmin) => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    fontSize: '0.65rem',
-    fontWeight: 900,
-    padding: '2px 8px',
-    borderRadius: '4px',
-    background: isAdmin ? '#eff6ff' : '#f1f5f9',
-    color: isAdmin ? '#2563eb' : '#64748b',
-  }),
   form: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
@@ -80,17 +74,18 @@ const s = {
   label: {
     fontSize: '0.7rem',
     fontWeight: 700,
-    color: '#64748b',
+    color: color.muted,
     marginBottom: '0.3rem',
     display: 'block',
   },
   input: {
     width: '100%',
     boxSizing: 'border-box',
-    border: '1px solid #cbd5e1',
+    border: `1px solid ${color.border}`,
     borderRadius: '6px',
     padding: '0.5rem 0.6rem',
     fontSize: '0.85rem',
+    color: color.ink,
   },
   permsRow: {
     gridColumn: '1 / -1',
@@ -103,28 +98,15 @@ const s = {
     alignItems: 'center',
     gap: '6px',
     fontSize: '0.8rem',
-    color: '#475569',
+    color: color.body,
   },
-  submitBtn: {
+  submitWrap: {
     gridColumn: '1 / -1',
-    background: '#2563eb',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '0.6rem 1.2rem',
-    fontWeight: 700,
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    justifyContent: 'center',
-    width: 'fit-content',
   },
   error: {
     gridColumn: '1 / -1',
-    background: '#fef2f2',
-    border: '1px solid #fecaca',
+    background: color.dangerSoft,
+    border: `1px solid ${color.dangerBorder}`,
     color: '#991b1b',
     borderRadius: '6px',
     padding: '0.5rem 0.75rem',
@@ -133,7 +115,7 @@ const s = {
   actionBtn: {
     border: 'none',
     background: 'none',
-    color: '#ef4444',
+    color: color.danger,
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
@@ -227,16 +209,15 @@ export default function UserManagement() {
               return (
                 <tr key={user.id}>
                   <td style={s.td}>
-                    <div style={{ fontWeight: 700 }}>{user.username}</div>
-                    <span style={s.roleBadge(isAdmin)}>
-                      {isAdmin && <Shield size={10} />}
+                    <div style={{ fontWeight: 700, color: color.inkSoft, marginBottom: '2px' }}>{user.username}</div>
+                    <Badge tone={isAdmin ? 'primary' : 'neutral'} icon={isAdmin ? <Shield size={10} /> : null}>
                       {isAdmin ? 'Beheerder' : 'Medewerker'}
-                    </span>
+                    </Badge>
                   </td>
                   {PERMISSION_KEYS.map(p => (
                     <td key={p.key} style={s.td}>
                       {isAdmin ? (
-                        <span style={{ color: '#cbd5e1', fontSize: '0.75rem' }}>—</span>
+                        <span style={{ color: color.faintest, fontSize: '0.75rem' }}>—</span>
                       ) : (
                         <input
                           style={s.checkbox}
@@ -301,9 +282,11 @@ export default function UserManagement() {
             </div>
           )}
 
-          <button style={s.submitBtn} onClick={handleCreate} disabled={busy}>
-            <UserPlus size={15} /> {busy ? 'Bezig…' : 'Gebruiker aanmaken'}
-          </button>
+          <div style={s.submitWrap}>
+            <Button variant="primary" icon={<UserPlus size={15} />} onClick={handleCreate} disabled={busy}>
+              {busy ? 'Bezig…' : 'Gebruiker aanmaken'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

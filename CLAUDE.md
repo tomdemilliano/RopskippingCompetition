@@ -1,4 +1,4 @@
-# CLAUDE.md — RopeScore Pro
+# CLAUDE.md — SkipFlow
 
 Imperatieve regels voor AI-geassisteerde ontwikkeling.
 Volg deze regels altijd, zonder uitzondering.

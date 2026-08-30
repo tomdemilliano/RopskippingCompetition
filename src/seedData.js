@@ -1,5 +1,5 @@
 /**
- * seedData.js — RopeScore Pro
+ * seedData.js — SkipFlow
  *
  * Vult de Firestore-collecties `events` en `competitionTypes` éénmalig
  * met de basisdata. Idempotent: bestaande documenten worden niet overschreven.

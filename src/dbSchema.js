@@ -1,5 +1,5 @@
 /**
- * dbSchema.js — RopeScore Pro
+ * dbSchema.js — SkipFlow
  *
  * ENIGE toegestane bestand voor Firestore-toegang.
  * Importeer nooit rechtstreeks firebase/firestore in pages of components.

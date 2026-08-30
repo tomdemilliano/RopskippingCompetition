@@ -1,5 +1,5 @@
 /**
- * LoginView.jsx — RopeScore Pro
+ * LoginView.jsx — SkipFlow
  *
  * Inlogscherm. Wordt getoond zodra Firebase klaar is maar er nog niemand
  * ingelogd is — vóór elk ander scherm.
@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { LogIn } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { color, radius, shadow, font } from '../theme';
 
 const s = {
   wrapper: {
@@ -17,40 +18,58 @@ const s = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#0f172a',
-    fontFamily: 'sans-serif',
+    background: color.stage,
+    fontFamily: font.body,
   },
   card: {
-    width: '320px',
-    background: '#1e293b',
-    borderRadius: '16px',
-    padding: '2rem',
+    width: '340px',
+    background: color.stageAlt,
+    border: `1px solid ${color.stageBorder}`,
+    borderRadius: radius.xl,
+    padding: '2.25rem 2rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '0.9rem',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+    boxShadow: shadow.lg,
+  },
+  logoWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.6rem',
+    marginBottom: '0.6rem',
+  },
+  logoIcon: {
+    width: '44px',
+    height: '44px',
+    borderRadius: radius.md,
+    background: color.primary,
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   logo: {
     textAlign: 'center',
     fontWeight: 900,
-    fontSize: '1.1rem',
-    color: '#f1f5f9',
-    marginBottom: '0.5rem',
+    fontSize: '1.15rem',
+    letterSpacing: '-0.01em',
+    color: color.stageInk,
   },
   label: {
     fontSize: '0.7rem',
-    color: '#94a3b8',
+    color: color.stageMuted,
     fontWeight: 700,
     marginBottom: '0.2rem',
   },
   input: {
     width: '100%',
     boxSizing: 'border-box',
-    background: '#0f172a',
-    border: '1px solid #334155',
+    background: color.stage,
+    border: `1px solid ${color.slate}`,
     borderRadius: '8px',
     padding: '0.6rem 0.75rem',
-    color: '#e2e8f0',
+    color: color.border,
     fontSize: '0.9rem',
     outline: 'none',
   },
@@ -67,7 +86,7 @@ const s = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '8px',
-    background: '#2563eb',
+    background: color.primary,
     color: '#fff',
     border: 'none',
     borderRadius: '8px',
@@ -118,8 +137,11 @@ export default function LoginView() {
   return (
     <div style={s.wrapper}>
       <div style={s.card}>
-        <div style={s.logo}>
-          ROPESCORE <span style={{ color: '#60a5fa' }}>PRO</span>
+        <div style={s.logoWrap}>
+          <div style={s.logoIcon}><LogIn size={20} /></div>
+          <div style={s.logo}>
+            SKIP<span style={{ color: color.primary }}>FLOW</span>
+          </div>
         </div>
 
         {/* Geen <form>-element per CLAUDE.md — onClick i.p.v. submit */}

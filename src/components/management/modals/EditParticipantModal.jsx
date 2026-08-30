@@ -1,5 +1,5 @@
 /**
- * EditParticipantModal.jsx — RopeScore Pro
+ * EditParticipantModal.jsx — SkipFlow
  *
  * Bewerken van naam, club en schrapstatus per onderdeel.
  */
@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { useAppContext } from '../../../AppContext';
 import { modalStyles as s } from './modalStyles';
+import { color } from '../../../theme';
 
 export default function EditParticipantModal({ competitionId, participant, onClose }) {
   const {
@@ -111,8 +112,8 @@ export default function EditParticipantModal({ competitionId, participant, onClo
                         padding: '0.6rem 0.75rem',
                         borderRadius: '6px',
                         border: '1px solid',
-                        borderColor: scratched ? '#fecaca' : '#e2e8f0',
-                        background:  scratched ? '#fef2f2' : '#f8fafc',
+                        borderColor: scratched ? color.dangerBorder : color.border,
+                        background:  scratched ? color.dangerSoft : color.surfaceAlt,
                       }}
                     >
                       <div>
@@ -120,12 +121,12 @@ export default function EditParticipantModal({ competitionId, participant, onClo
                           fontWeight: 700,
                           fontSize: '0.85rem',
                           textDecoration: scratched ? 'line-through' : 'none',
-                          color: scratched ? '#94a3b8' : '#1e293b',
+                          color: scratched ? color.faint : color.inkSoft,
                         }}>
                           {ev.name}
                         </div>
                         {entry && (
-                          <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>
+                          <div style={{ fontSize: '0.7rem', color: color.faint, marginTop: '2px' }}>
                             Reeks {entry.seriesNr} · Veld {entry.fieldNr} · {entry.scheduledTime || '--:--'}
                           </div>
                         )}

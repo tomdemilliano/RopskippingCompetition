@@ -1,5 +1,5 @@
 /**
- * DisplayView.jsx — RopeScore Pro
+ * DisplayView.jsx — SkipFlow
  *
  * Groot scherm voor in de zaal. Toont de huidige reeks en wie er
  * straks aan de beurt zijn, met tijdsindicatie.
@@ -15,6 +15,7 @@ import {
   Maximize2, Minimize2, Clock, X, Coffee, ChevronRight,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { color, radius, shadow, font } from '../theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -212,7 +213,7 @@ export default function DisplayView({ onClose }) {
     return (
       <div style={{
         height: '100vh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', background: '#0f172a', color: '#fff',
+        justifyContent: 'center', background: color.stage, color: '#fff',
       }}>
         <div style={{ textAlign: 'center' }}>
           <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Geen actieve wedstrijd</h1>
@@ -220,7 +221,7 @@ export default function DisplayView({ onClose }) {
             onClick={onClose}
             style={{
               padding: '0.75rem 2rem', borderRadius: '8px', border: 'none',
-              background: '#334155', color: 'white', cursor: 'pointer', fontSize: '1rem',
+              background: color.slate, color: 'white', cursor: 'pointer', fontSize: '1rem',
             }}
           >
             Terug naar beheer
@@ -233,8 +234,8 @@ export default function DisplayView({ onClose }) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: '#0f172a', color: '#f8fafc',
-      fontFamily: 'system-ui, sans-serif',
+      background: color.stage, color: color.stageInk,
+      fontFamily: font.body,
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', zIndex: 9999,
     }}>
@@ -248,7 +249,7 @@ export default function DisplayView({ onClose }) {
       }}>
         <div style={{ fontSize: '1.6rem', fontWeight: 900 }}>
           {activeCompetition.name}
-          <span style={{ color: '#38bdf8', marginLeft: '1rem', fontWeight: 400 }}>
+          <span style={{ color: color.info, marginLeft: '1rem', fontWeight: 400 }}>
             | {officialEvent?.name ?? '—'}
           </span>
         </div>
@@ -266,7 +267,7 @@ export default function DisplayView({ onClose }) {
           <button
             onClick={onClose}
             style={{
-              background: '#ef4444', border: 'none', color: 'white',
+              background: color.danger, border: 'none', color: 'white',
               padding: '0.5rem', borderRadius: '8px', cursor: 'pointer',
               display: 'flex', alignItems: 'center',
             }}
@@ -288,7 +289,7 @@ export default function DisplayView({ onClose }) {
           <div style={{ flex: 1 }}>
             {!isBreakBlock && (
               <div style={{
-                color: '#94a3b8', fontSize: '0.875rem', fontWeight: 700,
+                color: color.stageMuted, fontSize: '0.875rem', fontWeight: 700,
                 marginBottom: '0.75rem', textTransform: 'uppercase',
               }}>
                 Nu bezig: Reeks {officialSeriesNr} van {totalSeries}
@@ -299,12 +300,12 @@ export default function DisplayView({ onClose }) {
               <div style={{
                 background: 'rgba(56,189,248,0.1)',
                 padding: '3rem 1rem', borderRadius: '12px',
-                border: '2px dashed #38bdf8', textAlign: 'center',
+                border: `2px dashed ${color.info}`, textAlign: 'center',
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', gap: '1.5rem', marginTop: '1rem',
               }}>
-                <Coffee size={100} color="#38bdf8" strokeWidth={1.5} />
-                <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#38bdf8', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                <Coffee size={100} color={color.info} strokeWidth={1.5} />
+                <div style={{ fontSize: '2.4rem', fontWeight: 900, color: color.info, letterSpacing: '2px', textTransform: 'uppercase' }}>
                   {breakLabel}
                 </div>
               </div>
@@ -321,7 +322,7 @@ export default function DisplayView({ onClose }) {
                     opacity: p._isEmpty ? 0.4 : 1,
                   }}>
                     <span style={{
-                      background: '#334155', color: '#fff',
+                      background: color.slate, color: '#fff',
                       minWidth: '1.8rem', textAlign: 'center',
                       padding: '0.1rem 0.3rem', borderRadius: '4px',
                       fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
@@ -333,7 +334,7 @@ export default function DisplayView({ onClose }) {
                         {p._isEmpty ? '---' : p.name}
                       </span>
                       {!p._isEmpty && p.clubId && (
-                        <span style={{ color: '#64748b', fontSize: '0.8rem', marginLeft: '0.5rem' }}>
+                        <span style={{ color: color.muted, fontSize: '0.8rem', marginLeft: '0.5rem' }}>
                           ({getClub(p.clubId)?.name ?? ''})
                         </span>
                       )}
@@ -346,11 +347,11 @@ export default function DisplayView({ onClose }) {
 
           {/* Tijdsinfo */}
           <div style={{ marginTop: '1.5rem' }}>
-            <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.4rem' }}>
+            <div style={{ color: color.stageMuted, fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.4rem' }}>
               TIJDSSCHEMA
             </div>
             <div style={{ fontSize: '2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Clock size={24} color="#38bdf8" />
+              <Clock size={24} color={color.info} />
               {currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', hour12: false })}
             </div>
             {timeDiff !== null && timeDiff !== 0 && (
@@ -372,13 +373,13 @@ export default function DisplayView({ onClose }) {
             marginBottom: '1rem',
             display: 'flex', alignItems: 'center', gap: '1.25rem',
           }}>
-            <h2 style={{ fontSize: '2rem', fontWeight: 900, margin: 0, color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '2rem', fontWeight: 900, margin: 0, color: color.stageInk }}>
               Volgende
             </h2>
             {isNextEvent && nextEventObj && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
-                background: '#38bdf8', color: '#0f172a',
+                background: color.info, color: color.stage,
                 padding: '0.35rem 0.9rem', borderRadius: '10px',
                 fontWeight: 800, fontSize: '0.9rem',
               }}>
@@ -391,7 +392,7 @@ export default function DisplayView({ onClose }) {
           {nextList.length > 0 ? (
             <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 5px' }}>
               <thead>
-                <tr style={{ color: '#64748b', fontSize: '0.85rem', textAlign: 'left' }}>
+                <tr style={{ color: color.muted, fontSize: '0.85rem', textAlign: 'left' }}>
                   <th style={{ padding: '0 0.875rem' }}>Verwacht</th>
                   <th style={{ padding: '0 0.875rem' }}>Veld</th>
                   <th style={{ padding: '0 0.875rem' }}>Skipper / Team</th>
@@ -411,13 +412,13 @@ export default function DisplayView({ onClose }) {
                       <td style={{
                         padding: '0.5rem 0.875rem',
                         borderRadius: '8px 0 0 8px',
-                        fontWeight: 800, color: '#94a3b8',
+                        fontWeight: 800, color: color.stageMuted,
                       }}>
                         {expected || '--:--'}
                       </td>
                       <td style={{ padding: '0.5rem 0.875rem' }}>
                         <span style={{
-                          background: '#334155', color: '#fff',
+                          background: color.slate, color: '#fff',
                           minWidth: '2rem', display: 'inline-block',
                           textAlign: 'center', padding: '0.1rem 0.5rem',
                           borderRadius: '5px',
@@ -435,7 +436,7 @@ export default function DisplayView({ onClose }) {
                       <td style={{
                         padding: '0.5rem 0.875rem',
                         borderRadius: '0 8px 8px 0',
-                        color: '#94a3b8', fontSize: '1.1rem',
+                        color: color.stageMuted, fontSize: '1.1rem',
                       }}>
                         {p.clubId ? getClub(p.clubId)?.name ?? '' : ''}
                       </td>
@@ -450,7 +451,7 @@ export default function DisplayView({ onClose }) {
               background: 'rgba(30,41,59,0.4)', borderRadius: '16px',
               border: '1px solid rgba(255,255,255,0.08)',
             }}>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: '#94a3b8' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, color: color.stageMuted }}>
                 De wedstrijd is afgelopen
               </div>
             </div>
@@ -460,7 +461,7 @@ export default function DisplayView({ onClose }) {
 
       {/* ── Voettekst ── */}
       <div style={{
-        background: '#38bdf8', color: '#0f172a',
+        background: color.info, color: color.stage,
         padding: '0.4rem', fontWeight: 800, fontSize: '0.9rem', textAlign: 'center',
         flexShrink: 0,
       }}>
