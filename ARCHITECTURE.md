@@ -172,7 +172,8 @@ createdAt
 **`podium/{id}`** (subcollectie van competition — zie "Podium & prijsuitreiking")
 ```
 eventId → events, name (vrije tekst, door de gebruiker bepaald), order (globaal,
-niet per onderdeel), places[3] ({place: 1|2|3, participantIds[]}), createdAt
+niet per onderdeel), places[3] ({place: 1|2|3, participantIds[]}),
+isBelgianChampionship (boolean), createdAt
 ```
 
 **`message/{id}`** (subcollectie van competition — zie "Boodschap groot scherm")
@@ -704,6 +705,27 @@ rechtstreekse keuze) reset `revealStage` automatisch naar `0`.
 
 De podiumceremonie gebeurt terwijl de wedstrijd nog `status: "bezig"` is
 (net als de reeksen) — pas nadien roept de beheerder `endCompetition()` aan.
+
+### Belgisch kampioenschap — vlag als achtergrond
+
+`podium.isBelgianChampionship` (toggle in `PodiumManager`) laat `PodiumView`
+de standaard donkere achtergrond vervangen door een "wapperende" Belgische
+vlag. Dit gebeurt bewust zonder CSS-`@keyframes` of een los stijlbestand
+(CLAUDE.md — enkel inline stijlobjecten): `belgianFlagBackground(offsetPx)`
+in `PodiumView.jsx` bouwt een `backgroundImage` op uit twee lagen (een
+diagonale, herhalende glans-strook over drie effen zwart/geel/rode banden),
+en een `setInterval` schuift `offsetPx` op zolang het actieve podium een
+BK-podium is — dat rimpelende glans-effect suggereert de wapperende
+beweging. Om de podiumtekst leesbaar te houden ongeacht welke vlagband
+erachter zit, komt `PodiumStage` in dat geval op een halfdoorzichtig donker
+kaartje (`color.stageCard`) te staan i.p.v. rechtstreeks op de vlag.
+
+Clublogo's staan onderaan in de zuil van elke plaats (niet meer boven de
+naam) — de zuil is een flex-kolom met `justify-content: space-between`
+(plaatsnummer bovenaan, logo('s) onderaan), zodat ze bij elke plaatshoogte
+gegarandeerd los blijven van het nummer. In de kleine speaker-voorvertoning
+(`size="mini"`) worden logo's bewust niet getoond — de zuil is daar te laag
+om ze zonder overlap kwijt te kunnen.
 
 ---
 

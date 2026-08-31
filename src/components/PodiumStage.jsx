@@ -45,7 +45,8 @@ const SIZES = {
     trophy: 64,
     title: '3.2rem',
     event: '1.4rem',
-    logoSize: '4.5rem',
+    logoSize: '5.5rem',
+    showLogosInPillar: true,
   },
   mini: {
     baseHeight: 84,
@@ -58,6 +59,10 @@ const SIZES = {
     title: '0.82rem',
     event: '0.55rem',
     logoSize: '1.3rem',
+    // Te weinig ruimte in de mini-zuil om een logo onderaan te tonen zonder
+    // het plaatsnummer te overlappen — de mini-voorvertoning blijft dus
+    // beperkt tot naam + club.
+    showLogosInPillar: false,
   },
 };
 
@@ -130,27 +135,23 @@ export default function PodiumStage({
           const laureates = resolveLaureates(place, participants, getClub);
           const revealed = isPlaceRevealed(placeNr, revealStage);
           const hasLaureates = laureates.length > 0;
+          // Logo's onderaan in de zuil tonen (dedup — meerdere laureaten van
+          // dezelfde club tonen het logo maar 1 keer) i.p.v. boven de naam,
+          // zodat ze nooit het plaatsnummer bovenin overlappen.
+          const pillarLogos = (revealed && d.showLogosInPillar)
+            ? [...new Set(laureates.map(l => l.logoUrl).filter(Boolean))]
+            : [];
 
           return (
             <div key={placeNr} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: d.riserWidth }}>
               {/* Laureaat-info boven de zuil — blijft leeg zolang niet onthuld */}
               <div style={{
-                minHeight: `calc(${d.logoSize} + ${d.name} * 2 + ${d.club} + 0.8rem)`,
+                minHeight: `calc(${d.name} * 2 + ${d.club} + 0.6rem)`,
                 display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                 alignItems: 'center', textAlign: 'center', marginBottom: '0.6rem',
               }}>
                 {revealed && hasLaureates && laureates.map((l, i) => (
-                  <div key={l.id} style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    marginBottom: i < laureates.length - 1 ? '0.5rem' : 0,
-                  }}>
-                    {l.logoUrl && (
-                      <img
-                        src={l.logoUrl}
-                        alt=""
-                        style={{ width: d.logoSize, height: d.logoSize, objectFit: 'contain', marginBottom: '0.3rem' }}
-                      />
-                    )}
+                  <div key={l.id} style={{ marginBottom: i < laureates.length - 1 ? '0.3rem' : 0 }}>
                     <div style={{ fontSize: d.name, fontWeight: 900, color: color.stageInk, lineHeight: 1.15 }}>
                       {l.name}
                     </div>
@@ -163,7 +164,7 @@ export default function PodiumStage({
                 ))}
               </div>
 
-              {/* Zuil */}
+              {/* Zuil — nummer bovenaan, logo's onderaan (space-between = geen overlap) */}
               <div style={{
                 width: '100%',
                 height: `${d.baseHeight * PLACE_HEIGHT_RATIO[placeNr]}px`,
@@ -171,13 +172,26 @@ export default function PodiumStage({
                 border: `2px solid ${PLACE_COLOR[placeNr]}`,
                 borderBottom: 'none',
                 borderRadius: `${radius.md} ${radius.md} 0 0`,
-                display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-                paddingTop: '0.5rem',
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: pillarLogos.length > 0 ? 'space-between' : 'flex-start',
+                paddingTop: '0.5rem', paddingBottom: '0.7rem',
                 boxSizing: 'border-box',
               }}>
                 <span style={{ fontSize: d.placeNr, fontWeight: 900, color: PLACE_COLOR[placeNr] }}>
                   {placeNr}
                 </span>
+                {pillarLogos.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', justifyContent: 'center', padding: '0 0.5rem' }}>
+                    {pillarLogos.map(url => (
+                      <img
+                        key={url}
+                        src={url}
+                        alt=""
+                        style={{ width: d.logoSize, height: d.logoSize, objectFit: 'contain' }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           );
