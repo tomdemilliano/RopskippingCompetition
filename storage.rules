@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// SkipFlow — Firebase Storage security rules.
+//
+// Niet automatisch gedeployed door dit repo (geen firebase.json/.firebaserc
+// aanwezig) — kopieer dit handmatig naar Firebase Console → Storage →
+// Rules → publiceren, of zet `firebase deploy --only storage` op als je de
+// Firebase CLI aan dit project koppelt. Zie firestore.rules voor dezelfde
+// werkwijze — deze rules ontbraken domweg nog helemaal.
+//
+// Zonder eigen rules staat een nieuw Firebase-project standaard op
+// "allow read, write: if false" voor Storage — élke lees/schrijfpoging
+// wordt geweigerd. Firebase stuurt bij zo'n weigering geen CORS-headers
+// mee op de foutrespons, waardoor de browser dit meldt als een
+// "CORS policy"-fout i.p.v. een duidelijke 403 — vandaar de verwarrende
+// foutmelding bij het uploaden van een clublogo.
+//
+// Basisprincipe, consistent met firestore.rules: elke ingelogde gebruiker
+// mag lezen en schrijven. Enkel clublogo's gebruiken Storage
+// (clubFactory.uploadLogo() in dbSchema.js, pad "clubs/{clubId}/logo.*").
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /clubs/{clubId}/{fileName} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
