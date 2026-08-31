@@ -596,6 +596,21 @@ Nu heeft elke wedstrijd gewoon haar eigen, permanente voortgangsvelden
 `LiveView` gebruikt deze data om de operator-cursor te initialiseren.
 `DisplayView` volgt dezelfde data volledig autonoom om het officiële scherm te tonen.
 
+### "Volgende"-lijst met tussenliggende pauzes (DisplayView)
+
+De "Volgende"-tabel op `DisplayView` toonde voorheen enkel deelnemers —
+een pauze/briefing/proefjury/prijsuitreiking die tussen twee getoonde
+reeksen viel, verdween daardoor gewoon uit beeld. `displayList` (afgeleid
+van `nextList`) mengt er nu ook de niet-heats-blokken uit de dagtijdlijn
+doorheen, chronologisch gesorteerd op `scheduledTime`
+(`timeToMinutes`, zie `timeUtils.js`): elk blok met een tijd na de eerst-
+volgende reeks (`plannedTime`, de ondergrens) én vóór het laatst getoonde
+item wordt als aparte, herkenbare rij tussen de skippers ingevoegd
+(gestreepte rand, bloktype-icoon zoals in het pauzescherm, geen skipper-
+kolommen). Velden zonder skipper in de speed-veldenlijst (`_isEmpty`) delen
+gewoon de reekstijd van hun groep, zodat ontbrekende `scheduledTime` de
+sortering niet verstoort.
+
 ### Blok-gedreven navigatie in LiveView
 
 `LiveView` volgt de dagtijdlijn actief, niet enkel bij het tonen van een
