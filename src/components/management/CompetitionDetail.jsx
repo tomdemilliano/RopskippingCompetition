@@ -14,7 +14,7 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronLeft, ChevronRight,
-  Plus, ListTodo,
+  Plus, ListTodo, Flag,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
@@ -41,37 +41,67 @@ const s = {
     fontSize: '0.9rem',
   },
   header: {
-    padding: '1.4rem 1.75rem',
+    padding: '0.85rem 1.5rem',
     background: color.surface,
     borderBottom: `1px solid ${color.border}`,
     flexShrink: 0,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '0.6rem',
   },
   headerTop: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '0.25rem',
+    alignItems: 'baseline',
+    gap: '0.6rem',
     flexWrap: 'wrap',
-    gap: '0.75rem',
   },
   compName: {
-    fontSize: '1.25rem',
+    fontSize: '1.05rem',
     fontWeight: 900,
     color: color.inkSoft,
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '8px',
   },
   compMeta: {
-    fontSize: '0.82rem',
+    fontSize: '0.78rem',
     color: color.muted,
-    marginTop: '3px',
   },
   actions: {
     display: 'flex',
     gap: '0.5rem',
     alignItems: 'center',
     flexShrink: 0,
+  },
+
+  // Interne tabs (Wedstrijd / Deelnemers)
+  tabsBar: {
+    display: 'flex',
+    padding: '0 1.5rem',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
+    flexShrink: 0,
+    gap: '0.25rem',
+  },
+  tab: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '0.65rem 0.9rem',
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    color: active ? color.primary : color.muted,
+    background: 'none',
+    border: 'none',
+    borderBottom: `2px solid ${active ? color.primary : 'transparent'}`,
+    cursor: 'pointer',
+    marginBottom: '-1px',
+  }),
+  tabScroll: {
+    flex: 1,
+    overflowY: 'auto',
   },
   iconBtn: (danger) => ({
     background: color.surface,
@@ -84,123 +114,137 @@ const s = {
     alignItems: 'center',
   }),
 
-  // Panel-koppen (hergebruikt door Onderdelen/Programma)
+  // "Wedstrijd"-tab: onderdelen (compact) links, programma (smaller, capped
+  // breedte) rechts — geen van beide moet vechten om ruimte met de
+  // deelnemerslijst, die zit voortaan op haar eigen tab.
+  overviewGrid: {
+    display: 'flex',
+    gap: '1.25rem',
+    alignItems: 'flex-start',
+    padding: '1.1rem 1.5rem',
+    flexWrap: 'wrap',
+  },
   panel: {
-    padding: '1.1rem 1.75rem',
     background: color.surfaceAlt,
-    borderBottom: `1px solid ${color.border}`,
-    flexShrink: 0,
+    border: `1px solid ${color.border}`,
+    borderRadius: radius.md,
+    padding: '0.85rem 1rem',
   },
   panelLabel: {
-    fontSize: '0.68rem',
+    fontSize: '0.66rem',
     fontWeight: 900,
     color: color.faint,
     letterSpacing: '0.08em',
     textTransform: 'uppercase',
-    marginBottom: '0.7rem',
+    marginBottom: '0.6rem',
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
   },
 
-  // Events panel
-  eventsScroll: {
+  // Events panel — compacte verticale lijst i.p.v. brede kaarten
+  eventsPanel: {
+    flex: '1 1 280px',
+    minWidth: '260px',
+    maxWidth: '360px',
+  },
+  eventsList: {
     display: 'flex',
-    gap: '0.75rem',
-    overflowX: 'auto',
-    paddingBottom: '4px',
+    flexDirection: 'column',
+    gap: '4px',
+    maxHeight: '260px',
+    overflowY: 'auto',
+    paddingRight: '2px',
   },
-  eventCard: (hasParticipants) => ({
-    minWidth: '190px',
-    padding: '0.8rem',
-    background: color.surface,
-    borderRadius: radius.md,
-    border: `1px solid ${color.border}`,
-    borderTop: `3px solid ${hasParticipants ? color.success : color.warning}`,
-    flexShrink: 0,
-    boxShadow: shadow.sm,
-  }),
-  eventCardName: {
-    fontWeight: 800,
-    fontSize: '0.82rem',
-    color: color.inkSoft,
-    marginBottom: '4px',
-  },
-  eventCardMeta: {
-    fontSize: '0.68rem',
-    color: color.faint,
-    marginBottom: '8px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    fontWeight: 700,
-  },
-  eventCardFooter: {
+  eventRow: (hasParticipants) => ({
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: '0.5rem',
+    padding: '0.4rem 0.55rem',
+    background: color.surface,
+    borderRadius: radius.sm,
+    border: `1px solid ${color.borderSoft}`,
+    borderLeft: `3px solid ${hasParticipants ? color.success : color.warning}`,
+    fontSize: '0.78rem',
+  }),
+  eventRowName: {
+    flex: 1,
+    fontWeight: 700,
+    color: color.inkSoft,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   eventCount: {
-    fontSize: '0.72rem',
+    fontSize: '0.68rem',
     fontWeight: 700,
-    color: color.body,
+    color: color.faint,
+    flexShrink: 0,
   },
   uploadBtn: {
-    background: color.primary,
-    color: '#fff',
+    background: 'none',
+    color: color.primary,
     border: 'none',
-    borderRadius: '5px',
-    padding: '5px 7px',
+    padding: '3px',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
+    flexShrink: 0,
   },
   orderBtns: {
     display: 'flex',
-    gap: '2px',
-    marginBottom: '5px',
+    flexShrink: 0,
   },
   orderBtn: (disabled) => ({
-    background: color.borderSoft,
+    background: 'none',
     border: 'none',
-    borderRadius: '4px',
-    padding: '2px 4px',
+    padding: '1px',
     cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.4 : 1,
+    opacity: disabled ? 0.3 : 1,
     display: 'flex',
     alignItems: 'center',
+    color: color.faint,
   }),
 
-  // Programma (blocks)
+  // Programma (blocks) — smalle kolom, geen volle breedte
+  programmaPanel: {
+    flex: '1 1 340px',
+    minWidth: '300px',
+    maxWidth: '460px',
+  },
   blockRow: (done) => ({
     display: 'flex',
     alignItems: 'center',
-    gap: '0.7rem',
-    padding: '0.5rem 0.75rem',
+    gap: '0.5rem',
+    padding: '0.4rem 0.55rem',
     borderRadius: radius.sm,
-    background: done ? color.surfaceAlt : color.surface,
+    background: done ? color.surface : '#fff',
     border: `1px solid ${color.borderSoft}`,
     marginBottom: '4px',
-    fontSize: '0.82rem',
-    opacity: done ? 0.6 : 1,
+    fontSize: '0.76rem',
+    opacity: done ? 0.55 : 1,
   }),
   blockOrder: {
     fontFamily: "'IBM Plex Mono', monospace",
     color: color.faint,
-    minWidth: '1.2rem',
+    minWidth: '1.1rem',
     textAlign: 'right',
-    fontSize: '0.78rem',
+    fontSize: '0.72rem',
   },
   blockTime: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontWeight: 700,
     color: color.body,
-    minWidth: '3rem',
-    fontSize: '0.78rem',
+    minWidth: '2.7rem',
+    fontSize: '0.72rem',
   },
   blockLabel: {
     flex: 1,
     fontWeight: 700,
     color: color.inkSoft,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   blocksScroll: {
     maxHeight: '260px',
@@ -209,17 +253,19 @@ const s = {
   },
   addBlockForm: {
     display: 'flex',
-    gap: '0.4rem',
-    marginTop: '0.7rem',
+    gap: '0.35rem',
+    marginTop: '0.6rem',
     flexWrap: 'wrap',
     alignItems: 'center',
   },
   addBlockInput: {
     border: `1px solid ${color.faintest}`,
     borderRadius: radius.sm,
-    padding: '0.4rem 0.55rem',
-    fontSize: '0.8rem',
+    padding: '0.35rem 0.5rem',
+    fontSize: '0.75rem',
     background: color.surface,
+    minWidth: 0,
+    flex: '1 1 90px',
   },
 
   // Participants list
@@ -370,6 +416,9 @@ export default function CompetitionDetail({
     deleteBlock,
   } = useAppContext();
 
+  // 'wedstrijd' (onderdelen + programma) | 'deelnemers' (volle hoogte)
+  const [detailTab, setDetailTab] = useState('wedstrijd');
+
   const [filterStatus, setFilterStatus] = useState('alle');
   const [searchTerm,   setSearchTerm]   = useState('');
 
@@ -491,10 +540,10 @@ export default function CompetitionDetail({
 
   return (
     <div style={s.content}>
-      {/* ── Header ── */}
+      {/* ── Header (compact) ── */}
       <div style={s.header}>
-        <div style={s.headerTop}>
-          <div>
+        <div>
+          <div style={s.headerTop}>
             <div style={s.compName}>
               {competition.name}
               {isLive && <Badge tone="solidDanger">LIVE</Badge>}
@@ -505,52 +554,68 @@ export default function CompetitionDetail({
               {competition.date && ` · ${competition.date}`}
             </div>
           </div>
+        </div>
 
-          <div style={s.actions}>
-            {!isLive && !isDone && (
-              <>
-                <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={onImportPdf}>
-                  Wedstrijdschema (PDF)
-                </Button>
-                <button style={s.iconBtn(false)} title="Bewerken" onClick={onEdit}>
-                  <Edit2 size={15} />
-                </button>
-                <button style={s.iconBtn(true)} title="Verwijderen" onClick={handleDelete}>
-                  <Trash2 size={15} />
-                </button>
-              </>
-            )}
+        <div style={s.actions}>
+          {!isLive && !isDone && (
+            <>
+              <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={onImportPdf}>
+                Wedstrijdschema (PDF)
+              </Button>
+              <button style={s.iconBtn(false)} title="Bewerken" onClick={onEdit}>
+                <Edit2 size={15} />
+              </button>
+              <button style={s.iconBtn(true)} title="Verwijderen" onClick={handleDelete}>
+                <Trash2 size={15} />
+              </button>
+            </>
+          )}
 
-            {isLive ? (
-              <>
-                <Button variant="outlineDanger" icon={<Ghost size={15} />} onClick={() => stopCompetitionLive(competition.id)}>
-                  Stop live
-                </Button>
-                <Button variant="danger" icon={<Square size={14} />} onClick={() => endCompetition(competition.id)}>
-                  Beëindig
-                </Button>
-              </>
-            ) : isDone ? (
-              <Button variant="ghost" icon={<Check size={14} />} disabled>
-                Voltooid
+          {isLive ? (
+            <>
+              <Button variant="outlineDanger" size="sm" icon={<Ghost size={15} />} onClick={() => stopCompetitionLive(competition.id)}>
+                Stop live
               </Button>
-            ) : (
-              <Button variant="success" icon={<Play size={14} />} onClick={handleStart}>
-                Start wedstrijd
+              <Button variant="danger" size="sm" icon={<Square size={14} />} onClick={() => endCompetition(competition.id)}>
+                Beëindig
               </Button>
-            )}
-          </div>
+            </>
+          ) : isDone ? (
+            <Button variant="ghost" size="sm" icon={<Check size={14} />} disabled>
+              Voltooid
+            </Button>
+          ) : (
+            <Button variant="success" size="sm" icon={<Play size={14} />} onClick={handleStart}>
+              Start wedstrijd
+            </Button>
+          )}
         </div>
       </div>
 
+      {/* ── Interne tabs ── */}
+      <div style={s.tabsBar}>
+        <button style={s.tab(detailTab === 'wedstrijd')} onClick={() => setDetailTab('wedstrijd')}>
+          <ListTodo size={14} /> Wedstrijd
+        </button>
+        <button style={s.tab(detailTab === 'deelnemers')} onClick={() => setDetailTab('deelnemers')}>
+          <Users size={14} /> Deelnemers
+          <Badge tone="neutral">{participants.length}</Badge>
+        </button>
+      </div>
+
+      {/* ── Tab: Wedstrijd (onderdelen + programma) ── */}
+      {detailTab === 'wedstrijd' && (
+      <div style={s.tabScroll}>
+      <div style={s.overviewGrid}>
+
       {/* ── Events panel ── */}
-      <div style={s.panel}>
-        <div style={s.panelLabel}>Onderdelen</div>
-        <div style={s.eventsScroll}>
+      <div style={{ ...s.panel, ...s.eventsPanel }}>
+        <div style={s.panelLabel}><Flag size={11} /> Onderdelen</div>
+        <div style={s.eventsList}>
           {sortedEvents.map((ev, idx) => {
             const count = participantCountByEvent[ev.id] ?? 0;
             return (
-              <div key={ev.id} style={s.eventCard(count > 0)}>
+              <div key={ev.id} style={s.eventRow(count > 0)}>
                 <div style={s.orderBtns}>
                   <button
                     style={s.orderBtn(idx === 0)}
@@ -567,32 +632,32 @@ export default function CompetitionDetail({
                     <ChevronRight size={11} />
                   </button>
                 </div>
-                <div style={s.eventCardName}>{idx + 1}. {ev.name}</div>
-                <div style={s.eventCardMeta}>
-                  {ev.scoringType === 'freestyle' ? 'Freestyle' : 'Speed'}
-                </div>
-                <div style={s.eventCardFooter}>
-                  <span style={s.eventCount}>{count} skippers</span>
-                  <button
-                    style={s.uploadBtn}
-                    title="Importeer CSV"
-                    onClick={() => onImport(ev.id)}
-                  >
-                    <Upload size={12} />
-                  </button>
-                </div>
+                <span style={s.eventRowName} title={ev.name}>{idx + 1}. {ev.name}</span>
+                <span style={s.eventCount}>{count}</span>
+                <button
+                  style={s.uploadBtn}
+                  title="Importeer CSV"
+                  onClick={() => onImport(ev.id)}
+                >
+                  <Upload size={13} />
+                </button>
               </div>
             );
           })}
+          {sortedEvents.length === 0 && (
+            <div style={{ fontSize: '0.78rem', color: color.faint, fontStyle: 'italic' }}>
+              Nog geen onderdelen voor dit wedstrijdtype.
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Programma (dagtijdlijn) ── */}
-      <div style={s.panel}>
-        <div style={s.panelLabel}><ListTodo size={12} /> Programma (dagtijdlijn)</div>
+      <div style={{ ...s.panel, ...s.programmaPanel }}>
+        <div style={s.panelLabel}><ListTodo size={11} /> Programma (dagtijdlijn)</div>
 
         {sortedBlocks.length === 0 && (
-          <div style={{ fontSize: '0.8rem', color: color.faint, fontStyle: 'italic', marginBottom: '0.4rem' }}>
+          <div style={{ fontSize: '0.78rem', color: color.faint, fontStyle: 'italic', marginBottom: '0.4rem' }}>
             Nog geen blokken — komt automatisch mee bij PDF-import, of hieronder manueel toevoegen.
           </div>
         )}
@@ -673,7 +738,12 @@ export default function CompetitionDetail({
         </div>
       </div>
 
-      {/* ── Deelnemerslijst ── */}
+      </div>
+      </div>
+      )}
+
+      {/* ── Tab: Deelnemers (volle hoogte) ── */}
+      {detailTab === 'deelnemers' && (
       <div style={s.participantsPanel}>
         <div style={s.filterBar}>
           <div style={s.filterBtns}>
@@ -792,6 +862,7 @@ export default function CompetitionDetail({
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }

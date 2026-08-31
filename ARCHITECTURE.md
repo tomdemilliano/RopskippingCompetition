@@ -82,7 +82,7 @@ src/
 
     management/
       CompetitionsOverview.jsx      # Startpagina van Beheer — lijst van alle wedstrijden
-      CompetitionDetail.jsx         # Events + programma (blocks) + deelnemerslijst
+      CompetitionDetail.jsx         # Twee interne tabs: Wedstrijd (onderdelen+programma) en Deelnemers (volle hoogte)
       ClubManagement.jsx            # Clubbeheer — stamdata + logo-upload (Storage)
       UserManagement.jsx            # Gebruikersbeheer — rollen + rechten toekennen
 
@@ -473,6 +473,17 @@ Hergebruikt zoveel mogelijk van het bestaande CSV-stramien (`ImportModal`):
 ---
 
 ## Deelnemersbeheer en correcties
+
+`CompetitionDetail` heeft twee interne tabs, geen lange verticale stapel meer:
+- **Wedstrijd** — Onderdelen en Programma (dagtijdlijn), compact naast elkaar
+  in twee smalle kolommen (elk met eigen `max-height` + interne scroll). Dit
+  is configuratie-informatie, niet iets waar continu in gewerkt wordt.
+- **Deelnemers** — de volledige deelnemerstabel, op een lege tab dus met de
+  volle beschikbare hoogte. Dit is het scherm waar tijdens en rond een
+  wedstrijd het meest in gewerkt wordt (aanmelden, corrigeren, reskips) en
+  kreeg voorheen, als een derde paneel onderaan een lange verticale stapel,
+  vrijwel geen ruimte meer zodra Programma na een PDF-import tientallen
+  blokken bevatte.
 
 De deelnemerstabel in `CompetitionDetail` (Beheer) is het overzicht waar
 correcties gebeuren — dit is de **enige** plek waar per-onderdeel forfait

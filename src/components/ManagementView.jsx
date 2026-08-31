@@ -58,15 +58,6 @@ const s = {
     cursor: 'pointer',
     padding: '4px 0',
   },
-  breadcrumbSep: {
-    color: color.faintest,
-    fontSize: '0.8rem',
-  },
-  breadcrumbCurrent: {
-    fontSize: '0.82rem',
-    color: color.body,
-    fontWeight: 600,
-  },
   detailWrapper: {
     flex: 1,
     display: 'flex',
@@ -145,22 +136,29 @@ export default function ManagementView() {
     setEditCompId(selectedCompId);
   };
 
+  // In het detailscherm van een wedstrijd is de sectie-tabbalk (Wedstrijden/
+  // Clubs/Gebruikers) overbodige chrome — de terug-knop in de broodkruimel
+  // doet al hetzelfde, en elke regel telt hier voor de ruimte die overblijft
+  // voor de deelnemerslijst.
+  const showSectionTabs = !(section === 'wedstrijden' && view === 'detail');
+
   return (
     <div style={s.wrapper}>
-      {/* ── Sectie-tabs ── */}
-      <div style={s.sectionTabsBar}>
-        <div style={s.sectionTabs}>
-          <button style={s.sectionTab(section === 'wedstrijden')} onClick={() => setSection('wedstrijden')}>
-            <Trophy size={14} /> Wedstrijden
-          </button>
-          <button style={s.sectionTab(section === 'clubs')} onClick={() => setSection('clubs')}>
-            <Building2 size={14} /> Clubs
-          </button>
-          <button style={s.sectionTab(section === 'gebruikers')} onClick={() => setSection('gebruikers')}>
-            <Users size={14} /> Gebruikers
-          </button>
+      {showSectionTabs && (
+        <div style={s.sectionTabsBar}>
+          <div style={s.sectionTabs}>
+            <button style={s.sectionTab(section === 'wedstrijden')} onClick={() => setSection('wedstrijden')}>
+              <Trophy size={14} /> Wedstrijden
+            </button>
+            <button style={s.sectionTab(section === 'clubs')} onClick={() => setSection('clubs')}>
+              <Building2 size={14} /> Clubs
+            </button>
+            <button style={s.sectionTab(section === 'gebruikers')} onClick={() => setSection('gebruikers')}>
+              <Users size={14} /> Gebruikers
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {section === 'gebruikers' && <UserManagement />}
       {section === 'clubs' && <ClubManagement />}
@@ -183,8 +181,6 @@ export default function ManagementView() {
               <ChevronLeft size={15} />
               Alle wedstrijden
             </button>
-            <span style={s.breadcrumbSep}>/</span>
-            <span style={s.breadcrumbCurrent}>Wedstrijdbeheer</span>
           </div>
 
           {/* Detail (vult de rest van de hoogte) */}
