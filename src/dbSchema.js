@@ -1138,6 +1138,9 @@ export const blockFactory = {
  * @property {string} name       vrije tekst, bv. "Meisjes 13-15j"
  * @property {number} order      volgorde binnen de hele podiumceremonie
  * @property {PodiumPlace[]} places  altijd exact 3 (plaats 1, 2, 3)
+ * @property {boolean} isBelgianChampionship  toont een wapperende Belgische
+ *                                             vlag als achtergrond i.p.v. de
+ *                                             standaardachtergrond op PodiumView
  * @property {string} createdAt
  */
 
@@ -1153,16 +1156,17 @@ const podiumConverter = {
   fromFirestore(snapshot) {
     const d = snapshot.data();
     return {
-      id:        snapshot.id,
-      eventId:   d.eventId   ?? '',
-      name:      d.name      ?? '',
-      order:     d.order     ?? 0,
-      places:    normalizePlaces(d.places),
-      createdAt: d.createdAt ?? '',
+      id:                     snapshot.id,
+      eventId:                d.eventId                ?? '',
+      name:                   d.name                    ?? '',
+      order:                  d.order                   ?? 0,
+      places:                 normalizePlaces(d.places),
+      isBelgianChampionship:  d.isBelgianChampionship   ?? false,
+      createdAt:              d.createdAt               ?? '',
     };
   },
-  toFirestore({ eventId, name, order = 0, places = [] }) {
-    return { eventId, name, order, places: normalizePlaces(places) };
+  toFirestore({ eventId, name, order = 0, places = [], isBelgianChampionship = false }) {
+    return { eventId, name, order, places: normalizePlaces(places), isBelgianChampionship };
   },
 };
 

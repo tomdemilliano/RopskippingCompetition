@@ -17,7 +17,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Trophy, Plus, Trash2, ChevronUp, ChevronDown, Pencil, Check, X,
+  Trophy, Plus, Trash2, ChevronUp, ChevronDown, Pencil, Check, X, Flag,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius } from '../theme';
@@ -56,6 +56,26 @@ const s = {
     minWidth: 0,
     background: color.surface,
   },
+  bkCheckLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    color: color.body,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  flagBtn: (active) => ({
+    background: active ? '#EF3340' : 'none',
+    border: `1px solid ${active ? '#EF3340' : color.faintest}`,
+    borderRadius: radius.sm,
+    color: active ? '#fff' : color.faint,
+    cursor: 'pointer',
+    padding: '4px',
+    display: 'flex',
+    flexShrink: 0,
+  }),
   empty: {
     textAlign: 'center',
     color: color.faint,
@@ -206,6 +226,7 @@ export default function PodiumManager({ competitionId }) {
 
   const [newEventId, setNewEventId] = useState('');
   const [newName,    setNewName]    = useState('');
+  const [newIsBK,    setNewIsBK]    = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [editingId,  setEditingId]  = useState(null);
   const [editName,   setEditName]   = useState('');
@@ -224,8 +245,14 @@ export default function PodiumManager({ competitionId }) {
       name:    newName.trim(),
       order:   maxOrder + 1,
       places:  [],
+      isBelgianChampionship: newIsBK,
     });
     setNewName('');
+    setNewIsBK(false);
+  };
+
+  const toggleBelgianChampionship = (podium) => {
+    updatePodium(competitionId, podium.id, { isBelgianChampionship: !podium.isBelgianChampionship });
   };
 
   const handleMove = async (podiumId, direction) => {
@@ -289,6 +316,14 @@ export default function PodiumManager({ competitionId }) {
           value={newName}
           onChange={e => setNewName(e.target.value)}
         />
+        <label style={s.bkCheckLabel}>
+          <input
+            type="checkbox"
+            checked={newIsBK}
+            onChange={e => setNewIsBK(e.target.checked)}
+          />
+          <Flag size={13} /> Belgisch kampioenschap
+        </label>
         <Button
           variant="primary" size="sm" icon={<Plus size={14} />}
           onClick={handleCreate}
@@ -353,6 +388,16 @@ export default function PodiumManager({ competitionId }) {
                   </div>
 
                   <Badge tone={filledCount === 3 ? 'success' : 'neutral'}>{filledCount}/3</Badge>
+
+                  <button
+                    style={s.flagBtn(podium.isBelgianChampionship)}
+                    title={podium.isBelgianChampionship
+                      ? 'Belgisch kampioenschap — klik om uit te zetten'
+                      : 'Markeer als Belgisch kampioenschap (vlag als achtergrond op het grote scherm)'}
+                    onClick={() => toggleBelgianChampionship(podium)}
+                  >
+                    <Flag size={14} />
+                  </button>
 
                   {editingId === podium.id ? (
                     <>

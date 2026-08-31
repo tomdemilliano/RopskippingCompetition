@@ -14,8 +14,26 @@
 import React, { useEffect, useState } from 'react';
 import { Maximize2, Minimize2, X, Trophy } from 'lucide-react';
 import { useAppContext } from '../AppContext';
-import { color, font } from '../theme';
+import { color, radius, shadow, font } from '../theme';
 import PodiumStage from './PodiumStage';
+
+// Belgische vlag (zwart/geel/rood) als "wapperende" achtergrond voor een
+// BK-podium — puur inline stijlobjecten (CLAUDE.md), geen CSS-keyframes:
+// een diagonale glans-laag schuift via React-state over de vlagbanden, wat
+// een rimpelend/wapperend effect suggereert zonder externe CSS.
+const BELGIAN_FLAG_COLORS = ['#000000', '#FDDA25', '#EF3340'];
+
+function belgianFlagBackground(offsetPx) {
+  return {
+    backgroundImage: [
+      'repeating-linear-gradient(115deg, rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 40px, rgba(255,255,255,0) 40px, rgba(255,255,255,0) 170px)',
+      `linear-gradient(90deg, ${BELGIAN_FLAG_COLORS[0]} 0%, ${BELGIAN_FLAG_COLORS[0]} 33.33%, ${BELGIAN_FLAG_COLORS[1]} 33.33%, ${BELGIAN_FLAG_COLORS[1]} 66.66%, ${BELGIAN_FLAG_COLORS[2]} 66.66%, ${BELGIAN_FLAG_COLORS[2]} 100%)`,
+    ].join(', '),
+    backgroundSize: '420px 100%, 100% 100%',
+    backgroundPosition: `${offsetPx}px 0, 0 0`,
+    backgroundRepeat: 'repeat, no-repeat',
+  };
+}
 
 export default function PodiumView({ onClose }) {
   const {
@@ -52,6 +70,16 @@ export default function PodiumView({ onClose }) {
 
   const activePodium = podiums.find(p => p.id === podiumState.activePodiumId) ?? null;
   const eventName = activePodium ? (events.find(e => e.id === activePodium.eventId)?.name ?? '') : '';
+  const isBelgianFlag = !!activePodium?.isBelgianChampionship;
+
+  // Wapperingsanimatie — enkel lopen zolang er effectief een BK-podium
+  // actief is, anders geen overbodige re-renders op dit altijd-aan-scherm.
+  const [flagOffset, setFlagOffset] = useState(0);
+  useEffect(() => {
+    if (!isBelgianFlag) return undefined;
+    const t = setInterval(() => setFlagOffset(o => (o + 2) % 420), 60);
+    return () => clearInterval(t);
+  }, [isBelgianFlag]);
 
   // ── Geen actieve wedstrijd ──────────────────────────────────────────────
   if (!activeCompetition) {
@@ -79,7 +107,8 @@ export default function PodiumView({ onClose }) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: color.stage, color: color.stageInk,
+      ...(isBelgianFlag ? belgianFlagBackground(flagOffset) : { background: color.stage }),
+      color: color.stageInk,
       fontFamily: font.body,
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', zIndex: 9999,
@@ -124,21 +153,29 @@ export default function PodiumView({ onClose }) {
         </div>
       )}
 
-      {/* ── Hoofdinhoud — bovenaan uitgelijnd zodat de podiumnaam bovenaan het scherm staat ── */}
+      {/* ── Hoofdinhoud — lager op het scherm zodat de namen centraler staan ── */}
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: activePodium ? 'flex-start' : 'center',
-        padding: '3rem 2rem', overflow: 'hidden',
+        padding: activePodium ? '14vh 2rem 2rem' : '3rem 2rem',
+        overflow: 'hidden',
       }}>
         {activePodium ? (
-          <PodiumStage
-            podium={activePodium}
-            eventName={eventName}
-            participants={participants}
-            getClub={getClub}
-            revealStage={podiumState.revealStage}
-            size="full"
-          />
+          <div style={isBelgianFlag ? {
+            background: color.stageCard,
+            borderRadius: radius.xl,
+            boxShadow: shadow.lg,
+            padding: '2.5rem 3rem',
+          } : undefined}>
+            <PodiumStage
+              podium={activePodium}
+              eventName={eventName}
+              participants={participants}
+              getClub={getClub}
+              revealStage={podiumState.revealStage}
+              size="full"
+            />
+          </div>
         ) : (
           <div style={{ textAlign: 'center', color: color.stageMuted }}>
             <Trophy size={80} color={color.body} strokeWidth={1.5} />
