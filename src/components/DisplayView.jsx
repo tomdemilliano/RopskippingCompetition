@@ -287,16 +287,24 @@ export default function DisplayView({ onClose }) {
         </div>
       </div>
 
-      {/* ── Boodschap — prominent, apart vak vlak onder de header ── */}
+      {/* ── Boodschap — prominent, apart afgerond vak vlak onder de header ── */}
       <div style={{
-        padding: '0.75rem 2rem',
+        position: 'relative',
+        margin: '0.75rem 2rem 0',
+        padding: '0.75rem 1.5rem',
         background: 'rgba(37,99,235,0.18)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        display: 'flex', alignItems: 'center', gap: '0.75rem',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: radius.lg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         flexShrink: 0,
       }}>
-        {MessageIcon && <MessageIcon size={22} color={color.info} style={{ flexShrink: 0 }} />}
-        <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+        {MessageIcon && (
+          <MessageIcon
+            size={22} color={color.info}
+            style={{ position: 'absolute', left: '1.5rem', flexShrink: 0 }}
+          />
+        )}
+        <div style={{ fontSize: '1.1rem', fontWeight: 800, textAlign: 'center' }}>
           {activeMessage.text}
         </div>
       </div>
