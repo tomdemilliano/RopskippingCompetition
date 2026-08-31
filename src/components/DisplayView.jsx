@@ -17,6 +17,7 @@ import {
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { MESSAGE_ICON_MAP } from './MessageManager';
+import { timeToMinutes } from '../timeUtils';
 
 const BREAK_ICONS = { proefjury: Activity };
 
@@ -207,6 +208,44 @@ export default function DisplayView({ onClose }) {
 
     return { nextList: [], nextEventObj: null, isNextEvent: false };
   }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedEvents, participants, isFreestyle]);
+
+  // "Volgende"-lijst verrijkt met tussenliggende pauze/briefing/proefjury/
+  // prijsuitreiking-blokken uit de dagtijdlijn — die vielen voorheen
+  // volledig weg omdat nextList enkel uit deelnemers werd opgebouwd.
+  // Elk blok krijgt de tijd van het eerstvolgende, nog niet lege veld als
+  // fallback (velden zonder skipper in de speed-lijst delen gewoon de
+  // reekstijd van hun reeks), zodat de sortering nooit door ontbrekende
+  // scheduledTime op lege plekken verstoord wordt.
+  const displayList = useMemo(() => {
+    if (nextList.length === 0) return [];
+
+    const groupTime = nextList.find(p => !p._isEmpty)?._entry?.scheduledTime ?? null;
+    const skipperItems = nextList.map(p => ({
+      kind: 'skipper',
+      data: p,
+      _min: timeToMinutes(p._entry?.scheduledTime) ?? timeToMinutes(groupTime),
+    }));
+
+    const startMin = timeToMinutes(plannedTime);
+    const blockItems = startMin === null ? [] : blocks
+      .filter(b => b.type !== 'heats')
+      .map(b => ({ kind: 'block', data: b, _min: timeToMinutes(b.scheduledTime) }))
+      .filter(b => b._min !== null && b._min > startMin);
+
+    const merged = [...skipperItems, ...blockItems].sort((a, b) => {
+      const am = a._min ?? Infinity;
+      const bm = b._min ?? Infinity;
+      if (am !== bm) return am - bm;
+      if (a.kind !== b.kind) return a.kind === 'block' ? -1 : 1;
+      return 0;
+    });
+
+    // Enkel blokken behouden die vóór of tussen de al getoonde skippers
+    // vallen — een blok dat pas ná het laatste getoonde item plaatsvindt
+    // hoort (nog) niet in deze preview thuis.
+    const lastSkipperIdx = merged.reduce((last, item, i) => item.kind === 'skipper' ? i : last, -1);
+    return merged.slice(0, lastSkipperIdx + 1);
+  }, [nextList, blocks, plannedTime]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -421,7 +460,7 @@ export default function DisplayView({ onClose }) {
             )}
           </div>
 
-          {nextList.length > 0 ? (
+          {displayList.length > 0 ? (
             <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 5px' }}>
               <thead>
                 <tr style={{ color: color.muted, fontSize: '0.85rem', textAlign: 'left' }}>
@@ -432,7 +471,35 @@ export default function DisplayView({ onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {nextList.map((p, idx) => {
+                {displayList.map((item, idx) => {
+                  if (item.kind === 'block') {
+                    const b = item.data;
+                    const BlockIcon = BREAK_ICONS[b.type] ?? Coffee;
+                    const label = b.label || blockTypeLabels[b.type] || b.type;
+                    return (
+                      <tr key={`block-${b.id}`} style={{ fontSize: '1.1rem' }}>
+                        <td colSpan={4} style={{
+                          padding: '0.6rem 0.875rem',
+                          borderRadius: '8px',
+                          background: 'rgba(56,189,248,0.12)',
+                          border: `1px dashed ${color.info}`,
+                          boxSizing: 'border-box',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: color.info, fontWeight: 800 }}>
+                            <BlockIcon size={18} />
+                            {label.toUpperCase()}
+                            {b.scheduledTime && (
+                              <span style={{ marginLeft: 'auto', fontSize: '0.9rem', opacity: 0.85 }}>
+                                {b.scheduledTime}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const p       = item.data;
                   const entry    = p._entry;
                   const expected = calcExpectedTime(entry?.scheduledTime, timeDiff);
                   return (
