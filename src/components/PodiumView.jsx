@@ -32,16 +32,23 @@ export default function PodiumView({ onClose }) {
     loadPodiums(activeCompetition?.id ?? null);
   }, [activeCompetition?.id, loadParticipants, loadPodiums]);
 
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => !!document.fullscreenElement);
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
     } else {
       document.exitFullscreen();
-      setIsFullscreen(false);
     }
   };
+
+  // De browser verlaat fullscreen ook zelf bij Esc — dit synchroniseert onze
+  // state (en dus de header-zichtbaarheid) met dat native gedrag, i.p.v. enkel
+  // te reageren op de eigen knop.
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleChange);
+    return () => document.removeEventListener('fullscreenchange', handleChange);
+  }, []);
 
   const activePodium = podiums.find(p => p.id === podiumState.activePodiumId) ?? null;
   const eventName = activePodium ? (events.find(e => e.id === activePodium.eventId)?.name ?? '') : '';
@@ -77,48 +84,51 @@ export default function PodiumView({ onClose }) {
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', zIndex: 9999,
     }}>
-      {/* ── Top bar ── */}
-      <div style={{
-        padding: '0.875rem 2rem',
-        background: 'rgba(30,41,59,0.8)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        flexShrink: 0,
-      }}>
-        <div style={{ fontSize: '1.6rem', fontWeight: 900 }}>
-          {activeCompetition.name}
-          <span style={{ color: color.info, marginLeft: '1rem', fontWeight: 400 }}>
-            | Prijsuitreiking
-          </span>
+      {/* ── Top bar — verborgen in fullscreen; Esc verlaat fullscreen en toont hem terug ── */}
+      {!isFullscreen && (
+        <div style={{
+          padding: '0.875rem 2rem',
+          background: 'rgba(30,41,59,0.8)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          flexShrink: 0,
+        }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900 }}>
+            {activeCompetition.name}
+            <span style={{ color: color.info, marginLeft: '1rem', fontWeight: 400 }}>
+              | Prijsuitreiking
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              onClick={toggleFullscreen}
+              style={{
+                background: 'rgba(255,255,255,0.1)', border: 'none',
+                color: 'white', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center',
+              }}
+            >
+              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: color.danger, border: 'none', color: 'white',
+                padding: '0.5rem', borderRadius: '8px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center',
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button
-            onClick={toggleFullscreen}
-            style={{
-              background: 'rgba(255,255,255,0.1)', border: 'none',
-              color: 'white', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center',
-            }}
-          >
-            {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-          </button>
-          <button
-            onClick={onClose}
-            style={{
-              background: color.danger, border: 'none', color: 'white',
-              padding: '0.5rem', borderRadius: '8px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center',
-            }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-      </div>
+      )}
 
-      {/* ── Hoofdinhoud ── */}
+      {/* ── Hoofdinhoud — bovenaan uitgelijnd zodat de podiumnaam bovenaan het scherm staat ── */}
       <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '2rem', overflow: 'hidden',
+        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: activePodium ? 'flex-start' : 'center',
+        padding: '3rem 2rem', overflow: 'hidden',
       }}>
         {activePodium ? (
           <PodiumStage
