@@ -40,6 +40,7 @@ import {
   competitionFactory,
   participantFactory,
   blockFactory,
+  podiumFactory,
   BLOCK_TYPE_LABELS,
   userFactory,
 } from './dbSchema';
@@ -98,6 +99,11 @@ export function AppProvider({ children }) {
   const [blocks, setBlocks]                 = useState([]);
   const [blocksCompId, setBlocksCompId]     = useState(null);
   const blockUnsubRef                       = useRef(null);
+
+  // ── Podiums (per wedstrijd geladen) ──────────────────────────────────────
+  const [podiums, setPodiums]               = useState([]);
+  const [podiumsCompId, setPodiumsCompId]   = useState(null);
+  const podiumUnsubRef                      = useRef(null);
 
   // ─────────────────────────────────────────────────────────────────────────
   // FIREBASE INIT
@@ -230,12 +236,43 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // PODIUMS — laden per geselecteerde wedstrijd
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start realtime listener voor de podia van een wedstrijd.
+   * Stopt de vorige listener automatisch.
+   */
+  const loadPodiums = useCallback((competitionId) => {
+    if (podiumUnsubRef.current) {
+      podiumUnsubRef.current();
+      podiumUnsubRef.current = null;
+    }
+
+    if (!competitionId) {
+      setPodiums([]);
+      setPodiumsCompId(null);
+      return;
+    }
+
+    setPodiumsCompId(competitionId);
+    podiumUnsubRef.current = podiumFactory.subscribe(competitionId, setPodiums);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (podiumUnsubRef.current) podiumUnsubRef.current();
+    };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // AFGELEIDE DATA
   // ─────────────────────────────────────────────────────────────────────────
 
   const activeCompetition = competitions.find(c => c.id === activeCompetitionId) ?? null;
   const finishedEvents = activeCompetition?.finishedEvents ?? [];
   const finishedSeries = activeCompetition?.finishedSeries ?? {};
+  const podiumState = activeCompetition?.podiumState ?? { activePodiumId: null, revealStage: 0 };
 
   /** Geeft de gesorteerde events voor een wedstrijd terug. */
   const getSortedEvents = useCallback((competition) => {
@@ -484,6 +521,27 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ACTIONS — podiums (Fase 3)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const createPodium = useCallback((competitionId, data) => {
+    return podiumFactory.create(competitionId, data);
+  }, []);
+
+  const updatePodium = useCallback((competitionId, podiumId, data) => {
+    return podiumFactory.update(competitionId, podiumId, data);
+  }, []);
+
+  const deletePodium = useCallback((competitionId, podiumId) => {
+    return podiumFactory.delete(competitionId, podiumId);
+  }, []);
+
+  /** Welk podium de speaker nu toont + hoever de onthulling staat (0-3). */
+  const savePodiumState = useCallback((competitionId, newState) => {
+    return competitionFactory.savePodiumState(competitionId, newState);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -519,6 +577,12 @@ export function AppProvider({ children }) {
     blocks,
     blocksCompId,
     loadBlocks,
+
+    // Podiums (Fase 3)
+    podiums,
+    podiumsCompId,
+    loadPodiums,
+    podiumState,
 
     // Settings
     activeCompetitionId,
@@ -567,6 +631,12 @@ export function AppProvider({ children }) {
     setBlockStatus,
     deleteBlock,
     importBlocks,
+
+    // Actions — podiums
+    createPodium,
+    updatePodium,
+    deletePodium,
+    savePodiumState,
   };
 
   return (
