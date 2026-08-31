@@ -710,15 +710,19 @@ De podiumceremonie gebeurt terwijl de wedstrijd nog `status: "bezig"` is
 
 `podium.isBelgianChampionship` (toggle in `PodiumManager`) laat `PodiumView`
 de standaard donkere achtergrond vervangen door een "wapperende" Belgische
-vlag. Dit gebeurt bewust zonder CSS-`@keyframes` of een los stijlbestand
-(CLAUDE.md — enkel inline stijlobjecten): `belgianFlagBackground(offsetPx)`
-in `PodiumView.jsx` bouwt een `backgroundImage` op uit twee lagen (een
-diagonale, herhalende glans-strook over drie effen zwart/geel/rode banden),
-en een `setInterval` schuift `offsetPx` op zolang het actieve podium een
-BK-podium is — dat rimpelende glans-effect suggereert de wapperende
-beweging. Om de podiumtekst leesbaar te houden ongeacht welke vlagband
-erachter zit, komt `PodiumStage` in dat geval op een halfdoorzichtig donker
-kaartje (`color.stageCard`) te staan i.p.v. rechtstreeks op de vlag.
+vlag. Een eerste versie (een schuivende glans-strook over effen banden) oogde
+te zwak; `BelgianFlagBackground` in `PodiumView.jsx` gebruikt nu een echt
+SVG-vervormingsfilter — het klassieke "stoffen vlag"-effect: `feTurbulence`
+genereert ruis, `feDisplacementMap` vervormt de drie zwart/geel/rode
+`<rect>`-banden daarmee, en een SMIL `<animate>` op `baseFrequency` laat de
+ruis (en dus de vervorming) continu verschuiven — geen React-state of
+`setInterval` nodig, de browser animeert dit zelf. Dit blijft binnen
+CLAUDE.md's stijlregels (geen Tailwind, geen CSS-modules, geen los
+stijlbestand): SVG is opmaak/DOM, geen CSS-mechanisme, en leeft volledig
+inline in het componentbestand. Om de podiumtekst leesbaar te houden
+ongeacht welke vlagband erachter zit, komt `PodiumStage` in dat geval op een
+halfdoorzichtig donker kaartje (`color.stageCard`) te staan i.p.v.
+rechtstreeks op de vlag.
 
 Clublogo's staan onderaan in de zuil van elke plaats (niet meer boven de
 naam) — de zuil is een flex-kolom met `justify-content: space-between`
