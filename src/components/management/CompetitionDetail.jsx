@@ -330,6 +330,7 @@ const s = {
  * @param {function} props.onImport        — cb(eventId) opent ImportModal
  * @param {function} props.onImportPdf     — opent PdfImportModal (volledig wedstrijdschema)
  * @param {function} props.onEditParticipant — cb(participant) opent EditParticipantModal
+ * @param {function} props.onAddParticipant — opent AddParticipantModal
  */
 export default function CompetitionDetail({
   competitionId,
@@ -337,6 +338,7 @@ export default function CompetitionDetail({
   onImport,
   onImportPdf,
   onEditParticipant,
+  onAddParticipant,
 }) {
   const {
     competitions,
@@ -682,14 +684,19 @@ export default function CompetitionDetail({
             </span>
           </div>
 
-          <div style={s.searchBar}>
-            <Search size={15} color={color.faint} />
-            <input
-              style={s.searchInput}
-              placeholder="Zoek op naam of club…"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={s.searchBar}>
+              <Search size={15} color={color.faint} />
+              <input
+                style={s.searchInput}
+                placeholder="Zoek op naam of club…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <Button variant="secondary" size="sm" icon={<UserPlus size={14} />} onClick={onAddParticipant}>
+              Nieuwe deelnemer
+            </Button>
           </div>
         </div>
 

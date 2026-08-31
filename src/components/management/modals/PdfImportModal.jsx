@@ -126,7 +126,7 @@ function buildBlockState(section) {
 export default function PdfImportModal({ competitionId, onClose }) {
   const {
     events, clubs, participants,
-    createClub, findClubByName, importParticipants, importBlocks,
+    createClub, findClubByName, importParticipantsMultiEvent, importBlocks,
     blockTypeLabels,
   } = useAppContext();
 
@@ -256,13 +256,19 @@ export default function PdfImportModal({ competitionId, onClose }) {
         }
       }
 
-      // 2. Deelnemers per gekozen onderdeel groeperen en wegschrijven
-      const byEventId = new Map();
-      for (const b of includedHeatsBlocks) {
-        if (!byEventId.has(b.chosenEventId)) byEventId.set(b.chosenEventId, []);
-        for (const e of b.entries) {
+      // 2. Deelnemers per gekozen onderdeel groeperen en in ÉÉN atomaire
+      // batch wegschrijven — belangrijk: eenzelfde deelnemer doet vaak mee
+      // aan meerdere onderdelen tegelijk in dit PDF-schema (bv. Speed Sprint
+      // én Speed Endurance én Freestyles), en moet dan als 1 participant-
+      // document eindigen i.p.v. één dubbel per onderdeel. importParticipants
+      // (per-event, met een snapshot van vóór de import) zou dat hier mis
+      // hebben — een deelnemer pas aangemaakt tijdens het verwerken van het
+      // eerste onderdeel zou nog niet gevonden worden bij het tweede.
+      const rowsByEvent = includedHeatsBlocks.map(b => ({
+        eventId: b.chosenEventId,
+        rows: b.entries.map(e => {
           const clubId = clubIdByName[e.clubName] ?? '';
-          byEventId.get(b.chosenEventId).push({
+          return {
             name:          e.participantName,
             clubId,
             externalId:    `${e.participantName}_${clubId}`,
@@ -271,14 +277,11 @@ export default function PdfImportModal({ competitionId, onClose }) {
             scheduledTime: e.scheduledTime,
             categoryLabel: e.categoryLabel,
             isScratched:   e.isScratched,
-          });
-        }
-      }
-      let participantCount = 0;
-      for (const [eventId, rows] of byEventId) {
-        await importParticipants(competitionId, eventId, participants, rows);
-        participantCount += rows.length;
-      }
+          };
+        }),
+      }));
+      const participantCount = rowsByEvent.reduce((sum, g) => sum + g.rows.length, 0);
+      await importParticipantsMultiEvent(competitionId, participants, rowsByEvent);
 
       // 3. Dagtijdlijn (blocks) wegschrijven, enkel de meegenomen blokken
       const blocksData = blocks

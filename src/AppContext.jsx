@@ -429,6 +429,16 @@ export function AppProvider({ children }) {
     );
   }, []);
 
+  const importParticipantsMultiEvent = useCallback((competitionId, existingParticipants, rowsByEvent) => {
+    return participantFactory.importMultiEventBatch(
+      competitionId, existingParticipants, rowsByEvent
+    );
+  }, []);
+
+  const createParticipant = useCallback((competitionId, data) => {
+    return participantFactory.create(competitionId, data);
+  }, []);
+
   // ─────────────────────────────────────────────────────────────────────────
   // ACTIONS — clubs
   // ─────────────────────────────────────────────────────────────────────────
@@ -542,6 +552,8 @@ export function AppProvider({ children }) {
     scratchFromAll,
     updateParticipant,
     importParticipants,
+    importParticipantsMultiEvent,
+    createParticipant,
 
     // Actions — clubs
     createClub,
