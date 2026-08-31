@@ -202,6 +202,11 @@ const s = {
     fontWeight: 700,
     color: color.inkSoft,
   },
+  blocksScroll: {
+    maxHeight: '260px',
+    overflowY: 'auto',
+    paddingRight: '2px',
+  },
   addBlockForm: {
     display: 'flex',
     gap: '0.4rem',
@@ -592,34 +597,36 @@ export default function CompetitionDetail({
           </div>
         )}
 
-        {sortedBlocks.map(b => {
-          const done = b.status === 'afgewerkt';
-          const label = b.type === 'heats'
-            ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
-            : (b.label || blockTypeLabels[b.type] || b.type);
-          return (
-            <div key={b.id} style={s.blockRow(done)}>
-              <span style={s.blockOrder}>{b.order}</span>
-              <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
-              <span style={s.blockLabel}>{label}</span>
-              <Badge tone="neutral">{b.type}</Badge>
-              <button
-                style={s.actionBtn(done ? color.warning : color.success)}
-                title={done ? 'Heropenen' : 'Markeer afgewerkt'}
-                onClick={() => setBlockStatus(competition.id, b.id, done ? 'gepland' : 'afgewerkt')}
-              >
-                {done ? <RotateCcw size={15} /> : <Check size={15} />}
-              </button>
-              <button
-                style={s.actionBtn(color.danger)}
-                title="Verwijderen"
-                onClick={() => deleteBlock(competition.id, b.id)}
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          );
-        })}
+        <div style={s.blocksScroll}>
+          {sortedBlocks.map(b => {
+            const done = b.status === 'afgewerkt';
+            const label = b.type === 'heats'
+              ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
+              : (b.label || blockTypeLabels[b.type] || b.type);
+            return (
+              <div key={b.id} style={s.blockRow(done)}>
+                <span style={s.blockOrder}>{b.order}</span>
+                <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
+                <span style={s.blockLabel}>{label}</span>
+                <Badge tone="neutral">{b.type}</Badge>
+                <button
+                  style={s.actionBtn(done ? color.warning : color.success)}
+                  title={done ? 'Heropenen' : 'Markeer afgewerkt'}
+                  onClick={() => setBlockStatus(competition.id, b.id, done ? 'gepland' : 'afgewerkt')}
+                >
+                  {done ? <RotateCcw size={15} /> : <Check size={15} />}
+                </button>
+                <button
+                  style={s.actionBtn(color.danger)}
+                  title="Verwijderen"
+                  onClick={() => deleteBlock(competition.id, b.id)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
 
         <div style={s.addBlockForm}>
           <select
