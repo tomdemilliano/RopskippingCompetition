@@ -116,14 +116,72 @@ const s = {
     borderRadius: radius.pill,
   },
 
-  // Filterbalk
-  filterBar: {
+  // Lichaam: clubs-zijbalk links, hoofdinhoud rechts
+  body: {
+    flex: 1,
+    display: 'flex',
+    overflow: 'hidden',
+  },
+
+  // Clubs-zijbalk
+  sidebar: {
+    width: '220px',
+    flexShrink: 0,
+    borderRight: `1px solid ${color.border}`,
+    background: color.surface,
+    overflowY: 'auto',
+    padding: '0.75rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  sidebarLabel: {
+    fontSize: '0.66rem',
+    fontWeight: 900,
+    color: color.faint,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    padding: '0.4rem 0.6rem 0.5rem',
+  },
+  clubBtn: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '6px',
+    width: '100%',
+    textAlign: 'left',
+    background: active ? color.primarySoft : 'none',
+    color: active ? color.primary : color.body,
+    border: 'none',
+    borderRadius: radius.sm,
+    padding: '0.5rem 0.6rem',
+    fontSize: '0.85rem',
+    fontWeight: active ? 700 : 500,
+    cursor: 'pointer',
+  }),
+  clubBtnName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  clubBtnCount: {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: color.faint,
+    flexShrink: 0,
+  },
+
+  // Hoofdinhoud
+  main: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  searchBarWrap: {
     padding: '0.85rem 1.5rem',
     background: color.surface,
     borderBottom: `1px solid ${color.border}`,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.6rem',
     flexShrink: 0,
   },
   searchBar: {
@@ -142,21 +200,6 @@ const s = {
     fontSize: '0.95rem',
     color: color.ink,
   },
-  chipRow: {
-    display: 'flex',
-    gap: '0.4rem',
-    flexWrap: 'wrap',
-  },
-  chip: (active) => ({
-    background: active ? color.primary : color.surface,
-    color: active ? '#fff' : color.body,
-    border: `1px solid ${active ? color.primary : color.border}`,
-    fontSize: '0.75rem',
-    fontWeight: 700,
-    padding: '0.3rem 0.75rem',
-    borderRadius: radius.pill,
-    cursor: 'pointer',
-  }),
 
   // Lijst
   list: {
@@ -309,7 +352,7 @@ export default function AttendanceView() {
     [selectedCompetition, getSortedEvents]
   );
 
-  // Clubs die in deze wedstrijd voorkomen, voor de filterchips.
+  // Clubs die in deze wedstrijd voorkomen, alfabetisch — voor de zijbalk.
   const clubsInCompetition = useMemo(() => {
     const ids = new Set(participants.map(p => p.clubId).filter(Boolean));
     return [...ids]
@@ -317,6 +360,16 @@ export default function AttendanceView() {
       .filter(Boolean)
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [participants, getClub]);
+
+  // Aantal deelnemers per club, voor het telletje naast elke clubnaam.
+  const participantCountByClub = useMemo(() => {
+    const counts = {};
+    for (const p of participants) {
+      if (!p.clubId) continue;
+      counts[p.clubId] = (counts[p.clubId] ?? 0) + 1;
+    }
+    return counts;
+  }, [participants]);
 
   const filteredParticipants = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -388,92 +441,100 @@ export default function AttendanceView() {
         <div style={s.counter}>{presentCount} / {participants.length} aangemeld</div>
       </div>
 
-      <div style={s.filterBar}>
-        <div style={s.searchBar}>
-          <Search size={16} color={color.faint} />
-          <input
-            style={s.searchInput}
-            placeholder="Zoek op naam of club…"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-        </div>
+      <div style={s.body}>
         {clubsInCompetition.length > 1 && (
-          <div style={s.chipRow}>
-            <button style={s.chip(clubFilter === 'alle')} onClick={() => setClubFilter('alle')}>
-              Alle clubs
+          <div style={s.sidebar}>
+            <div style={s.sidebarLabel}>Clubs</div>
+            <button style={s.clubBtn(clubFilter === 'alle')} onClick={() => setClubFilter('alle')}>
+              <span style={s.clubBtnName}>Alle clubs</span>
+              <span style={s.clubBtnCount}>{participants.length}</span>
             </button>
             {clubsInCompetition.map(club => (
               <button
                 key={club.id}
-                style={s.chip(clubFilter === club.id)}
+                style={s.clubBtn(clubFilter === club.id)}
                 onClick={() => setClubFilter(club.id)}
               >
-                {club.name}
+                <span style={s.clubBtnName} title={club.name}>{club.name}</span>
+                <span style={s.clubBtnCount}>{participantCountByClub[club.id] ?? 0}</span>
               </button>
             ))}
           </div>
         )}
-      </div>
 
-      <div style={s.list}>
-        {filteredParticipants.length === 0 && (
-          <div style={s.emptyList}>Geen deelnemers gevonden.</div>
-        )}
-
-        {filteredParticipants.map(participant => {
-          const scratched = isFullyScratched(participant);
-          const club = getClub(participant.clubId);
-
-          return (
-            <div
-              key={participant.id}
-              style={s.row(scratched ? color.danger : participant.isPresent ? color.success : 'transparent')}
-            >
-              <div>
-                <div style={s.rowName}>{participant.name}</div>
-                <div style={s.rowClub}>{club?.name ?? '—'}</div>
-                <div style={s.eventPills}>
-                  {sortedEvents
-                    .filter(ev => participant.entries.some(e => e.eventId === ev.id))
-                    .map(ev => (
-                      <span key={ev.id} style={s.eventPill(isScratchedFromEvent(participant, ev.id))}>
-                        {ev.name}
-                      </span>
-                    ))}
-                </div>
-              </div>
-
-              {scratched ? (
-                <div style={s.actionsCol}>
-                  <div style={s.statusAbsent}><UserX size={14} /> Afwezig — geschrapt</div>
-                  <button style={s.restoreBtn} onClick={() => handleRestore(participant)}>
-                    <RotateCcw size={12} /> Herstellen
-                  </button>
-                </div>
-              ) : participant.isPresent ? (
-                <div style={s.actionsCol}>
-                  <div style={s.statusPresent}><Check size={14} /> Aangemeld</div>
-                  <button style={s.secondaryAction} onClick={() => handleMarkAbsent(participant)}>
-                    Afwezig melden
-                  </button>
-                </div>
-              ) : (
-                <div style={s.actionsCol}>
-                  <button
-                    style={s.meldAanBtn}
-                    onClick={() => setPresence(selectedCompId, participant.id, true)}
-                  >
-                    <UserPlus size={15} /> Meld aan
-                  </button>
-                  <button style={s.secondaryAction} onClick={() => handleMarkAbsent(participant)}>
-                    Afwezig melden
-                  </button>
-                </div>
-              )}
+        <div style={s.main}>
+          <div style={s.searchBarWrap}>
+            <div style={s.searchBar}>
+              <Search size={16} color={color.faint} />
+              <input
+                style={s.searchInput}
+                placeholder="Zoek op naam of club…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
             </div>
-          );
-        })}
+          </div>
+
+          <div style={s.list}>
+            {filteredParticipants.length === 0 && (
+              <div style={s.emptyList}>Geen deelnemers gevonden.</div>
+            )}
+
+            {filteredParticipants.map(participant => {
+              const scratched = isFullyScratched(participant);
+              const club = getClub(participant.clubId);
+
+              return (
+                <div
+                  key={participant.id}
+                  style={s.row(scratched ? color.danger : participant.isPresent ? color.success : 'transparent')}
+                >
+                  <div>
+                    <div style={s.rowName}>{participant.name}</div>
+                    <div style={s.rowClub}>{club?.name ?? '—'}</div>
+                    <div style={s.eventPills}>
+                      {sortedEvents
+                        .filter(ev => participant.entries.some(e => e.eventId === ev.id))
+                        .map(ev => (
+                          <span key={ev.id} style={s.eventPill(isScratchedFromEvent(participant, ev.id))}>
+                            {ev.name}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+
+                  {scratched ? (
+                    <div style={s.actionsCol}>
+                      <div style={s.statusAbsent}><UserX size={14} /> Afwezig — geschrapt</div>
+                      <button style={s.restoreBtn} onClick={() => handleRestore(participant)}>
+                        <RotateCcw size={12} /> Herstellen
+                      </button>
+                    </div>
+                  ) : participant.isPresent ? (
+                    <div style={s.actionsCol}>
+                      <div style={s.statusPresent}><Check size={14} /> Aangemeld</div>
+                      <button style={s.secondaryAction} onClick={() => handleMarkAbsent(participant)}>
+                        Afwezig melden
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={s.actionsCol}>
+                      <button
+                        style={s.meldAanBtn}
+                        onClick={() => setPresence(selectedCompId, participant.id, true)}
+                      >
+                        <UserPlus size={15} /> Meld aan
+                      </button>
+                      <button style={s.secondaryAction} onClick={() => handleMarkAbsent(participant)}>
+                        Afwezig melden
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
