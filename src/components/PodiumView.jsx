@@ -11,84 +11,19 @@
  * Data komt volledig uit AppContext — geen directe Firebase-toegang.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Maximize2, Minimize2, X, Trophy } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import PodiumStage from './PodiumStage';
 
-// Belgische vlag (zwart/geel/rood) als "wapperende" achtergrond voor een
-// BK-podium. Twee eerdere pogingen (schuivende glans, feTurbulence-ruis)
-// oogden respectievelijk te zwak en als een vervormende smurrie i.p.v. een
-// soepele golving. Dit bouwt de golf zelf analytisch op — geen ruis: de vlag
-// bestaat uit dunne horizontale stroken die elk een klein stukje horizontaal
-// verschuiven volgens de som van twee zuivere sinusgolven (verschillende
-// golflengte/snelheid, voor een organischer ritme dan één perfecte golf).
-// Dat laat de verticale kleurgrenzen (zwart|geel|rood) golvend meebewegen,
-// precies zoals stof rond een vlaggenmast rimpelt. Volledig via React-state
-// + requestAnimationFrame — puur inline SVG/DOM, geen Tailwind, geen CSS-
-// modules, geen los stijlbestand (CLAUDE.md).
-const BELGIAN_FLAG_COLORS = ['#000000', '#FDDA25', '#EF3340'];
-
-const FLAG_VB_W = 300;
-const FLAG_VB_H = 200;
-const FLAG_STRIPS = 32;
-const FLAG_STRIP_H = FLAG_VB_H / FLAG_STRIPS;
-// Max horizontale uitwijking — bepaalt hoeveel breder elke band getekend
-// wordt (padding) zodat een strook nooit een gat laat zien aan de rand.
-const FLAG_MAX_DX = 22;
-
-function flagOffsetAt(yCenter, phase) {
-  const wave1 = 15 * Math.sin((2 * Math.PI * yCenter) / 105 + phase);
-  const wave2 = 6 * Math.sin((2 * Math.PI * yCenter) / 52 - phase * 1.35);
-  return wave1 + wave2;
-}
-
-function BelgianFlagBackground() {
-  const [phase, setPhase] = useState(0);
-  const frameRef = useRef(null);
-
-  useEffect(() => {
-    let last = performance.now();
-    const tick = (now) => {
-      const dt = (now - last) / 1000;
-      last = now;
-      setPhase(p => p + dt * 1.6); // ~1 volledige golfcyclus per ~4s
-      frameRef.current = requestAnimationFrame(tick);
-    };
-    frameRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameRef.current);
-  }, []);
-
-  // Enkel de buitenste twee randen (uiterst links van de zwarte band, uiterst
-  // rechts van de rode band) krijgen extra breedte — genoeg om de maximale
-  // uitwijking in beide richtingen te dekken zonder ooit een gat te tonen.
-  // De binnengrenzen tussen de banden blijven exact op 1/3 en 2/3, anders
-  // zou de opvulling de kleuren van de buurband overschilderen.
-  const pad = FLAG_MAX_DX + 2;
-  const bandW = FLAG_VB_W / 3;
-
-  return (
-    <svg
-      width="100%" height="100%" preserveAspectRatio="none" viewBox={`0 0 ${FLAG_VB_W} ${FLAG_VB_H}`}
-      style={{ position: 'absolute', inset: 0, zIndex: -1 }}
-      aria-hidden="true"
-    >
-      {Array.from({ length: FLAG_STRIPS }, (_, i) => {
-        const y = i * FLAG_STRIP_H;
-        const yCenter = y + FLAG_STRIP_H / 2;
-        const dx = flagOffsetAt(yCenter, phase);
-        return (
-          <g key={i} transform={`translate(${dx}, 0)`}>
-            <rect x={-pad}          y={y} width={bandW + pad} height={FLAG_STRIP_H + 0.6} fill={BELGIAN_FLAG_COLORS[0]} />
-            <rect x={bandW}         y={y} width={bandW}       height={FLAG_STRIP_H + 0.6} fill={BELGIAN_FLAG_COLORS[1]} />
-            <rect x={bandW * 2}     y={y} width={bandW + pad} height={FLAG_STRIP_H + 0.6} fill={BELGIAN_FLAG_COLORS[2]} />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
+// Belgische vlag (zwart/geel/rood) als achtergrond voor een BK-podium.
+// Bewust STATISCH: twee bewegende versies (schuivende glans, dan een
+// analytische golfanimatie) leidden te veel af van het podium zelf — een
+// prijsuitreiking heeft geen bewegende achtergrond nodig. Gewoon 3 effen
+// verticale banden via een CSS-gradient.
+const BELGIAN_FLAG_BACKGROUND =
+  'linear-gradient(90deg, #000000 0%, #000000 33.33%, #FDDA25 33.33%, #FDDA25 66.66%, #EF3340 66.66%, #EF3340 100%)';
 
 export default function PodiumView({ onClose }) {
   const {
@@ -153,14 +88,12 @@ export default function PodiumView({ onClose }) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: color.stage,
+      background: isBelgianFlag ? BELGIAN_FLAG_BACKGROUND : color.stage,
       color: color.stageInk,
       fontFamily: font.body,
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', zIndex: 9999,
     }}>
-      {isBelgianFlag && <BelgianFlagBackground />}
-
       {/* ── Top bar — verborgen in fullscreen; Esc verlaat fullscreen en toont hem terug ── */}
       {!isFullscreen && (
         <div style={{
@@ -210,7 +143,7 @@ export default function PodiumView({ onClose }) {
       }}>
         {activePodium ? (
           <div style={isBelgianFlag ? {
-            background: color.stageCard,
+            background: color.stage,
             borderRadius: radius.xl,
             boxShadow: shadow.lg,
             padding: '2.5rem 3rem',
