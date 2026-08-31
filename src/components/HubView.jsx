@@ -152,7 +152,6 @@ function useTiles() {
       key: 'podium', path: '/scherm/podium', visible: hasPermission('podium'),
       icon: Trophy, accent: color.warning,
       title: 'Podium', sub: 'Podium-onthulling voor de prijsuitreiking.',
-      badge: <Badge tone="warning">Binnenkort beschikbaar</Badge>,
     },
   ];
 

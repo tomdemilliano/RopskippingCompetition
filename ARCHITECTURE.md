@@ -19,9 +19,9 @@ daarna zijn eigen route en een eigen recht (zie "Authenticatie & rechten"):
 | *(landingspagina)* | `/`         | ingelogd       | tegeloverzicht — enige plek waarvandaan tussen schermen genavigeerd wordt |
 | Beheer       | `/beheer`         | beheerder-only | wedstrijden en deelnemers aanmaken, CSV-import, clubs, blokken, gebruikers |
 | Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden/afwezig melden |
-| Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (reeksen markeren) |
+| Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (reeksen markeren + podiumceremonie, tabs) |
 | Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (toont huidige en volgende reeks) |
-| Podium       | `/scherm/podium`  | `podium`       | podium-onthulling voor de prijsuitreiking (Fase 3 — nu nog een placeholder) |
+| Podium       | `/scherm/podium`  | `podium`       | groot scherm — podium-onthulling voor de prijsuitreiking (zie "Podium & prijsuitreiking") |
 
 De Speaker- en Display-tegels op de landingspagina tonen altijd of, en welke,
 wedstrijd er live staat (`activeCompetition` uit `AppContext`) — zo is meteen
@@ -70,10 +70,13 @@ src/
     LoginView.jsx                  # Inlogscherm — vóór elk ander scherm
     HubView.jsx                    # Landingspagina ("/") — tegels naar elk scherm met toegang
     ManagementView.jsx              # Beheerscherm orchestrator (wedstrijden + clubs + gebruikers)
-    LiveView.jsx                    # Speaker — operatorscherm live wedstrijd
+    LiveView.jsx                    # Speaker — operatorscherm live wedstrijd (tabs: Reeksen / Podium)
     DisplayView.jsx                 # Groot scherm (backstage) live wedstrijd
     AttendanceView.jsx              # Aanwezigheidsregistratie — kiosk voor de inkomtafel
-    PodiumView.jsx                  # Podium-onthulling (Fase 3 — placeholder)
+    PodiumView.jsx                  # Groot scherm — podium-onthulling (zie "Podium & prijsuitreiking")
+    PodiumStage.jsx                 # Gedeelde podium-visual (full/mini) — puur presentationeel
+    PodiumManager.jsx               # Gedeeld podiumbeheer (CompetitionDetail + LiveView)
+    PodiumCeremonyPanel.jsx         # Speaker-onthullingsbediening (enkel LiveView)
 
     ui/
       Button.jsx                   # Gedeelde knop (variant/size/icon), gebouwd uit theme.js
@@ -117,10 +120,11 @@ users/{uid}                   gebruikers + rechten (doc-id = Firebase Auth uid)
 competitionTypes/{id}         wedstrijdtypes met standaard event-volgorde
 events/{id}                   globale lijst van beschikbare onderdelen
 clubs/{id}                    clubs met logo-referentie
-competitions/{id}             wedstrijden — incl. finishedEvents/finishedSeries
+competitions/{id}             wedstrijden — incl. finishedEvents/finishedSeries/podiumState
 competitions/{id}/
   participants/{id}           deelnemers per wedstrijd (subcollectie)
   blocks/{id}                 dagtijdlijn: blok → onderdeel (optioneel) → reeks (subcollectie)
+  podiums/{id}                podia per onderdeel + laureaten (subcollectie, Fase 3)
 ```
 
 ### Sleuteldocumenten
@@ -128,10 +132,11 @@ competitions/{id}/
 **`competition/{id}`**
 ```
 name, date, location, typeId → competitionTypes, status, eventOrder{},
-finishedEvents[], finishedSeries{}, createdAt
+finishedEvents[], finishedSeries{}, podiumState{activePodiumId, revealStage}, createdAt
 ```
 `finishedEvents`/`finishedSeries` leven bewust hier en niet in een los
-singleton — zie "Live voortgang" hieronder.
+singleton — zie "Live voortgang" hieronder. `podiumState` volgt hetzelfde
+patroon voor de podiumceremonie — zie "Podium & prijsuitreiking" onderaan.
 
 **`participant/{id}`**
 ```
@@ -157,6 +162,12 @@ scheduledTime "HH:MM", order, status ("gepland" | "actief" | "afgewerkt")
 username, role ("beheerder" | "medewerker"),
 permissions { speaker, backstage, podium, aanwezigheid } (enkel relevant voor medewerker),
 createdAt
+```
+
+**`podium/{id}`** (subcollectie van competition — zie "Podium & prijsuitreiking")
+```
+eventId → events, name (vrije tekst, door de gebruiker bepaald), order (globaal,
+niet per onderdeel), places[3] ({place: 1|2|3, participantIds[]}), createdAt
 ```
 
 ### Afgeleide properties (nooit opgeslagen)
@@ -586,6 +597,76 @@ CSV-import zonder dagtijdlijn) blijft de volledige, ongescopede deelnemers-
 lijst zichtbaar zoals voorheen. `finishedEvents` (het complete-onderdeel-vlag)
 blijft wel gebaseerd op de ECHTE laatste reeks over alle blokken van het
 onderdeel heen, niet enkel de laatste van het huidige tijdvenster.
+
+---
+
+## Podium & prijsuitreiking (Fase 3)
+
+Per onderdeel kunnen **meerdere podia** aangemaakt worden (bv. Meisjes/Jongens,
+per leeftijdscategorie, per provincie…). Er is bewust **geen** gestructureerd
+veld voor leeftijdscategorie/geslacht/provincie — dat verschilt te veel per
+wedstrijd. Een podium heeft enkel een vrije-tekst `name`; de gebruiker zorgt
+zelf voor een correcte, herkenbare benaming.
+
+### Datamodel
+
+`podiums` is een subcollectie van `competitions/{id}`, met exact hetzelfde
+laadpatroon als `blocks` (`podiumFactory.subscribe`, `loadPodiums()` in
+AppContext). `places` bevat altijd precies 3 entries (plaats 1/2/3) —
+gegarandeerd door `normalizePlaces()` in `dbSchema.js`, dezelfde aanpak als
+`normalizeEntry()` voor participant-entries. Elke plaats is een
+`participantIds[]` (géén los veld) zodat een gedeelde plaats (ex aequo)
+gewoon meerdere deelnemers kan bevatten.
+
+`order` is één **globaal** geheel getal over de hele wedstrijd heen, niet
+gescopeerd per onderdeel — zo kan de wedstrijdbeheerder/speaker de podia van
+verschillende onderdelen vrij door elkaar ordenen tot de exacte
+ceremonie-volgorde waarin ze afgeroepen worden.
+
+### Componenten
+
+- **`PodiumStage.jsx`** — pure presentatiecomponent (geen AppContext/Firestore-
+  toegang). Toont podiumnaam, onderdeel en de 3 plaatsen met laureaten, en
+  bepaalt zelf niets over databronnen — alles komt resolved binnen via props.
+  Herbruikt met `size="full"` (groot scherm) en `size="mini"` (kleine
+  voorvertoning bij de speaker) — letterlijk hetzelfde onderdeel, geen twee
+  aparte implementaties, zodat de speaker exact ziet wat het grote scherm
+  toont.
+- **`PodiumManager.jsx`** — gedeeld CRUD-beheer: podia aanmaken per onderdeel,
+  hernoemen, verwijderen, laureaten per plaats toewijzen (dropdown, gescoped
+  tot de deelnemers van dát onderdeel), en de globale volgorde bepalen
+  (op/neer-knoppen, wisselt `order` met de buur). Gebruikt zowel in
+  `CompetitionDetail` (tab "Podium", wedstrijdbeheerder) als in `LiveView`
+  (tab "Podium" → subtab "Beheer", speaker).
+- **`PodiumCeremonyPanel.jsx`** — enkel op het Speaker-scherm (`LiveView`, tab
+  "Podium" → subtab "Ceremonie"). Laat de speaker door de podia navigeren
+  (vorige/volgende, of rechtstreeks kiezen uit de volgordelijst) en de
+  onthulling per plaats sturen. Toont de kleine `PodiumStage`-voorvertoning
+  zodat de speaker ziet wat het grote scherm op dat moment toont.
+- **`PodiumView.jsx`** — het grote scherm (`/scherm/podium`), donker thema
+  net als `DisplayView`. Puur weergavegedreven: leest `podiumState` en het
+  actieve podium, toont `PodiumStage` met `size="full"`. Geen eigen
+  navigatie.
+
+### Synchronisatie speaker → groot scherm
+
+Net als `finishedEvents`/`finishedSeries` loopt de synchronisatie
+uitsluitend via een veld op het `competition`-document zelf, nooit via een
+rechtstreeks kanaal tussen de twee schermen:
+
+```
+competition.podiumState = { activePodiumId: string|null, revealStage: 0-3 }
+```
+
+`PodiumCeremonyPanel` schrijft (`savePodiumState`), `PodiumView` leest
+diezelfde data via een Firestore-listener en volgt automatisch mee.
+`revealStage` stuurt de gefaseerde onthulling per podium: `0` = nog niets
+zichtbaar, `1` = 3de plaats onthuld, `2` = 3de + 2de plaats, `3` = volledig
+podium (incl. 1ste plaats). Bij het wisselen van podium (vorige/volgende of
+rechtstreekse keuze) reset `revealStage` automatisch naar `0`.
+
+De podiumceremonie gebeurt terwijl de wedstrijd nog `status: "bezig"` is
+(net als de reeksen) — pas nadien roept de beheerder `endCompetition()` aan.
 
 ---
 

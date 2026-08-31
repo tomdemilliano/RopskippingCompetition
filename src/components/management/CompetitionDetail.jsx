@@ -14,12 +14,13 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronLeft, ChevronRight,
-  Plus, ListTodo, Flag,
+  Plus, ListTodo, Flag, Trophy,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
+import PodiumManager from '../PodiumManager';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -601,6 +602,9 @@ export default function CompetitionDetail({
           <Users size={14} /> Deelnemers
           <Badge tone="neutral">{participants.length}</Badge>
         </button>
+        <button style={s.tab(detailTab === 'podium')} onClick={() => setDetailTab('podium')}>
+          <Trophy size={14} /> Podium
+        </button>
       </div>
 
       {/* ── Tab: Wedstrijd (onderdelen + programma) ── */}
@@ -861,6 +865,13 @@ export default function CompetitionDetail({
             </tbody>
           </table>
         </div>
+      </div>
+      )}
+
+      {/* ── Tab: Podium (podia + laureaten) ── */}
+      {detailTab === 'podium' && (
+      <div style={s.tabScroll}>
+        <PodiumManager competitionId={competition.id} />
       </div>
       )}
     </div>

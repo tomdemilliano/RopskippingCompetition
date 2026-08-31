@@ -12,10 +12,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check,
   Mic2, FastForward, Ghost, Clock, Coffee,
+  ListTodo, Trophy, Settings,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { timeToMinutes } from '../timeUtils';
+import PodiumManager from './PodiumManager';
+import PodiumCeremonyPanel from './PodiumCeremonyPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -227,6 +230,70 @@ const s = {
     textAlign: 'center',
     gap: '1.5rem',
   },
+
+  // Hoofdtabs (Reeksen / Podium) + Podium-subtabs (Ceremonie / Beheer)
+  pageWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    overflow: 'hidden',
+  },
+  mainTabsBar: {
+    display: 'flex',
+    padding: '0 1.5rem',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
+    flexShrink: 0,
+    gap: '0.25rem',
+  },
+  mainTab: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '0.7rem 1rem',
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    color: active ? color.primary : color.muted,
+    background: 'none',
+    border: 'none',
+    borderBottom: `2px solid ${active ? color.primary : 'transparent'}`,
+    cursor: 'pointer',
+    marginBottom: '-1px',
+  }),
+  pageBody: {
+    flex: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  podiumSubTabsBar: {
+    display: 'flex',
+    padding: '0.6rem 1.5rem 0',
+    background: color.surfaceAlt,
+    gap: '0.5rem',
+    flexShrink: 0,
+  },
+  podiumSubTab: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '0.5rem 0.9rem',
+    fontSize: '0.8rem',
+    fontWeight: 700,
+    borderRadius: `${radius.sm} ${radius.sm} 0 0`,
+    color: active ? color.primary : color.muted,
+    background: active ? color.surface : 'transparent',
+    border: `1px solid ${active ? color.border : 'transparent'}`,
+    borderBottom: active ? `1px solid ${color.surface}` : 'none',
+    cursor: 'pointer',
+  }),
+  podiumTabBody: {
+    flex: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    background: color.surface,
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,6 +368,10 @@ export default function LiveView() {
   // Actief event — initialiseer op eerste niet-voltooide event
   const firstActiveEvent = sortedEvents.find(ev => !finishedEvents.includes(ev.id)) ?? sortedEvents[0];
   const [activeEventId, setActiveEventId] = useState(null);
+
+  // Hoofdtabs (Reeksen / Podium — Fase 3) en Podium-subtabs (Ceremonie / Beheer)
+  const [liveTab, setLiveTab] = useState('reeksen');
+  const [podiumSubTab, setPodiumSubTab] = useState('ceremonie');
 
   // Volg de dagtijdlijn: zodra het huidige blok een "heats"-blok is, schakelt
   // de speaker automatisch naar dát onderdeel over — ook wanneer een pauze
@@ -484,31 +555,27 @@ export default function LiveView() {
   }
 
   // ── Huidig blok is een pauze/briefing/… i.p.v. reeksen ───────────────────
-  if (isBreakBlock) {
-    return (
-      <div style={s.emptyState}>
-        <div style={{
-          background: color.primarySoft, padding: '2rem', borderRadius: '50%',
-          border: `4px solid ${color.primaryBorder}`,
-        }}>
-          <Coffee size={72} color={color.primary} strokeWidth={1.5} />
-        </div>
-        <div>
-          <div style={{ fontWeight: 800, color: color.inkSoft, fontSize: '1.4rem', marginBottom: '0.5rem' }}>
-            {breakLabel}
-          </div>
-          <div style={{ fontSize: '0.875rem', maxWidth: '280px', lineHeight: 1.6, margin: '0 auto' }}>
-            Het grote scherm toont dit ook aan de deelnemers.
-          </div>
-        </div>
-        <button style={s.nextBtn} onClick={handleFinishBlock}>
-          Volgende <ChevronRight size={18} />
-        </button>
+  const reeksenContent = isBreakBlock ? (
+    <div style={s.emptyState}>
+      <div style={{
+        background: color.primarySoft, padding: '2rem', borderRadius: '50%',
+        border: `4px solid ${color.primaryBorder}`,
+      }}>
+        <Coffee size={72} color={color.primary} strokeWidth={1.5} />
       </div>
-    );
-  }
-
-  return (
+      <div>
+        <div style={{ fontWeight: 800, color: color.inkSoft, fontSize: '1.4rem', marginBottom: '0.5rem' }}>
+          {breakLabel}
+        </div>
+        <div style={{ fontSize: '0.875rem', maxWidth: '280px', lineHeight: 1.6, margin: '0 auto' }}>
+          Het grote scherm toont dit ook aan de deelnemers.
+        </div>
+      </div>
+      <button style={s.nextBtn} onClick={handleFinishBlock}>
+        Volgende <ChevronRight size={18} />
+      </button>
+    </div>
+  ) : (
     <div style={s.grid}>
       {/* ── Linker panel: event-lijst ── */}
       <div style={s.leftPanel}>
@@ -725,6 +792,44 @@ export default function LiveView() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={s.pageWrap}>
+      {/* ── Hoofdtabs ── */}
+      <div style={s.mainTabsBar}>
+        <button style={s.mainTab(liveTab === 'reeksen')} onClick={() => setLiveTab('reeksen')}>
+          <ListTodo size={15} /> Reeksen
+        </button>
+        <button style={s.mainTab(liveTab === 'podium')} onClick={() => setLiveTab('podium')}>
+          <Trophy size={15} /> Podium
+        </button>
+      </div>
+
+      <div style={s.pageBody}>
+        {liveTab === 'reeksen' ? reeksenContent : (
+          <div style={s.podiumTabBody}>
+            {/* ── Podium-subtabs: Ceremonie (live bediening) / Beheer (podia + laureaten) ── */}
+            <div style={s.podiumSubTabsBar}>
+              <button style={s.podiumSubTab(podiumSubTab === 'ceremonie')} onClick={() => setPodiumSubTab('ceremonie')}>
+                <Mic2 size={13} /> Ceremonie
+              </button>
+              <button style={s.podiumSubTab(podiumSubTab === 'beheer')} onClick={() => setPodiumSubTab('beheer')}>
+                <Settings size={13} /> Beheer
+              </button>
+            </div>
+
+            {podiumSubTab === 'ceremonie' ? (
+              <PodiumCeremonyPanel />
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <PodiumManager competitionId={activeCompetition.id} />
+              </div>
             )}
           </div>
         )}

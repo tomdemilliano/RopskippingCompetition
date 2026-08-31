@@ -162,6 +162,21 @@ const paths = {
       'artifacts', getAppId(), 'public', 'data',
       'competitions', competitionId, 'blocks', blockId
     ),
+
+  // Podiums (subcollectie onder competition) — meerdere podia per onderdeel mogelijk
+  podiums: (competitionId) =>
+    collection(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'podiums'
+    ),
+
+  podium: (competitionId, podiumId) =>
+    doc(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'podiums', podiumId
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,11 +321,12 @@ const competitionConverter = {
       eventOrder:       d.eventOrder       ?? {},
       finishedEvents:   d.finishedEvents   ?? [],
       finishedSeries:   d.finishedSeries   ?? {},
+      podiumState:      d.podiumState      ?? { activePodiumId: null, revealStage: 0 },
       createdAt:        d.createdAt        ?? '',
     };
   },
-  toFirestore({ name, date, location, typeId, status, eventOrder, finishedEvents = [], finishedSeries = {} }) {
-    return { name, date, location, typeId, status, eventOrder, finishedEvents, finishedSeries };
+  toFirestore({ name, date, location, typeId, status, eventOrder, finishedEvents = [], finishedSeries = {}, podiumState = { activePodiumId: null, revealStage: 0 } }) {
+    return { name, date, location, typeId, status, eventOrder, finishedEvents, finishedSeries, podiumState };
   },
 };
 
@@ -764,13 +780,29 @@ export const competitionFactory = {
   },
 
   /**
-   * Verwijder een wedstrijd inclusief alle deelnemers.
+   * Sla op welk podium de speaker nu toont en hoever de onthulling staat —
+   * gelezen door PodiumView (groot scherm) om in real-time mee te volgen.
+   * @param {string} competitionId
+   * @param {{ activePodiumId: string|null, revealStage: number }} podiumState  revealStage 0-3
+   */
+  savePodiumState(competitionId, podiumState) {
+    return updateDoc(paths.competition(competitionId), { podiumState });
+  },
+
+  /**
+   * Verwijder een wedstrijd inclusief alle deelnemers, blokken en podia.
    * @param {string} competitionId
    */
   async delete(competitionId) {
     const batch = writeBatch(getDb());
-    const pSnap = await getDocs(paths.participants(competitionId));
+    const [pSnap, bSnap, podSnap] = await Promise.all([
+      getDocs(paths.participants(competitionId)),
+      getDocs(paths.blocks(competitionId)),
+      getDocs(paths.podiums(competitionId)),
+    ]);
     pSnap.forEach((d) => batch.delete(d.ref));
+    bSnap.forEach((d) => batch.delete(d.ref));
+    podSnap.forEach((d) => batch.delete(d.ref));
     batch.delete(paths.competition(competitionId));
     return batch.commit();
   },
@@ -1051,6 +1083,108 @@ export const blockFactory = {
       batch.set(newRef, blockConverter.toFirestore(data));
     }
     return batch.commit();
+  },
+};
+
+// ── PODIUMS ───────────────────────────────────────────────────────────────────
+// Eén podium = één prijsuitreiking-moment voor een onderdeel (bv. "Meisjes
+// 13-15j" of "Jongens — Antwerpen"). Een onderdeel kan best meerdere podia
+// hebben — de naam is vrije tekst, de gebruiker zorgt zelf voor een correcte
+// benaming (geen aparte leeftijd/geslacht/provincie-velden, dat verschilt te
+// veel per wedstrijd). `order` is één doorlopende volgorde over de HELE
+// wedstrijd heen (niet per onderdeel), zodat de podiumceremonie alle podia
+// in de juiste volgorde kan afroepen, ongeacht welk onderdeel ze bij horen.
+
+/**
+ * @typedef {Object} PodiumPlace
+ * @property {number}   place            1, 2 of 3
+ * @property {string[]} participantIds   meestal 1, meerdere bij ex aequo, leeg = nog niet toegekend
+ */
+
+/**
+ * @typedef {Object} Podium
+ * @property {string} id
+ * @property {string} eventId    ref → events/{id}
+ * @property {string} name       vrije tekst, bv. "Meisjes 13-15j"
+ * @property {number} order      volgorde binnen de hele podiumceremonie
+ * @property {PodiumPlace[]} places  altijd exact 3 (plaats 1, 2, 3)
+ * @property {string} createdAt
+ */
+
+function normalizePlaces(raw) {
+  const byPlace = new Map((raw ?? []).map(p => [p.place, p]));
+  return [1, 2, 3].map(place => ({
+    place,
+    participantIds: byPlace.get(place)?.participantIds ?? [],
+  }));
+}
+
+const podiumConverter = {
+  fromFirestore(snapshot) {
+    const d = snapshot.data();
+    return {
+      id:        snapshot.id,
+      eventId:   d.eventId   ?? '',
+      name:      d.name      ?? '',
+      order:     d.order     ?? 0,
+      places:    normalizePlaces(d.places),
+      createdAt: d.createdAt ?? '',
+    };
+  },
+  toFirestore({ eventId, name, order = 0, places = [] }) {
+    return { eventId, name, order, places: normalizePlaces(places) };
+  },
+};
+
+export const podiumFactory = {
+  /**
+   * Luister naar alle podia van een wedstrijd, gesorteerd op order.
+   * @param {string} competitionId
+   * @param {function} callback  cb(Podium[])
+   * @returns {function} unsubscribe
+   */
+  subscribe(competitionId, callback) {
+    return onSnapshot(paths.podiums(competitionId), (snap) => {
+      const sorted = snap.docs
+        .map(podiumConverter.fromFirestore)
+        .sort((a, b) => a.order - b.order);
+      callback(sorted);
+    });
+  },
+
+  /**
+   * Maak een nieuw podium aan voor een onderdeel.
+   * @param {string} competitionId
+   * @param {{ eventId: string, name: string, order?: number }} data
+   * @returns {Promise<string>} nieuw id
+   */
+  async create(competitionId, data) {
+    const ref = await addDoc(paths.podiums(competitionId), {
+      ...podiumConverter.toFirestore(data),
+      createdAt: new Date().toISOString(),
+    });
+    return ref.id;
+  },
+
+  /**
+   * Pas een podium aan (naam, volgorde, of de laureaten per plaats).
+   * @param {string} competitionId
+   * @param {string} podiumId
+   * @param {Partial<Podium>} data
+   */
+  update(competitionId, podiumId, data) {
+    const patch = { ...data };
+    if (patch.places) patch.places = normalizePlaces(patch.places);
+    return updateDoc(paths.podium(competitionId, podiumId), patch);
+  },
+
+  /**
+   * Verwijder een podium.
+   * @param {string} competitionId
+   * @param {string} podiumId
+   */
+  delete(competitionId, podiumId) {
+    return deleteDoc(paths.podium(competitionId, podiumId));
   },
 };
 
