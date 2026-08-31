@@ -18,21 +18,39 @@ import { color, radius, shadow, font } from '../theme';
 import PodiumStage from './PodiumStage';
 
 // Belgische vlag (zwart/geel/rood) als "wapperende" achtergrond voor een
-// BK-podium — puur inline stijlobjecten (CLAUDE.md), geen CSS-keyframes:
-// een diagonale glans-laag schuift via React-state over de vlagbanden, wat
-// een rimpelend/wapperend effect suggereert zonder externe CSS.
+// BK-podium. Een simpele schuivende glans (eerdere versie) oogde te zwak —
+// dit gebruikt een SVG feTurbulence/feDisplacementMap-filter (het klassieke
+// "stoffen vlag"-effect) met een SMIL <animate> die de turbulentie continu
+// laat verschuiven. Dat vervormt de vlagbanden echt golvend, i.p.v. enkel
+// een lichtstrook erover te schuiven. Puur SVG/DOM, geen Tailwind, geen
+// CSS-modules, geen los stijlbestand — dus binnen CLAUDE.md's stijlregels.
 const BELGIAN_FLAG_COLORS = ['#000000', '#FDDA25', '#EF3340'];
 
-function belgianFlagBackground(offsetPx) {
-  return {
-    backgroundImage: [
-      'repeating-linear-gradient(115deg, rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 40px, rgba(255,255,255,0) 40px, rgba(255,255,255,0) 170px)',
-      `linear-gradient(90deg, ${BELGIAN_FLAG_COLORS[0]} 0%, ${BELGIAN_FLAG_COLORS[0]} 33.33%, ${BELGIAN_FLAG_COLORS[1]} 33.33%, ${BELGIAN_FLAG_COLORS[1]} 66.66%, ${BELGIAN_FLAG_COLORS[2]} 66.66%, ${BELGIAN_FLAG_COLORS[2]} 100%)`,
-    ].join(', '),
-    backgroundSize: '420px 100%, 100% 100%',
-    backgroundPosition: `${offsetPx}px 0, 0 0`,
-    backgroundRepeat: 'repeat, no-repeat',
-  };
+function BelgianFlagBackground() {
+  return (
+    <svg
+      width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 300 200"
+      style={{ position: 'absolute', inset: 0 }}
+      aria-hidden="true"
+    >
+      <filter id="belgianWave" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="fractalNoise" numOctaves="2" seed="7" baseFrequency="0.012 0.05" result="noise">
+          <animate
+            attributeName="baseFrequency"
+            dur="7s"
+            values="0.012 0.05;0.022 0.07;0.012 0.05"
+            repeatCount="indefinite"
+          />
+        </feTurbulence>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="34" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <g filter="url(#belgianWave)">
+        <rect x="0"   y="0" width="100" height="200" fill={BELGIAN_FLAG_COLORS[0]} />
+        <rect x="100" y="0" width="100" height="200" fill={BELGIAN_FLAG_COLORS[1]} />
+        <rect x="200" y="0" width="100" height="200" fill={BELGIAN_FLAG_COLORS[2]} />
+      </g>
+    </svg>
+  );
 }
 
 export default function PodiumView({ onClose }) {
@@ -72,15 +90,6 @@ export default function PodiumView({ onClose }) {
   const eventName = activePodium ? (events.find(e => e.id === activePodium.eventId)?.name ?? '') : '';
   const isBelgianFlag = !!activePodium?.isBelgianChampionship;
 
-  // Wapperingsanimatie — enkel lopen zolang er effectief een BK-podium
-  // actief is, anders geen overbodige re-renders op dit altijd-aan-scherm.
-  const [flagOffset, setFlagOffset] = useState(0);
-  useEffect(() => {
-    if (!isBelgianFlag) return undefined;
-    const t = setInterval(() => setFlagOffset(o => (o + 2) % 420), 60);
-    return () => clearInterval(t);
-  }, [isBelgianFlag]);
-
   // ── Geen actieve wedstrijd ──────────────────────────────────────────────
   if (!activeCompetition) {
     return (
@@ -107,12 +116,14 @@ export default function PodiumView({ onClose }) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      ...(isBelgianFlag ? belgianFlagBackground(flagOffset) : { background: color.stage }),
+      background: color.stage,
       color: color.stageInk,
       fontFamily: font.body,
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', zIndex: 9999,
     }}>
+      {isBelgianFlag && <BelgianFlagBackground />}
+
       {/* ── Top bar — verborgen in fullscreen; Esc verlaat fullscreen en toont hem terug ── */}
       {!isFullscreen && (
         <div style={{
