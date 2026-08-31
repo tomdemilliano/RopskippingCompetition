@@ -41,6 +41,7 @@ import {
   participantFactory,
   blockFactory,
   podiumFactory,
+  messageFactory,
   BLOCK_TYPE_LABELS,
   userFactory,
 } from './dbSchema';
@@ -104,6 +105,11 @@ export function AppProvider({ children }) {
   const [podiums, setPodiums]               = useState([]);
   const [podiumsCompId, setPodiumsCompId]   = useState(null);
   const podiumUnsubRef                      = useRef(null);
+
+  // ── Messages — boodschappen groot scherm (per wedstrijd geladen) ─────────
+  const [messages, setMessages]             = useState([]);
+  const [messagesCompId, setMessagesCompId] = useState(null);
+  const messageUnsubRef                     = useRef(null);
 
   // ─────────────────────────────────────────────────────────────────────────
   // FIREBASE INIT
@@ -266,6 +272,36 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // MESSAGES — laden per geselecteerde wedstrijd
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start realtime listener voor de voorbereide boodschappen van een wedstrijd.
+   * Stopt de vorige listener automatisch.
+   */
+  const loadMessages = useCallback((competitionId) => {
+    if (messageUnsubRef.current) {
+      messageUnsubRef.current();
+      messageUnsubRef.current = null;
+    }
+
+    if (!competitionId) {
+      setMessages([]);
+      setMessagesCompId(null);
+      return;
+    }
+
+    setMessagesCompId(competitionId);
+    messageUnsubRef.current = messageFactory.subscribe(competitionId, setMessages);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (messageUnsubRef.current) messageUnsubRef.current();
+    };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // AFGELEIDE DATA
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -273,6 +309,12 @@ export function AppProvider({ children }) {
   const finishedEvents = activeCompetition?.finishedEvents ?? [];
   const finishedSeries = activeCompetition?.finishedSeries ?? {};
   const podiumState = activeCompetition?.podiumState ?? { activePodiumId: null, revealStage: 0 };
+
+  // Standaardboodschap voor het grote scherm — activeMessageId null betekent
+  // altijd deze, nooit een apart opgeslagen document (zie dbSchema.js#MESSAGES).
+  const DEFAULT_DISPLAY_MESSAGE = { id: null, text: 'Veel succes aan alle deelnemers', icon: '' };
+  const activeMessageId = activeCompetition?.activeMessageId ?? null;
+  const activeMessage = messages.find(m => m.id === activeMessageId) ?? DEFAULT_DISPLAY_MESSAGE;
 
   /** Geeft de gesorteerde events voor een wedstrijd terug. */
   const getSortedEvents = useCallback((competition) => {
@@ -436,6 +478,30 @@ export function AppProvider({ children }) {
     });
   }, [activeCompetition, finishedEvents, finishedSeries]);
 
+  /**
+   * Markeer een reeks terug als niet-afgelopen — om vergissingen recht te
+   * zetten. Reeksen zijn sequentieel: elke latere reeks die al klaar was,
+   * wordt automatisch mee heropend (je kan geen reeks 5 "klaar" hebben terwijl
+   * reeks 3 heropend is). Het onderdeel zelf verliest ook zijn "volledig
+   * afgewerkt"-vlag. De bijhorende dagtijdlijn-blokken heropent LiveView zelf
+   * (setBlockStatus) — dat vereist de block-tijdvenster-logica die daar al
+   * leeft, niet hier gedupliceerd.
+   */
+  const unfinishSeries = useCallback((eventId, seriesNr) => {
+    if (!activeCompetition) throw new Error('Geen actieve wedstrijd.');
+
+    const newFinishedSeries = {
+      ...finishedSeries,
+      [eventId]: (finishedSeries[eventId] ?? []).filter(nr => nr < seriesNr),
+    };
+    const newFinishedEvents = finishedEvents.filter(id => id !== eventId);
+
+    return competitionFactory.saveProgress(activeCompetition.id, {
+      finishedEvents: newFinishedEvents,
+      finishedSeries: newFinishedSeries,
+    });
+  }, [activeCompetition, finishedEvents, finishedSeries]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // ACTIONS — deelnemers
   // ─────────────────────────────────────────────────────────────────────────
@@ -542,6 +608,27 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ACTIONS — boodschappen groot scherm
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const createMessage = useCallback((competitionId, data) => {
+    return messageFactory.create(competitionId, data);
+  }, []);
+
+  const updateMessage = useCallback((competitionId, messageId, data) => {
+    return messageFactory.update(competitionId, messageId, data);
+  }, []);
+
+  const deleteMessage = useCallback((competitionId, messageId) => {
+    return messageFactory.delete(competitionId, messageId);
+  }, []);
+
+  /** messageId = null → terug naar de standaardboodschap. */
+  const setActiveMessage = useCallback((competitionId, messageId) => {
+    return competitionFactory.saveActiveMessage(competitionId, messageId);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -584,6 +671,13 @@ export function AppProvider({ children }) {
     loadPodiums,
     podiumState,
 
+    // Messages (boodschappen groot scherm)
+    messages,
+    messagesCompId,
+    loadMessages,
+    activeMessage,
+    activeMessageId,
+
     // Settings
     activeCompetitionId,
     activeCompetition,
@@ -609,6 +703,7 @@ export function AppProvider({ children }) {
 
     // Actions — voortgang
     finishSeries,
+    unfinishSeries,
 
     // Actions — deelnemers
     setPresence,
@@ -637,6 +732,12 @@ export function AppProvider({ children }) {
     updatePodium,
     deletePodium,
     savePodiumState,
+
+    // Actions — boodschappen
+    createMessage,
+    updateMessage,
+    deleteMessage,
+    setActiveMessage,
   };
 
   return (

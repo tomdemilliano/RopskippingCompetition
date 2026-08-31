@@ -19,8 +19,8 @@ daarna zijn eigen route en een eigen recht (zie "Authenticatie & rechten"):
 | *(landingspagina)* | `/`         | ingelogd       | tegeloverzicht — enige plek waarvandaan tussen schermen genavigeerd wordt |
 | Beheer       | `/beheer`         | beheerder-only | wedstrijden en deelnemers aanmaken, CSV-import, clubs, blokken, gebruikers |
 | Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden/afwezig melden |
-| Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (reeksen markeren + podiumceremonie, tabs) |
-| Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (toont huidige en volgende reeks) |
+| Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (tabs: Reeksen, Podium, Boodschap) |
+| Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (huidige/volgende reeks + boodschap-vak) |
 | Podium       | `/scherm/podium`  | `podium`       | groot scherm — podium-onthulling voor de prijsuitreiking (zie "Podium & prijsuitreiking") |
 
 De Speaker- en Display-tegels op de landingspagina tonen altijd of, en welke,
@@ -70,13 +70,14 @@ src/
     LoginView.jsx                  # Inlogscherm — vóór elk ander scherm
     HubView.jsx                    # Landingspagina ("/") — tegels naar elk scherm met toegang
     ManagementView.jsx              # Beheerscherm orchestrator (wedstrijden + clubs + gebruikers)
-    LiveView.jsx                    # Speaker — operatorscherm live wedstrijd (tabs: Reeksen / Podium)
+    LiveView.jsx                    # Speaker — operatorscherm live wedstrijd (tabs: Reeksen / Podium / Boodschap)
     DisplayView.jsx                 # Groot scherm (backstage) live wedstrijd
     AttendanceView.jsx              # Aanwezigheidsregistratie — kiosk voor de inkomtafel
     PodiumView.jsx                  # Groot scherm — podium-onthulling (zie "Podium & prijsuitreiking")
     PodiumStage.jsx                 # Gedeelde podium-visual (full/mini) — puur presentationeel
     PodiumManager.jsx               # Gedeeld podiumbeheer (CompetitionDetail + LiveView)
     PodiumCeremonyPanel.jsx         # Speaker-onthullingsbediening (enkel LiveView)
+    MessageManager.jsx              # Gedeeld boodschapbeheer (CompetitionDetail + LiveView)
 
     ui/
       Button.jsx                   # Gedeelde knop (variant/size/icon), gebouwd uit theme.js
@@ -120,11 +121,12 @@ users/{uid}                   gebruikers + rechten (doc-id = Firebase Auth uid)
 competitionTypes/{id}         wedstrijdtypes met standaard event-volgorde
 events/{id}                   globale lijst van beschikbare onderdelen
 clubs/{id}                    clubs met logo-referentie
-competitions/{id}             wedstrijden — incl. finishedEvents/finishedSeries/podiumState
+competitions/{id}             wedstrijden — incl. finishedEvents/finishedSeries/podiumState/activeMessageId
 competitions/{id}/
   participants/{id}           deelnemers per wedstrijd (subcollectie)
   blocks/{id}                 dagtijdlijn: blok → onderdeel (optioneel) → reeks (subcollectie)
   podiums/{id}                podia per onderdeel + laureaten (subcollectie, Fase 3)
+  messages/{id}                voorbereide boodschap(pen) voor het grote scherm (subcollectie)
 ```
 
 ### Sleuteldocumenten
@@ -132,11 +134,14 @@ competitions/{id}/
 **`competition/{id}`**
 ```
 name, date, location, typeId → competitionTypes, status, eventOrder{},
-finishedEvents[], finishedSeries{}, podiumState{activePodiumId, revealStage}, createdAt
+finishedEvents[], finishedSeries{}, podiumState{activePodiumId, revealStage},
+activeMessageId, createdAt
 ```
 `finishedEvents`/`finishedSeries` leven bewust hier en niet in een los
 singleton — zie "Live voortgang" hieronder. `podiumState` volgt hetzelfde
 patroon voor de podiumceremonie — zie "Podium & prijsuitreiking" onderaan.
+`activeMessageId` (string of null) volgt datzelfde patroon voor de
+boodschap op het grote scherm — zie "Boodschap groot scherm" onderaan.
 
 **`participant/{id}`**
 ```
@@ -169,6 +174,13 @@ createdAt
 eventId → events, name (vrije tekst, door de gebruiker bepaald), order (globaal,
 niet per onderdeel), places[3] ({place: 1|2|3, participantIds[]}), createdAt
 ```
+
+**`message/{id}`** (subcollectie van competition — zie "Boodschap groot scherm")
+```
+text, icon ('' | 'megaphone' | 'alert' | 'question' | 'thumbsup'), createdAt
+```
+Geen `isActive`-veld op het document zelf — welke boodschap actief is, staat
+apart op `competition.activeMessageId` (één bron van waarheid).
 
 ### Afgeleide properties (nooit opgeslagen)
 
@@ -551,7 +563,18 @@ ertussenin — de reeksnummering loopt gewoon door.
 blok, dan tonen beide schermen een generiek pauzescherm (label uit
 `BLOCK_TYPE_LABELS` of het blok se eigen `label`) i.p.v. de reeksen-UI; de
 speaker kan het blok afsluiten via `setBlockStatus(..., 'afgewerkt')`, wat
-automatisch het volgende blok in de tijdlijn actief maakt.
+automatisch het volgende blok in de tijdlijn actief maakt. Het pauzescherm
+toont een icoon per bloktype (`BREAK_ICONS` in beide componenten) — enkel
+`proefjury` wijkt af van de standaard `Coffee`: lucide-react heeft geen
+letterlijk touwtje-icoon, `Activity` (golvende lijn) is het dichtste
+alternatief.
+
+In `LiveView` blijft het linkerpaneel (de dagtijdlijn zelf) ook zichtbaar
+tijdens zo'n pauzescherm — enkel het rechterpaneel wisselt tussen de
+pauzeboodschap en de reeksen-UI. Dat linkerpaneel toont voortaan de volledige
+dagtijdlijn (heats- én niet-heats-blokken, met hun `scheduledTime`) i.p.v.
+enkel de kale onderdelenlijst van vroeger — enkel heats-blokken zijn
+klikbaar (manuele `activeEventId`-overschrijving, zie hieronder).
 
 `CompetitionDetail` (Beheer) heeft een minimale "Programma"-sectie om blokken
 manueel te beheren (nodig zolang PDF-import — dat blokken automatisch zal
@@ -580,9 +603,23 @@ dát blok zelf op `'afgewerkt'` gezet (`setBlockStatus`) i.p.v. rechtstreeks
 naar het volgende onderdeel te springen. Zo schuift `currentBlock` vanzelf
 door naar wat ook in de dagtijdlijn volgt — een pauze/briefing/prijsuitreiking
 (pauzescherm) of een volgend/hervat onderdeel (reeksen). `activeEventId`
-synchroniseert automatisch met `currentBlock.eventId` via een effect; de
-linkerkolom (onderdelenlijst) blijft een handmatige "overschrijf-optie" om
-naar eender welk onderdeel te springen, los van de dagtijdlijn.
+synchroniseert automatisch met `currentBlock.eventId` via een effect; klikken
+op een heats-blok in de linkerkolom (dagtijdlijn) blijft een handmatige
+"overschrijf-optie" om naar eender welk onderdeel te springen, los van de
+dagtijdlijn.
+
+### Een reeks heropenen (vergissingen rechtzetten)
+
+`unfinishSeries(eventId, seriesNr)` (AppContext) markeert een reeks terug als
+niet-afgelopen. Reeksen zijn sequentieel, dus elke latere reeks van hetzelfde
+onderdeel die al "klaar" was, wordt automatisch mee heropend — je kan nooit
+reeks 5 voltooid hebben terwijl reeks 3 heropend staat. Het onderdeel
+verliest ook zijn `finishedEvents`-vlag. `LiveView` roept dit aan via de
+"Heropenen"-knop naast de VOLTOOID-indicator (met een `window.confirm`), en
+zet meteen ook de bijhorende afgewerkte heats-blokken van dat onderdeel terug
+op `'gepland'` — dat laatste gebeurt bewust in `LiveView` zelf (niet in
+`unfinishSeries`), omdat het de bestaande block-tijdvenster-logica van dat
+scherm nodig heeft (zie hierboven), die niet in AppContext gedupliceerd wordt.
 
 Eén onderdeel kan over **meerdere fysieke blokken** lopen — Freestyles
 onderbroken door pauzes, of Speed/Endurance met een reeks die over twee
@@ -667,6 +704,55 @@ rechtstreekse keuze) reset `revealStage` automatisch naar `0`.
 
 De podiumceremonie gebeurt terwijl de wedstrijd nog `status: "bezig"` is
 (net als de reeksen) — pas nadien roept de beheerder `endCompetition()` aan.
+
+---
+
+## Boodschap groot scherm
+
+`DisplayView` toont een boodschap prominent in een apart vak direct onder de
+header (niet langer een vaste voettekst-tekst) — de reden en het scherm
+waarop dit gebeurt zijn dus dezelfde als bij Podium hierboven, maar het
+datamodel is bewust eenvoudiger: geen volgorde of onthullingsstadia, gewoon
+"wat staat er nu op het scherm".
+
+### Datamodel
+
+`messages` is een subcollectie van `competitions/{id}`, met hetzelfde
+laadpatroon als `blocks`/`podiums` (`messageFactory.subscribe`,
+`loadMessages()` in AppContext). Er is bewust **geen** standaardboodschap als
+Firestore-document: `competition.activeMessageId === null` betekent altijd de
+vaste standaardtekst "Veel succes aan alle deelnemers" (`DEFAULT_DISPLAY_MESSAGE`
+in AppContext.jsx), zodat er nooit twee bronnen van waarheid kunnen bestaan
+voor "wat is de standaardboodschap". Er is ook bewust geen `isActive`-veld per
+boodschap-document — welke boodschap actief is, staat uitsluitend op
+`competition.activeMessageId`.
+
+Elke boodschap heeft een optioneel `icon` (`''` | `'megaphone'` | `'alert'` |
+`'question'` | `'thumbsup'`) — de map van icoonsleutel naar het bijhorende
+lucide-react-component (`MESSAGE_ICON_MAP`) leeft in `MessageManager.jsx` en
+wordt van daaruit ook door `DisplayView` geïmporteerd, zodat beheer en
+weergave nooit uit de pas kunnen lopen.
+
+### Componenten
+
+- **`MessageManager.jsx`** — gedeeld beheer: boodschappen aanmaken (als
+  draft), bewerken, verwijderen en activeren, plus een altijd-aanwezige
+  "Standaardboodschap"-kaart om terug te schakelen naar `activeMessageId:
+  null`. Gebruikt in zowel `CompetitionDetail` (tab "Boodschap",
+  wedstrijdbeheerder) als `LiveView` (tab "Boodschap", speaker) — exact
+  dezelfde component, geen aparte "ceremonie"-variant nodig omdat activeren
+  geen live opeenvolging vergt zoals bij podia.
+- **`DisplayView.jsx`** — leest `activeMessage` (de afgeleide combinatie van
+  `messages` + `activeMessageId`, met de standaardboodschap als fallback) en
+  toont die in een eigen vak vlak onder de topbar, met het icoon (indien
+  ingesteld) links van de tekst.
+
+### Synchronisatie speaker/beheer → groot scherm
+
+Zelfde patroon als `finishedEvents`/`finishedSeries` en `podiumState`: enkel
+via een veld op het `competition`-document (`activeMessageId`), nooit via een
+rechtstreeks kanaal. `setActiveMessage(competitionId, messageId)` schrijft;
+`DisplayView` leest via zijn eigen Firestore-listener en volgt automatisch mee.
 
 ---
 
