@@ -568,10 +568,13 @@ export default function LiveView() {
 
   // Reeks terugzetten naar "niet afgelopen" — om een vergissing recht te
   // zetten. Reeksen zijn sequentieel, dus alle latere reeksen die al klaar
-  // waren, worden mee heropend (unfinishSeries). De bijhorende afgewerkte
-  // heats-blokken van dit onderdeel gaan hier ook terug open, zodat de
-  // dagtijdlijn (en dus currentBlock/DisplayView) weer bij dit onderdeel
-  // uitkomt i.p.v. bij het volgende blok te blijven staan.
+  // waren, worden mee heropend (unfinishSeries). In de dagtijdlijn gaat
+  // alles vanaf het vroegste afgewerkte heats-blok van dit onderdeel ook
+  // terug open — ook niet-heats-blokken (pauze/briefing/proefjury/
+  // prijsuitreiking): als die al afgesloten waren terwijl deze reeks nog
+  // "klaar" stond, klopt dat niet meer zodra de reeks heropend wordt. Zo
+  // komt currentBlock (en dus DisplayView) weer bij dit onderdeel uit
+  // i.p.v. bij een later blok te blijven staan.
   const handleUnfinishSeries = async () => {
     const ok = window.confirm(
       `Reeks ${activeSeriesNr} terug als niet-afgelopen markeren?\n\n` +
@@ -581,12 +584,18 @@ export default function LiveView() {
 
     await unfinishSeries(activeEventId, activeSeriesNr);
 
-    const blocksToReopen = sortedBlocks.filter(b =>
+    const eventBlocksDone = sortedBlocks.filter(b =>
       b.type === 'heats' && b.eventId === activeEventId && b.status === 'afgewerkt'
     );
-    await Promise.all(
-      blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland'))
-    );
+    if (eventBlocksDone.length > 0) {
+      const rollbackOrder = Math.min(...eventBlocksDone.map(b => b.order));
+      const blocksToReopen = sortedBlocks.filter(b =>
+        b.order >= rollbackOrder && b.status === 'afgewerkt'
+      );
+      await Promise.all(
+        blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland'))
+      );
+    }
   };
 
   // ── Geen actieve wedstrijd ──────────────────────────────────────────────

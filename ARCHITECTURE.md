@@ -617,10 +617,20 @@ onderdeel die al "klaar" was, wordt automatisch mee heropend — je kan nooit
 reeks 5 voltooid hebben terwijl reeks 3 heropend staat. Het onderdeel
 verliest ook zijn `finishedEvents`-vlag. `LiveView` roept dit aan via de
 "Heropenen"-knop naast de VOLTOOID-indicator (met een `window.confirm`), en
-zet meteen ook de bijhorende afgewerkte heats-blokken van dat onderdeel terug
-op `'gepland'` — dat laatste gebeurt bewust in `LiveView` zelf (niet in
-`unfinishSeries`), omdat het de bestaande block-tijdvenster-logica van dat
-scherm nodig heeft (zie hierboven), die niet in AppContext gedupliceerd wordt.
+zet meteen ook blokken in de dagtijdlijn terug op `'gepland'` — dat gebeurt
+bewust in `LiveView` zelf (niet in `unfinishSeries`), omdat het de bestaande
+block-tijdvenster-logica van dat scherm nodig heeft (zie hierboven), die niet
+in AppContext gedupliceerd wordt.
+
+Welke blokken precies heropenen: eerst het vroegste afgewerkte heats-blok van
+dit onderdeel opzoeken (`rollbackOrder` = zijn `order`), en dan ELK blok —
+ongeacht type — met `order >= rollbackOrder` dat nog op `'afgewerkt'` staat
+terugzetten. Bewust niet beperkt tot heats-blokken van hetzelfde onderdeel:
+een pauze/briefing/proefjury/prijsuitreiking die de speaker al afgesloten had
+terwijl deze reeks nog "klaar" stond, klopt niet meer zodra de reeks
+heropend wordt, en moet dus mee heropenen — anders blijft `currentBlock`
+(en dus DisplayView) bij zo'n later blok hangen i.p.v. terug bij dit
+onderdeel uit te komen.
 
 Eén onderdeel kan over **meerdere fysieke blokken** lopen — Freestyles
 onderbroken door pauzes, of Speed/Endurance met een reeks die over twee
