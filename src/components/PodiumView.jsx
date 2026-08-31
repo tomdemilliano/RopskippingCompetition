@@ -11,44 +11,81 @@
  * Data komt volledig uit AppContext — geen directe Firebase-toegang.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, Minimize2, X, Trophy } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import PodiumStage from './PodiumStage';
 
 // Belgische vlag (zwart/geel/rood) als "wapperende" achtergrond voor een
-// BK-podium. Een simpele schuivende glans (eerdere versie) oogde te zwak —
-// dit gebruikt een SVG feTurbulence/feDisplacementMap-filter (het klassieke
-// "stoffen vlag"-effect) met een SMIL <animate> die de turbulentie continu
-// laat verschuiven. Dat vervormt de vlagbanden echt golvend, i.p.v. enkel
-// een lichtstrook erover te schuiven. Puur SVG/DOM, geen Tailwind, geen
-// CSS-modules, geen los stijlbestand — dus binnen CLAUDE.md's stijlregels.
+// BK-podium. Twee eerdere pogingen (schuivende glans, feTurbulence-ruis)
+// oogden respectievelijk te zwak en als een vervormende smurrie i.p.v. een
+// soepele golving. Dit bouwt de golf zelf analytisch op — geen ruis: de vlag
+// bestaat uit dunne horizontale stroken die elk een klein stukje horizontaal
+// verschuiven volgens de som van twee zuivere sinusgolven (verschillende
+// golflengte/snelheid, voor een organischer ritme dan één perfecte golf).
+// Dat laat de verticale kleurgrenzen (zwart|geel|rood) golvend meebewegen,
+// precies zoals stof rond een vlaggenmast rimpelt. Volledig via React-state
+// + requestAnimationFrame — puur inline SVG/DOM, geen Tailwind, geen CSS-
+// modules, geen los stijlbestand (CLAUDE.md).
 const BELGIAN_FLAG_COLORS = ['#000000', '#FDDA25', '#EF3340'];
 
+const FLAG_VB_W = 300;
+const FLAG_VB_H = 200;
+const FLAG_STRIPS = 32;
+const FLAG_STRIP_H = FLAG_VB_H / FLAG_STRIPS;
+// Max horizontale uitwijking — bepaalt hoeveel breder elke band getekend
+// wordt (padding) zodat een strook nooit een gat laat zien aan de rand.
+const FLAG_MAX_DX = 22;
+
+function flagOffsetAt(yCenter, phase) {
+  const wave1 = 15 * Math.sin((2 * Math.PI * yCenter) / 105 + phase);
+  const wave2 = 6 * Math.sin((2 * Math.PI * yCenter) / 52 - phase * 1.35);
+  return wave1 + wave2;
+}
+
 function BelgianFlagBackground() {
+  const [phase, setPhase] = useState(0);
+  const frameRef = useRef(null);
+
+  useEffect(() => {
+    let last = performance.now();
+    const tick = (now) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      setPhase(p => p + dt * 1.6); // ~1 volledige golfcyclus per ~4s
+      frameRef.current = requestAnimationFrame(tick);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, []);
+
+  // Enkel de buitenste twee randen (uiterst links van de zwarte band, uiterst
+  // rechts van de rode band) krijgen extra breedte — genoeg om de maximale
+  // uitwijking in beide richtingen te dekken zonder ooit een gat te tonen.
+  // De binnengrenzen tussen de banden blijven exact op 1/3 en 2/3, anders
+  // zou de opvulling de kleuren van de buurband overschilderen.
+  const pad = FLAG_MAX_DX + 2;
+  const bandW = FLAG_VB_W / 3;
+
   return (
     <svg
-      width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 300 200"
-      style={{ position: 'absolute', inset: 0 }}
+      width="100%" height="100%" preserveAspectRatio="none" viewBox={`0 0 ${FLAG_VB_W} ${FLAG_VB_H}`}
+      style={{ position: 'absolute', inset: 0, zIndex: -1 }}
       aria-hidden="true"
     >
-      <filter id="belgianWave" x="-20%" y="-20%" width="140%" height="140%">
-        <feTurbulence type="fractalNoise" numOctaves="2" seed="7" baseFrequency="0.012 0.05" result="noise">
-          <animate
-            attributeName="baseFrequency"
-            dur="7s"
-            values="0.012 0.05;0.022 0.07;0.012 0.05"
-            repeatCount="indefinite"
-          />
-        </feTurbulence>
-        <feDisplacementMap in="SourceGraphic" in2="noise" scale="34" xChannelSelector="R" yChannelSelector="G" />
-      </filter>
-      <g filter="url(#belgianWave)">
-        <rect x="0"   y="0" width="100" height="200" fill={BELGIAN_FLAG_COLORS[0]} />
-        <rect x="100" y="0" width="100" height="200" fill={BELGIAN_FLAG_COLORS[1]} />
-        <rect x="200" y="0" width="100" height="200" fill={BELGIAN_FLAG_COLORS[2]} />
-      </g>
+      {Array.from({ length: FLAG_STRIPS }, (_, i) => {
+        const y = i * FLAG_STRIP_H;
+        const yCenter = y + FLAG_STRIP_H / 2;
+        const dx = flagOffsetAt(yCenter, phase);
+        return (
+          <g key={i} transform={`translate(${dx}, 0)`}>
+            <rect x={-pad}          y={y} width={bandW + pad} height={FLAG_STRIP_H + 0.6} fill={BELGIAN_FLAG_COLORS[0]} />
+            <rect x={bandW}         y={y} width={bandW}       height={FLAG_STRIP_H + 0.6} fill={BELGIAN_FLAG_COLORS[1]} />
+            <rect x={bandW * 2}     y={y} width={bandW + pad} height={FLAG_STRIP_H + 0.6} fill={BELGIAN_FLAG_COLORS[2]} />
+          </g>
+        );
+      })}
     </svg>
   );
 }

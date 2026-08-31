@@ -710,17 +710,27 @@ De podiumceremonie gebeurt terwijl de wedstrijd nog `status: "bezig"` is
 
 `podium.isBelgianChampionship` (toggle in `PodiumManager`) laat `PodiumView`
 de standaard donkere achtergrond vervangen door een "wapperende" Belgische
-vlag. Een eerste versie (een schuivende glans-strook over effen banden) oogde
-te zwak; `BelgianFlagBackground` in `PodiumView.jsx` gebruikt nu een echt
-SVG-vervormingsfilter — het klassieke "stoffen vlag"-effect: `feTurbulence`
-genereert ruis, `feDisplacementMap` vervormt de drie zwart/geel/rode
-`<rect>`-banden daarmee, en een SMIL `<animate>` op `baseFrequency` laat de
-ruis (en dus de vervorming) continu verschuiven — geen React-state of
-`setInterval` nodig, de browser animeert dit zelf. Dit blijft binnen
-CLAUDE.md's stijlregels (geen Tailwind, geen CSS-modules, geen los
-stijlbestand): SVG is opmaak/DOM, geen CSS-mechanisme, en leeft volledig
-inline in het componentbestand. Om de podiumtekst leesbaar te houden
-ongeacht welke vlagband erachter zit, komt `PodiumStage` in dat geval op een
+vlag. Twee eerdere pogingen — een schuivende glans-strook, en een
+feTurbulence/feDisplacementMap-ruisfilter — oogden respectievelijk te zwak
+en als een vervormende smurrie i.p.v. een soepele golving (ruis-gedreven
+vervorming reshapet het hele patroon willekeurig, wat als "melten" oogt in
+plaats van golven). `BelgianFlagBackground` in `PodiumView.jsx` bouwt de golf
+nu analytisch op, zonder enige ruis: de vlag bestaat uit 32 dunne
+horizontale SVG-stroken die elk een klein stukje horizontaal verschuiven
+volgens de som van twee zuivere sinusgolven (verschillende golflengte en
+snelheid, voor een organischer ritme dan één perfecte golf) — dat laat de
+verticale kleurgrenzen golvend meebewegen, zoals stof rond een vlaggenmast.
+Aangedreven door React-state + `requestAnimationFrame`, geen SMIL of CSS-
+animatie nodig. Blijft binnen CLAUDE.md's stijlregels (geen Tailwind, geen
+CSS-modules, geen los stijlbestand): SVG is opmaak/DOM, geen CSS-mechanisme,
+en leeft volledig inline in het componentbestand.
+
+De SVG krijgt bewust `z-index: -1` (de omringende `position: fixed`-wrapper
+vormt een eigen stacking context) — zonder dat schildert een absoluut
+gepositioneerd element vóór normale, niet-gepositioneerde inhoud, ongeacht
+DOM-volgorde (CSS-stacking-orde), en overlapte de vlag daardoor eerst
+volledig de podiumtekst. Om die bovendien leesbaar te houden ongeacht welke
+vlagband erachter zit, komt `PodiumStage` in dat geval op een
 halfdoorzichtig donker kaartje (`color.stageCard`) te staan i.p.v.
 rechtstreeks op de vlag.
 
