@@ -73,6 +73,9 @@ service cloud.firestore {
         match /blocks/{blockId} {
           allow read, write: if isSignedIn();
         }
+        match /podiums/{podiumId} {
+          allow read, write: if isSignedIn();
+        }
       }
     }
   }
