@@ -21,6 +21,7 @@ import ClubManagement        from './management/ClubManagement';
 import AddCompetitionModal   from './management/modals/AddCompetitionModal';
 import EditCompetitionModal  from './management/modals/EditCompetitionModal';
 import EditParticipantModal  from './management/modals/EditParticipantModal';
+import AddParticipantModal   from './management/modals/AddParticipantModal';
 import ImportModal           from './management/modals/ImportModal';
 import PdfImportModal        from './management/modals/PdfImportModal';
 
@@ -120,6 +121,7 @@ export default function ManagementView() {
   const [importEventId,   setImportEventId]   = useState(null);
   const [showPdfImport,   setShowPdfImport]   = useState(false);
   const [editParticipant, setEditParticipant] = useState(null);
+  const [showAddParticipant, setShowAddParticipant] = useState(false);
 
   // Navigeer naar detailscherm
   const handleSelectCompetition = (compId) => {
@@ -193,6 +195,7 @@ export default function ManagementView() {
               onImport={(eventId) => setImportEventId(eventId)}
               onImportPdf={() => setShowPdfImport(true)}
               onEditParticipant={(p) => setEditParticipant(p)}
+              onAddParticipant={() => setShowAddParticipant(true)}
             />
           </div>
         </>
@@ -236,6 +239,22 @@ export default function ManagementView() {
           competitionId={selectedCompId}
           participant={editParticipant}
           onClose={() => setEditParticipant(null)}
+        />
+      )}
+
+      {showAddParticipant && selectedCompId && (
+        <AddParticipantModal
+          competitionId={selectedCompId}
+          onClose={() => setShowAddParticipant(false)}
+          onCreated={(id) => {
+            setShowAddParticipant(false);
+            // Meteen doorschakelen naar bewerken zodat de onderdelen
+            // toegewezen kunnen worden — de Firestore-listener heeft de
+            // nieuwe deelnemer mogelijk nog niet gesynchroniseerd, dus een
+            // minimaal lokaal object volstaat (EditParticipantModal heeft
+            // enkel id/name/clubId/entries nodig).
+            setEditParticipant({ id, name: '', clubId: '', entries: [] });
+          }}
         />
       )}
     </div>

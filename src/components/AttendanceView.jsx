@@ -189,6 +189,22 @@ const s = {
     color: color.muted,
     marginTop: '2px',
   },
+  eventPills: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '4px',
+    marginTop: '6px',
+  },
+  eventPill: (scratched) => ({
+    fontSize: '0.68rem',
+    fontWeight: 700,
+    background: scratched ? color.dangerSoft : color.surfaceAlt,
+    color: scratched ? color.danger : color.body,
+    textDecoration: scratched ? 'line-through' : 'none',
+    padding: '2px 8px',
+    borderRadius: radius.pill,
+    border: `1px solid ${scratched ? color.dangerBorder : color.border}`,
+  }),
   statusPresent: {
     display: 'flex',
     alignItems: 'center',
@@ -268,7 +284,8 @@ const s = {
 export default function AttendanceView() {
   const {
     competitions, participants, loadParticipants, getClub,
-    isFullyScratched, setPresence, scratchFromAll,
+    isFullyScratched, isScratchedFromEvent, setPresence, scratchFromAll,
+    getSortedEvents,
   } = useAppContext();
 
   const [selectedCompId, setSelectedCompId] = useState(null);
@@ -287,6 +304,10 @@ export default function AttendanceView() {
   [competitions]);
 
   const selectedCompetition = competitions.find(c => c.id === selectedCompId) ?? null;
+  const sortedEvents = useMemo(
+    () => getSortedEvents(selectedCompetition),
+    [selectedCompetition, getSortedEvents]
+  );
 
   // Clubs die in deze wedstrijd voorkomen, voor de filterchips.
   const clubsInCompetition = useMemo(() => {
@@ -412,6 +433,15 @@ export default function AttendanceView() {
               <div>
                 <div style={s.rowName}>{participant.name}</div>
                 <div style={s.rowClub}>{club?.name ?? '—'}</div>
+                <div style={s.eventPills}>
+                  {sortedEvents
+                    .filter(ev => participant.entries.some(e => e.eventId === ev.id))
+                    .map(ev => (
+                      <span key={ev.id} style={s.eventPill(isScratchedFromEvent(participant, ev.id))}>
+                        {ev.name}
+                      </span>
+                    ))}
+                </div>
               </div>
 
               {scratched ? (

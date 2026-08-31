@@ -62,6 +62,7 @@ src/
   pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
   pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
   pdfImport.js                     # Browserlaag (pdfjs-worker) — enige toegangspunt voor componenten
+  eventSlots.js                    # Slot-picker-logica: leeg veld / nieuwe reeks berekenen (reskip, onderdeel toevoegen)
   index.css                        # Fontinstelling + minimale resets (geen Tailwind)
   main.jsx                         # React entry point
 
@@ -89,7 +90,8 @@ src/
         modalStyles.js              # Gedeelde stijlen voor alle modals, gebouwd uit theme.js
         AddCompetitionModal.jsx
         EditCompetitionModal.jsx
-        EditParticipantModal.jsx
+        EditParticipantModal.jsx    # Ook: onderdeel toevoegen + reskip (zie "Deelnemersbeheer")
+        AddParticipantModal.jsx     # Handmatig een deelnemer aanmaken
         ImportModal.jsx             # CSV-import met club-matching flow (per onderdeel)
         PdfImportModal.jsx          # Volledig wedstrijdschema (PDF) importeren, zie "PDF-import" hieronder
 
@@ -185,7 +187,8 @@ Geëxporteerde factories:
 - `eventFactory` — CRUD + subscribe
 - `clubFactory` — CRUD + subscribe + findByName (fuzzy matching) + uploadLogo (Storage)
 - `competitionFactory` — CRUD + setStatus + saveEventOrder + saveProgress
-- `participantFactory` — subscribe + setPresence + setScratchedForEvent/All + importBatch
+- `participantFactory` — subscribe + setPresence + setScratchedForEvent/All +
+  create (handmatig) + importBatch (1 event) + importMultiEventBatch (PDF, meerdere events atomair)
 - `blockFactory` — CRUD + subscribe + setStatus + importBatch (PDF-import)
 
 `dbSchema.js` raakt Firestore én Firebase Storage aan (`clubFactory.uploadLogo`)
@@ -338,7 +341,11 @@ De `ImportModal` doorloopt vier stappen:
    - Nieuwe clubs worden aangemaakt vóór de batch-import
 4. **Import** — `participantFactory.importBatch()` schrijft alle rijen in één batch
 
-Matching van bestaande deelnemers verloopt via `externalId = "{name}_{clubId}"`.
+Matching van bestaande deelnemers verloopt via `externalId = "{name}_{clubId}"`
+— exact dezelfde naam bij exact dezelfde club wordt dus altijd als **1**
+deelnemer beschouwd, ook als die persoon aan meerdere onderdelen meedoet:
+een tweede import voor een ander onderdeel voegt gewoon een extra entry toe
+aan hetzelfde participant-document i.p.v. een dubbel aan te maken.
 
 CSV-formaat speed:
 ```
@@ -449,10 +456,55 @@ Hergebruikt zoveel mogelijk van het bestaande CSV-stramien (`ImportModal`):
 3. **Clubs koppelen** — exact dezelfde flow als CSV-import: fuzzy matching
    (`clubFactory.findByName`) + keuze bestaande club of nieuwe aanmaken
 4. **Importeren** — nieuwe clubs eerst aanmaken, dan `participantFactory.
-   importBatch()` één keer per gekozen onderdeel (alle entries van alle
-   meegenomen blokken voor dat onderdeel samen), dan
-   `blockFactory.importBatch()` voor de volledige dagtijdlijn in één
-   Firestore-batch
+   importMultiEventBatch()` **één keer voor alle gekozen onderdelen samen**
+   (niet één aanroep per onderdeel), dan `blockFactory.importBatch()` voor
+   de volledige dagtijdlijn in één Firestore-batch.
+
+   Die ene gecombineerde aanroep is bewust: een deelnemer doet in zo'n
+   wedstrijdschema vaak mee aan meerdere onderdelen tegelijk (bv. Speed
+   Sprint én Speed Endurance én Freestyles). `importMultiEventBatch()` houdt
+   zelf een groeiende kaart van externalId → participant bij terwijl het de
+   onderdelen doorloopt, zodat een deelnemer die tijdens hetzelfde import-
+   moment voor het EERSTE onderdeel wordt aangemaakt, ook al herkend wordt
+   bij een volgend onderdeel in diezelfde import — anders zou een simpele
+   los-per-event aanroep (met telkens de verouderde participants-snapshot
+   van vóór de import) een dubbel document aanmaken per extra onderdeel.
+
+---
+
+## Deelnemersbeheer en correcties
+
+De deelnemerstabel in `CompetitionDetail` (Beheer) is het overzicht waar
+correcties gebeuren — dit is de **enige** plek waar per-onderdeel forfait
+(schrappen) mogelijk is; Aanwezigheidsregistratie (`AttendanceView`) toont
+onderdelen enkel read-only als pilletjes onder naam/club, zonder een actie
+erop (haar eigen "Afwezig melden" schrapt bewust altijd van ALLE onderdelen
+tegelijk — dat is algemene aanwezigheid, geen per-onderdeel forfait).
+
+**`EditParticipantModal`** (open via "Bewerken" in de deelnemerstabel) biedt:
+- naam/club bewerken;
+- per onderdeel waar de deelnemer al aan meedoet: schrappen/herstellen
+  (forfait), en — zolang niet geschrapt — **Reskip**: verplaats deze
+  deelnemer naar een ander tijdslot binnen hetzelfde onderdeel (een
+  herkansing);
+- **"+ Onderdeel toevoegen"**: voor elk onderdeel waar de deelnemer nog
+  niet aan meedoet, meteen een entry aanmaken.
+
+Reskip en "onderdeel toevoegen" delen dezelfde **slot-picker**
+(`eventSlots.js#computeEventSlots`, pure logica op de al-geladen
+`participants`-array — geen Firestore-toegang): kies een **bestaand leeg
+tijdslot** (een veldnummer binnen een bestaande reeks dat door niemand
+niet-geschrapt bezet is — een geschrapte deelnemer maakt zijn veld dus
+herbruikbaar) óf **een nieuwe reeks achteraan het onderdeel** (seriesNr =
+hoogste bestaande + 1). Bij freestyle bestaat "een leeg veld in een
+bestaande reeks" niet (elke reeks is er precies 1 deelnemer) — daar is enkel
+een nieuwe reeks mogelijk.
+
+**`AddParticipantModal`** ("Nieuwe deelnemer") maakt een kale deelnemer aan
+(`participantFactory.create` — naam + club, `entries: []`) en opent meteen
+`EditParticipantModal` erop, zodat onderdelen via dezelfde "+ Onderdeel
+toevoegen"-stap toegekend worden — geen aparte, tweede manier om iemand aan
+een onderdeel te koppelen.
 
 ---
 

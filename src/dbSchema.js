@@ -852,13 +852,8 @@ export const participantFactory = {
 
   /**
    * Importeer deelnemers uit een geparseerde CSV voor één event.
-   *
-   * Elke rij bevat:
-   *   { name, clubId, externalId, seriesNr, fieldNr, scheduledTime }
-   *
-   * Matching: zoek bestaande participant op externalId.
-   *   - Gevonden → voeg entry toe of update bestaande entry voor dit event.
-   *   - Niet gevonden → maak nieuwe participant aan.
+   * Dunne wrapper rond importMultiEventBatch (zie hieronder) — één event,
+   * dus geen kans op de cross-event-samenvoeging die daar wél nodig is.
    *
    * @param {string}      competitionId
    * @param {string}      eventId
@@ -875,46 +870,94 @@ export const participantFactory = {
    *   isPause?: boolean
    * }>} rows
    */
-  async importBatch(competitionId, eventId, existingParticipants, rows) {
+  importBatch(competitionId, eventId, existingParticipants, rows) {
+    return this.importMultiEventBatch(competitionId, existingParticipants, [{ eventId, rows }]);
+  },
+
+  /**
+   * Importeer deelnemers over MEERDERE events heen in één atomaire batch —
+   * gebruikt door PDF-import, waar één wedstrijdschema meteen meerdere
+   * onderdelen tegelijk aanlevert.
+   *
+   * Een deelnemer kan aan meerdere onderdelen meedoen: rijen met dezelfde
+   * externalId ("{naam}_{clubId}") — ook over verschillende events heen, óók
+   * binnen dezelfde aanroep — worden samengevoegd tot één participant-
+   * document i.p.v. een dubbel aan te maken. Dat vereist dat nieuw aangemaakte
+   * deelnemers binnen deze aanroep zelf ook al herkend worden door een latere
+   * rij voor een ander event — vandaar de lokale kaart die meegroeit terwijl
+   * we de rijen doorlopen, in plaats van enkel te matchen tegen de
+   * meegegeven (bij aanvang al verouderde) existingParticipants-snapshot.
+   *
+   * @param {string} competitionId
+   * @param {Participant[]} existingParticipants
+   * @param {Array<{ eventId: string, rows: Array<{
+   *   name: string, clubId: string, externalId: string,
+   *   seriesNr: number, fieldNr: number|string, scheduledTime: string,
+   *   categoryLabel?: string, isScratched?: boolean,
+   * }> }>} rowsByEvent
+   */
+  async importMultiEventBatch(competitionId, existingParticipants, rowsByEvent) {
     const batch = writeBatch(getDb());
+    const byExternalId = new Map(
+      existingParticipants.map((p) => [p.externalId, { id: p.id, entries: [...p.entries] }])
+    );
 
-    for (const row of rows) {
-      const newEntry = normalizeEntry({
-        eventId,
-        seriesNr:      row.seriesNr,
-        fieldNr:       row.fieldNr,
-        scheduledTime: row.scheduledTime,
-        isScratched:   row.isScratched ?? false,
-        categoryLabel: row.categoryLabel ?? '',
-      });
-
-      const existing = existingParticipants.find(
-        (p) => p.externalId === row.externalId
-      );
-
-      if (existing) {
-        // Vervang entry voor dit event als die al bestaat, anders voeg toe
-        const otherEntries = existing.entries.filter(
-          (e) => e.eventId !== eventId
-        );
-        batch.update(
-          paths.participant(competitionId, existing.id),
-          { entries: [...otherEntries, newEntry] }
-        );
-      } else {
-        const newRef = doc(paths.participants(competitionId));
-        batch.set(newRef, {
-          name:       row.name,
-          clubId:     row.clubId,
-          externalId: row.externalId,
-          isPresent:  false,
-          entries:    [newEntry],
-          createdAt:  new Date().toISOString(),
+    for (const { eventId, rows } of rowsByEvent) {
+      for (const row of rows) {
+        const newEntry = normalizeEntry({
+          eventId,
+          seriesNr:      row.seriesNr,
+          fieldNr:       row.fieldNr,
+          scheduledTime: row.scheduledTime,
+          isScratched:   row.isScratched ?? false,
+          categoryLabel: row.categoryLabel ?? '',
         });
+
+        const existing = byExternalId.get(row.externalId);
+
+        if (existing) {
+          const otherEntries = existing.entries.filter((e) => e.eventId !== eventId);
+          existing.entries = [...otherEntries, newEntry];
+          batch.update(
+            paths.participant(competitionId, existing.id),
+            { entries: existing.entries }
+          );
+        } else {
+          const newRef = doc(paths.participants(competitionId));
+          batch.set(newRef, {
+            name:       row.name,
+            clubId:     row.clubId,
+            externalId: row.externalId,
+            isPresent:  false,
+            entries:    [newEntry],
+            createdAt:  new Date().toISOString(),
+          });
+          byExternalId.set(row.externalId, { id: newRef.id, entries: [newEntry] });
+        }
       }
     }
 
     return batch.commit();
+  },
+
+  /**
+   * Maak handmatig een nieuwe deelnemer aan (zonder CSV/PDF-import) —
+   * bv. een laattijdige inschrijving. Onderdelen worden nadien toegevoegd
+   * via update() (zie EditParticipantModal — "+ Onderdeel toevoegen").
+   * @param {string} competitionId
+   * @param {{ name: string, clubId: string }} data
+   * @returns {Promise<string>} nieuw participant-id
+   */
+  async create(competitionId, { name, clubId }) {
+    const ref = await addDoc(paths.participants(competitionId), {
+      name,
+      clubId,
+      externalId: `${name}_${clubId}`,
+      isPresent:  false,
+      entries:    [],
+      createdAt:  new Date().toISOString(),
+    });
+    return ref.id;
   },
 
   /**
