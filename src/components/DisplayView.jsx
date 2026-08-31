@@ -12,10 +12,13 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Maximize2, Minimize2, Clock, X, Coffee, ChevronRight,
+  Maximize2, Minimize2, Clock, X, Coffee, Activity, ChevronRight,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
+import { MESSAGE_ICON_MAP } from './MessageManager';
+
+const BREAK_ICONS = { proefjury: Activity };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -50,15 +53,19 @@ export default function DisplayView({ onClose }) {
     blocks,
     loadBlocks,
     blockTypeLabels,
+    loadMessages,
+    activeMessage,
   } = useAppContext();
 
-  // Deelnemers en dagtijdlijn laden voor de actieve wedstrijd — nodig omdat
-  // dit scherm rechtstreeks via zijn eigen route geopend kan worden, zonder
-  // eerst via Beheer te zijn gepasseerd (dat laadt ze anders zelf al).
+  // Deelnemers, dagtijdlijn en boodschap laden voor de actieve wedstrijd —
+  // nodig omdat dit scherm rechtstreeks via zijn eigen route geopend kan
+  // worden, zonder eerst via Beheer te zijn gepasseerd (dat laadt ze anders
+  // zelf al).
   useEffect(() => {
     loadParticipants(activeCompetition?.id ?? null);
     loadBlocks(activeCompetition?.id ?? null);
-  }, [activeCompetition?.id, loadParticipants, loadBlocks]);
+    loadMessages(activeCompetition?.id ?? null);
+  }, [activeCompetition?.id, loadParticipants, loadBlocks, loadMessages]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime,  setCurrentTime]  = useState(new Date());
@@ -127,6 +134,9 @@ export default function DisplayView({ onClose }) {
   [blocks]);
   const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
   const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
+  const BreakIcon = BREAK_ICONS[currentBlock?.type] ?? Coffee;
+
+  const MessageIcon = MESSAGE_ICON_MAP[activeMessage.icon] ?? null;
 
   // Volledig veldlijst (speed: aanvullen met lege velden)
   const fullFieldsList = useMemo(() => {
@@ -277,6 +287,20 @@ export default function DisplayView({ onClose }) {
         </div>
       </div>
 
+      {/* ── Boodschap — prominent, apart vak vlak onder de header ── */}
+      <div style={{
+        padding: '0.75rem 2rem',
+        background: 'rgba(37,99,235,0.18)',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex', alignItems: 'center', gap: '0.75rem',
+        flexShrink: 0,
+      }}>
+        {MessageIcon && <MessageIcon size={22} color={color.info} style={{ flexShrink: 0 }} />}
+        <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+          {activeMessage.text}
+        </div>
+      </div>
+
       {/* ── Hoofdinhoud ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Links: huidige reeks */}
@@ -304,7 +328,7 @@ export default function DisplayView({ onClose }) {
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', gap: '1.5rem', marginTop: '1rem',
               }}>
-                <Coffee size={100} color={color.info} strokeWidth={1.5} />
+                <BreakIcon size={100} color={color.info} strokeWidth={1.5} />
                 <div style={{ fontSize: '2.4rem', fontWeight: 900, color: color.info, letterSpacing: '2px', textTransform: 'uppercase' }}>
                   {breakLabel}
                 </div>
@@ -457,15 +481,6 @@ export default function DisplayView({ onClose }) {
             </div>
           )}
         </div>
-      </div>
-
-      {/* ── Voettekst ── */}
-      <div style={{
-        background: color.info, color: color.stage,
-        padding: '0.4rem', fontWeight: 800, fontSize: '0.9rem', textAlign: 'center',
-        flexShrink: 0,
-      }}>
-        MELD JE TIJDIG AAN BIJ DE STEWARD • KIJK GOED NAAR JE VELDNUMMER • VEEL SUCCES!
       </div>
     </div>
   );

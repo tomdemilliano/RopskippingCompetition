@@ -19,6 +19,8 @@
  *   competitions/{id}             wedstrijden — incl. finishedEvents/finishedSeries
  *   competitions/{id}/participants/{id}   deelnemers per wedstrijd
  *   competitions/{id}/blocks/{id}         dagtijdlijn: blok → onderdeel (optioneel) → reeks
+ *   competitions/{id}/podiums/{id}        podia per onderdeel + laureaten
+ *   competitions/{id}/messages/{id}       voorbereide boodschappen voor het grote scherm
  *
  * Voortgang van een live wedstrijd (finishedEvents/finishedSeries) leeft op
  * het competition-document zelf, niet in een los singleton — zo verliest
@@ -177,6 +179,21 @@ const paths = {
       'artifacts', getAppId(), 'public', 'data',
       'competitions', competitionId, 'podiums', podiumId
     ),
+
+  // Messages (subcollectie onder competition) — voorbereide/actieve boodschappen voor het grote scherm
+  messages: (competitionId) =>
+    collection(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'messages'
+    ),
+
+  message: (competitionId, messageId) =>
+    doc(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'messages', messageId
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,11 +339,12 @@ const competitionConverter = {
       finishedEvents:   d.finishedEvents   ?? [],
       finishedSeries:   d.finishedSeries   ?? {},
       podiumState:      d.podiumState      ?? { activePodiumId: null, revealStage: 0 },
+      activeMessageId:  d.activeMessageId  ?? null,
       createdAt:        d.createdAt        ?? '',
     };
   },
-  toFirestore({ name, date, location, typeId, status, eventOrder, finishedEvents = [], finishedSeries = {}, podiumState = { activePodiumId: null, revealStage: 0 } }) {
-    return { name, date, location, typeId, status, eventOrder, finishedEvents, finishedSeries, podiumState };
+  toFirestore({ name, date, location, typeId, status, eventOrder, finishedEvents = [], finishedSeries = {}, podiumState = { activePodiumId: null, revealStage: 0 }, activeMessageId = null }) {
+    return { name, date, location, typeId, status, eventOrder, finishedEvents, finishedSeries, podiumState, activeMessageId };
   },
 };
 
@@ -790,19 +808,31 @@ export const competitionFactory = {
   },
 
   /**
-   * Verwijder een wedstrijd inclusief alle deelnemers, blokken en podia.
+   * Bepaal welke boodschap actief is op het grote scherm.
+   * null = terug naar de standaardboodschap ("Veel succes aan alle deelnemers").
+   * @param {string} competitionId
+   * @param {string|null} messageId
+   */
+  saveActiveMessage(competitionId, messageId) {
+    return updateDoc(paths.competition(competitionId), { activeMessageId: messageId });
+  },
+
+  /**
+   * Verwijder een wedstrijd inclusief alle deelnemers, blokken, podia en boodschappen.
    * @param {string} competitionId
    */
   async delete(competitionId) {
     const batch = writeBatch(getDb());
-    const [pSnap, bSnap, podSnap] = await Promise.all([
+    const [pSnap, bSnap, podSnap, msgSnap] = await Promise.all([
       getDocs(paths.participants(competitionId)),
       getDocs(paths.blocks(competitionId)),
       getDocs(paths.podiums(competitionId)),
+      getDocs(paths.messages(competitionId)),
     ]);
     pSnap.forEach((d) => batch.delete(d.ref));
     bSnap.forEach((d) => batch.delete(d.ref));
     podSnap.forEach((d) => batch.delete(d.ref));
+    msgSnap.forEach((d) => batch.delete(d.ref));
     batch.delete(paths.competition(competitionId));
     return batch.commit();
   },
@@ -1185,6 +1215,83 @@ export const podiumFactory = {
    */
   delete(competitionId, podiumId) {
     return deleteDoc(paths.podium(competitionId, podiumId));
+  },
+};
+
+// ── MESSAGES ──────────────────────────────────────────────────────────────────
+// Voorbereide boodschappen voor het grote scherm (DisplayView), per wedstrijd.
+// Beheer + Speaker kunnen boodschappen aanmaken/bewerken/verwijderen; welke er
+// getoond wordt, staat apart op competition.activeMessageId (null = de
+// standaardboodschap "Veel succes aan alle deelnemers" — zie AppContext.jsx).
+// Er is bewust geen "isActive"-veld per boodschap: dat zou twee bronnen van
+// waarheid geven als er ooit een bug een tweede boodschap actief zou zetten.
+
+/**
+ * @typedef {Object} DisplayMessage
+ * @property {string} id
+ * @property {string} text
+ * @property {string} icon        '' | 'megaphone' | 'alert' | 'question' | 'thumbsup'
+ * @property {string} createdAt
+ */
+const messageConverter = {
+  fromFirestore(snapshot) {
+    const d = snapshot.data();
+    return {
+      id:        snapshot.id,
+      text:      d.text      ?? '',
+      icon:      d.icon      ?? '',
+      createdAt: d.createdAt ?? '',
+    };
+  },
+  toFirestore({ text, icon = '' }) {
+    return { text, icon };
+  },
+};
+
+export const messageFactory = {
+  /**
+   * Luister naar alle voorbereide boodschappen van een wedstrijd.
+   * @param {string} competitionId
+   * @param {function} callback  cb(DisplayMessage[])
+   * @returns {function} unsubscribe
+   */
+  subscribe(competitionId, callback) {
+    return onSnapshot(paths.messages(competitionId), (snap) => {
+      callback(snap.docs.map(messageConverter.fromFirestore));
+    });
+  },
+
+  /**
+   * Maak een nieuwe (draft) boodschap aan.
+   * @param {string} competitionId
+   * @param {{ text: string, icon?: string }} data
+   * @returns {Promise<string>} nieuw id
+   */
+  async create(competitionId, data) {
+    const ref = await addDoc(paths.messages(competitionId), {
+      ...messageConverter.toFirestore(data),
+      createdAt: new Date().toISOString(),
+    });
+    return ref.id;
+  },
+
+  /**
+   * Pas een boodschap aan (tekst en/of icoon).
+   * @param {string} competitionId
+   * @param {string} messageId
+   * @param {Partial<DisplayMessage>} data
+   */
+  update(competitionId, messageId, data) {
+    return updateDoc(paths.message(competitionId, messageId), data);
+  },
+
+  /**
+   * Verwijder een boodschap.
+   * @param {string} competitionId
+   * @param {string} messageId
+   */
+  delete(competitionId, messageId) {
+    return deleteDoc(paths.message(competitionId, messageId));
   },
 };
 

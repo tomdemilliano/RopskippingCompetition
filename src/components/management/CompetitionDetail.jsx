@@ -14,13 +14,14 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronLeft, ChevronRight,
-  Plus, ListTodo, Flag, Trophy,
+  Plus, ListTodo, Flag, Trophy, Megaphone,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import PodiumManager from '../PodiumManager';
+import MessageManager from '../MessageManager';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -605,6 +606,9 @@ export default function CompetitionDetail({
         <button style={s.tab(detailTab === 'podium')} onClick={() => setDetailTab('podium')}>
           <Trophy size={14} /> Podium
         </button>
+        <button style={s.tab(detailTab === 'boodschap')} onClick={() => setDetailTab('boodschap')}>
+          <Megaphone size={14} /> Boodschap
+        </button>
       </div>
 
       {/* ── Tab: Wedstrijd (onderdelen + programma) ── */}
@@ -872,6 +876,13 @@ export default function CompetitionDetail({
       {detailTab === 'podium' && (
       <div style={s.tabScroll}>
         <PodiumManager competitionId={competition.id} />
+      </div>
+      )}
+
+      {/* ── Tab: Boodschap (groot scherm) ── */}
+      {detailTab === 'boodschap' && (
+      <div style={s.tabScroll}>
+        <MessageManager competitionId={competition.id} />
       </div>
       )}
     </div>

@@ -10,15 +10,20 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  ChevronLeft, ChevronRight, CheckCircle, Check,
-  Mic2, FastForward, Ghost, Clock, Coffee,
-  ListTodo, Trophy, Settings,
+  ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
+  Mic2, FastForward, Ghost, Clock, Coffee, Activity,
+  ListTodo, Trophy, Settings, Megaphone,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { timeToMinutes } from '../timeUtils';
 import PodiumManager from './PodiumManager';
 import PodiumCeremonyPanel from './PodiumCeremonyPanel';
+import MessageManager from './MessageManager';
+
+// Bij een proefjury is een kopje koffie misleidend — lucide-react heeft geen
+// letterlijk touwtje-icoon, Activity (golvende lijn) staat er het dichtst bij.
+const BREAK_ICONS = { proefjury: Activity };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -48,19 +53,33 @@ const s = {
     textTransform: 'uppercase',
     flexShrink: 0,
   },
-  eventRow: (active, done) => ({
-    padding: '0.9rem 1.25rem',
-    cursor: 'pointer',
+  blockRow: (active, done, clickable) => ({
+    padding: '0.75rem 1.25rem',
+    cursor: clickable ? 'pointer' : 'default',
     borderBottom: `1px solid ${color.surfaceAlt}`,
     background: active ? color.primarySoft : done ? color.surfaceAlt : color.surface,
     color: active ? color.primary : done ? color.faint : color.body,
     fontWeight: active ? 700 : 400,
     borderLeft: active ? `4px solid ${color.primary}` : '4px solid transparent',
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    fontSize: '0.875rem',
+    gap: '0.6rem',
+    fontSize: '0.85rem',
   }),
+  blockTime: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: color.faint,
+    minWidth: '2.7rem',
+    flexShrink: 0,
+  },
+  blockLabel: {
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   content: {
     padding: '1.5rem',
     overflowY: 'auto',
@@ -152,6 +171,19 @@ const s = {
     alignItems: 'center',
     gap: '6px',
     justifyContent: 'center',
+  },
+  undoBtn: {
+    background: 'none',
+    color: color.faint,
+    border: `1px solid ${color.faintest}`,
+    borderRadius: '8px',
+    padding: '0.5rem 0.9rem',
+    fontWeight: 700,
+    fontSize: '0.78rem',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
   },
 
   // Speed velden grid
@@ -326,6 +358,7 @@ export default function LiveView() {
     finishedEvents,
     finishedSeries,
     finishSeries,
+    unfinishSeries,
     loadParticipants,
     blocks,
     loadBlocks,
@@ -357,6 +390,7 @@ export default function LiveView() {
   }, [sortedBlocks, currentBlock]);
   const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
   const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
+  const BreakIcon = BREAK_ICONS[currentBlock?.type] ?? Coffee;
 
   const handleFinishBlock = () => {
     if (!activeCompetition || !currentBlock) return;
@@ -532,6 +566,29 @@ export default function LiveView() {
     }
   };
 
+  // Reeks terugzetten naar "niet afgelopen" — om een vergissing recht te
+  // zetten. Reeksen zijn sequentieel, dus alle latere reeksen die al klaar
+  // waren, worden mee heropend (unfinishSeries). De bijhorende afgewerkte
+  // heats-blokken van dit onderdeel gaan hier ook terug open, zodat de
+  // dagtijdlijn (en dus currentBlock/DisplayView) weer bij dit onderdeel
+  // uitkomt i.p.v. bij het volgende blok te blijven staan.
+  const handleUnfinishSeries = async () => {
+    const ok = window.confirm(
+      `Reeks ${activeSeriesNr} terug als niet-afgelopen markeren?\n\n` +
+      'Alle latere reeksen van dit onderdeel die al klaar waren, worden ook terug opengezet.'
+    );
+    if (!ok) return;
+
+    await unfinishSeries(activeEventId, activeSeriesNr);
+
+    const blocksToReopen = sortedBlocks.filter(b =>
+      b.type === 'heats' && b.eventId === activeEventId && b.status === 'afgewerkt'
+    );
+    await Promise.all(
+      blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland'))
+    );
+  };
+
   // ── Geen actieve wedstrijd ──────────────────────────────────────────────
   if (!activeCompetition || activeCompetition.status !== 'bezig') {
     return (
@@ -554,246 +611,272 @@ export default function LiveView() {
     );
   }
 
-  // ── Huidig blok is een pauze/briefing/… i.p.v. reeksen ───────────────────
-  const reeksenContent = isBreakBlock ? (
-    <div style={s.emptyState}>
-      <div style={{
-        background: color.primarySoft, padding: '2rem', borderRadius: '50%',
-        border: `4px solid ${color.primaryBorder}`,
-      }}>
-        <Coffee size={72} color={color.primary} strokeWidth={1.5} />
-      </div>
-      <div>
-        <div style={{ fontWeight: 800, color: color.inkSoft, fontSize: '1.4rem', marginBottom: '0.5rem' }}>
-          {breakLabel}
-        </div>
-        <div style={{ fontSize: '0.875rem', maxWidth: '280px', lineHeight: 1.6, margin: '0 auto' }}>
-          Het grote scherm toont dit ook aan de deelnemers.
-        </div>
-      </div>
-      <button style={s.nextBtn} onClick={handleFinishBlock}>
-        Volgende <ChevronRight size={18} />
-      </button>
-    </div>
-  ) : (
+  // ── Reeksen-tab: het blokkenoverzicht (linkerpaneel) blijft altijd zichtbaar
+  // — ook tijdens een pauze/briefing/proefjury/prijsuitreiking, i.p.v. dan
+  // volledig te verdwijnen zoals voorheen. Enkel het rechterpaneel wisselt
+  // tussen de pauzeboodschap en de actieve reeks.
+  const reeksenContent = (
     <div style={s.grid}>
-      {/* ── Linker panel: event-lijst ── */}
+      {/* ── Linker panel: dagtijdlijn ── */}
       <div style={s.leftPanel}>
-        <div style={s.leftHeader}>Onderdelen</div>
-        {sortedEvents.map(ev => {
-          const done   = finishedEvents.includes(ev.id);
-          const active = ev.id === activeEventId;
+        <div style={s.leftHeader}>Dagtijdlijn</div>
+        {sortedBlocks.map(b => {
+          const done      = b.status === 'afgewerkt';
+          const isCurrent = b.id === currentBlock?.id;
+          const clickable = b.type === 'heats';
+          const label = b.type === 'heats'
+            ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
+            : (b.label || blockTypeLabels[b.type] || b.type);
           return (
             <div
-              key={ev.id}
-              style={s.eventRow(active, done)}
-              onClick={() => setActiveEventId(ev.id)}
+              key={b.id}
+              style={s.blockRow(isCurrent, done, clickable)}
+              onClick={clickable ? () => setActiveEventId(b.eventId) : undefined}
             >
-              <span>{ev.name}</span>
+              <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
+              <span style={s.blockLabel}>{label}</span>
               {done && <Check size={14} color={color.success} />}
             </div>
           );
         })}
-      </div>
-
-      {/* ── Rechter panel: actief event ── */}
-      <div style={s.content}>
-        <div style={s.compLabel}>{activeCompetition.name}</div>
-
-        {/* Navigatiekaart */}
-        <div style={s.navCard}>
-          <div style={s.navRow}>
-            <button
-              style={s.navBtn(isFirstSeries)}
-              disabled={isFirstSeries}
-              onClick={() => setActiveSeriesNr(seriesNrs[seriesIdx - 1])}
-            >
-              <ChevronLeft size={20} />
-            </button>
-
-            <div style={{ textAlign: 'center', flex: 1 }}>
-              <div style={s.seriesLabel(isSeriesDone)}>
-                {isFreestyle ? activeEvent?.name : 'Reeks'} {activeSeriesNr}
-                <span style={s.seriesCount}>/ {seriesNrs.length}</span>
-              </div>
-              <div style={s.timeInfo}>
-                Gepland: {plannedTime || '--:--'}
-                {timeDiff !== null && !isSeriesDone && Math.abs(timeDiff) > 2 && (
-                  <span style={s.timeDelta(timeDiff > 0)}>
-                    ({timeDiff > 0 ? '+' : ''}{timeDiff} min → {calcExpectedTime(plannedTime, timeDiff)})
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <button
-              style={s.navBtn(isLastSeries)}
-              disabled={isLastSeries}
-              onClick={() => setActiveSeriesNr(seriesNrs[seriesIdx + 1])}
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-
-          {/* Voltooiknop of voltooiindicator */}
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            {isSeriesDone ? (
-              <div style={s.doneTag}>
-                <CheckCircle size={18} /> VOLTOOID
-              </div>
-            ) : (
-              <button style={s.nextBtn} onClick={handleFinishSeries}>
-                {isLastSeries ? `${activeEvent?.name} klaar` : 'Volgende'}
-                <ChevronRight size={18} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Speed: velden grid ── */}
-        {!isFreestyle && (
-          <div style={s.fieldsGrid}>
-            {[...Array(maxFieldNr || 0)].map((_, i) => {
-              const fieldNr  = i + 1;
-              const skipper  = currentSeriesParticipants.find(
-                p => parseInt(p._entry.fieldNr) === fieldNr
-              );
-              const club = skipper ? getClub(skipper.clubId) : null;
-              return (
-                <div key={fieldNr} style={s.fieldCard(!!skipper, isSeriesDone)}>
-                  <div style={s.fieldNrBadge(!!skipper, isSeriesDone)}>{fieldNr}</div>
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <div style={{
-                      fontWeight: 800, fontSize: '1rem',
-                      color: skipper ? color.inkSoft : color.faintest,
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {skipper?.name ?? '---'}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: color.faint }}>
-                      {club?.name ?? ''}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+        {sortedBlocks.length === 0 && (
+          <div style={{ padding: '1rem 1.25rem', fontSize: '0.78rem', color: color.faint, fontStyle: 'italic' }}>
+            Geen dagtijdlijn ingesteld voor deze wedstrijd.
           </div>
         )}
+      </div>
 
-        {/* ── Freestyle: huidige + volgende ── */}
-        {isFreestyle && (
-          <div style={s.freestyleWrap}>
-            {/* Huidige springer */}
-            <div style={s.currentCard(isSeriesDone)}>
-              {!isSeriesDone && (
-                <div style={{
-                  fontSize: '0.7rem', opacity: 0.8, marginBottom: '0.4rem',
-                  fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px',
-                }}>
-                  <Mic2 size={13} /> NU AAN DE BEURT
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1.1 }}>
-                    {currentSeriesParticipants[0]?.name ?? '---'}
+      {/* ── Rechter panel: pauzeboodschap of actief event ── */}
+      <div style={s.content}>
+        {isBreakBlock ? (
+          <div style={s.emptyState}>
+            <div style={{
+              background: color.primarySoft, padding: '2rem', borderRadius: '50%',
+              border: `4px solid ${color.primaryBorder}`,
+            }}>
+              <BreakIcon size={72} color={color.primary} strokeWidth={1.5} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, color: color.inkSoft, fontSize: '1.4rem', marginBottom: '0.5rem' }}>
+                {breakLabel}
+              </div>
+              <div style={{ fontSize: '0.875rem', maxWidth: '280px', lineHeight: 1.6, margin: '0 auto' }}>
+                Het grote scherm toont dit ook aan de deelnemers.
+              </div>
+            </div>
+            <button style={s.nextBtn} onClick={handleFinishBlock}>
+              Volgende <ChevronRight size={18} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={s.compLabel}>{activeCompetition.name}</div>
+
+            {/* Navigatiekaart */}
+            <div style={s.navCard}>
+              <div style={s.navRow}>
+                <button
+                  style={s.navBtn(isFirstSeries)}
+                  disabled={isFirstSeries}
+                  onClick={() => setActiveSeriesNr(seriesNrs[seriesIdx - 1])}
+                >
+                  <ChevronLeft size={20} />
+                </button>
+
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                  <div style={s.seriesLabel(isSeriesDone)}>
+                    {isFreestyle ? activeEvent?.name : 'Reeks'} {activeSeriesNr}
+                    <span style={s.seriesCount}>/ {seriesNrs.length}</span>
                   </div>
-                  <div style={{ fontSize: '1rem', opacity: 0.8, marginTop: '2px' }}>
-                    {getClub(currentSeriesParticipants[0]?.clubId)?.name ?? ''}
+                  <div style={s.timeInfo}>
+                    Gepland: {plannedTime || '--:--'}
+                    {timeDiff !== null && !isSeriesDone && Math.abs(timeDiff) > 2 && (
+                      <span style={s.timeDelta(timeDiff > 0)}>
+                        ({timeDiff > 0 ? '+' : ''}{timeDiff} min → {calcExpectedTime(plannedTime, timeDiff)})
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div style={{
-                  background: isSeriesDone ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.15)',
-                  padding: '0.5rem 1rem', borderRadius: '10px', textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, opacity: 0.8 }}>VELD</div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 900 }}>
-                    {currentSeriesParticipants[0]?._entry.fieldNr ?? '-'}
-                  </div>
-                </div>
+
+                <button
+                  style={s.navBtn(isLastSeries)}
+                  disabled={isLastSeries}
+                  onClick={() => setActiveSeriesNr(seriesNrs[seriesIdx + 1])}
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+
+              {/* Voltooiknop of voltooiindicator */}
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
+                {isSeriesDone ? (
+                  <>
+                    <div style={s.doneTag}>
+                      <CheckCircle size={18} /> VOLTOOID
+                    </div>
+                    <button
+                      style={s.undoBtn}
+                      onClick={handleUnfinishSeries}
+                      title="Reeks terug als niet-afgelopen markeren"
+                    >
+                      <RotateCcw size={14} /> Heropenen
+                    </button>
+                  </>
+                ) : (
+                  <button style={s.nextBtn} onClick={handleFinishSeries}>
+                    {isLastSeries ? `${activeEvent?.name} klaar` : 'Volgende'}
+                    <ChevronRight size={18} />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Volgende + programma (alleen als reeks niet klaar) */}
-            {!isSeriesDone && upcomingParticipants.length > 0 && (
-              <>
-                {/* Eerstvolgende */}
-                <div style={s.nextCard}>
-                  <div>
+            {/* ── Speed: velden grid ── */}
+            {!isFreestyle && (
+              <div style={s.fieldsGrid}>
+                {[...Array(maxFieldNr || 0)].map((_, i) => {
+                  const fieldNr  = i + 1;
+                  const skipper  = currentSeriesParticipants.find(
+                    p => parseInt(p._entry.fieldNr) === fieldNr
+                  );
+                  const club = skipper ? getClub(skipper.clubId) : null;
+                  return (
+                    <div key={fieldNr} style={s.fieldCard(!!skipper, isSeriesDone)}>
+                      <div style={s.fieldNrBadge(!!skipper, isSeriesDone)}>{fieldNr}</div>
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={{
+                          fontWeight: 800, fontSize: '1rem',
+                          color: skipper ? color.inkSoft : color.faintest,
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                          {skipper?.name ?? '---'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: color.faint }}>
+                          {club?.name ?? ''}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Freestyle: huidige + volgende ── */}
+            {isFreestyle && (
+              <div style={s.freestyleWrap}>
+                {/* Huidige springer */}
+                <div style={s.currentCard(isSeriesDone)}>
+                  {!isSeriesDone && (
                     <div style={{
-                      color: color.muted, fontWeight: 700, fontSize: '0.65rem',
-                      display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px',
+                      fontSize: '0.7rem', opacity: 0.8, marginBottom: '0.4rem',
+                      fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px',
                     }}>
-                      <FastForward size={13} /> VOLGENDE
+                      <Mic2 size={13} /> NU AAN DE BEURT
                     </div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
-                      {upcomingParticipants[0].name}
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1.1 }}>
+                        {currentSeriesParticipants[0]?.name ?? '---'}
+                      </div>
+                      <div style={{ fontSize: '1rem', opacity: 0.8, marginTop: '2px' }}>
+                        {getClub(currentSeriesParticipants[0]?.clubId)?.name ?? ''}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.85rem', color: color.muted }}>
-                      {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', color: color.muted }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.slate }}>
-                      VELD {upcomingParticipants[0]._entry.fieldNr}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      <Clock size={12} />
-                      {calcExpectedTime(upcomingParticipants[0]._entry.scheduledTime, timeDiff)}
+                    <div style={{
+                      background: isSeriesDone ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.15)',
+                      padding: '0.5rem 1rem', borderRadius: '10px', textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 700, opacity: 0.8 }}>VELD</div>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 900 }}>
+                        {currentSeriesParticipants[0]?._entry.fieldNr ?? '-'}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Verder programma */}
-                {upcomingParticipants.length > 1 && (
-                  <div>
-                    <div style={{
-                      fontSize: '0.7rem', fontWeight: 900, color: color.faint,
-                      marginBottom: '0.5rem', letterSpacing: '0.05em',
-                    }}>
-                      VERDER PROGRAMMA
+                {/* Volgende + programma (alleen als reeks niet klaar) */}
+                {!isSeriesDone && upcomingParticipants.length > 0 && (
+                  <>
+                    {/* Eerstvolgende */}
+                    <div style={s.nextCard}>
+                      <div>
+                        <div style={{
+                          color: color.muted, fontWeight: 700, fontSize: '0.65rem',
+                          display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px',
+                        }}>
+                          <FastForward size={13} /> VOLGENDE
+                        </div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
+                          {upcomingParticipants[0].name}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: color.muted }}>
+                          {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', color: color.muted }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.slate }}>
+                          VELD {upcomingParticipants[0]._entry.fieldNr}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                          <Clock size={12} />
+                          {calcExpectedTime(upcomingParticipants[0]._entry.scheduledTime, timeDiff)}
+                        </div>
+                      </div>
                     </div>
-                    <div style={s.programTable}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                        <thead style={{ position: 'sticky', top: 0, background: color.surfaceAlt, zIndex: 1 }}>
-                          <tr style={{ color: color.muted, borderBottom: `2px solid ${color.borderSoft}` }}>
-                            <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Tijd</th>
-                            <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Veld</th>
-                            <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Skipper</th>
-                            <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Club</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {upcomingParticipants.slice(1).map((p, idx) => {
-                            const expected  = calcExpectedTime(p._entry.scheduledTime, timeDiff);
-                            const isDelayed = expected !== p._entry.scheduledTime;
-                            return (
-                              <tr key={idx} style={{ borderBottom: `1px solid ${color.borderSoft}` }}>
-                                <td style={{ padding: '0.6rem 1rem', color: isDelayed ? color.danger : color.muted }}>
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <Clock size={11} /> {expected}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '0.6rem 1rem', fontWeight: 700, color: color.slate }}>
-                                  {p._entry.fieldNr}
-                                </td>
-                                <td style={{ padding: '0.6rem 1rem', fontWeight: 800, color: color.inkSoft }}>
-                                  {p.name}
-                                </td>
-                                <td style={{ padding: '0.6rem 1rem', color: color.muted }}>
-                                  {getClub(p.clubId)?.name ?? ''}
-                                </td>
+
+                    {/* Verder programma */}
+                    {upcomingParticipants.length > 1 && (
+                      <div>
+                        <div style={{
+                          fontSize: '0.7rem', fontWeight: 900, color: color.faint,
+                          marginBottom: '0.5rem', letterSpacing: '0.05em',
+                        }}>
+                          VERDER PROGRAMMA
+                        </div>
+                        <div style={s.programTable}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <thead style={{ position: 'sticky', top: 0, background: color.surfaceAlt, zIndex: 1 }}>
+                              <tr style={{ color: color.muted, borderBottom: `2px solid ${color.borderSoft}` }}>
+                                <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Tijd</th>
+                                <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Veld</th>
+                                <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Skipper</th>
+                                <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700 }}>Club</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                            </thead>
+                            <tbody>
+                              {upcomingParticipants.slice(1).map((p, idx) => {
+                                const expected  = calcExpectedTime(p._entry.scheduledTime, timeDiff);
+                                const isDelayed = expected !== p._entry.scheduledTime;
+                                return (
+                                  <tr key={idx} style={{ borderBottom: `1px solid ${color.borderSoft}` }}>
+                                    <td style={{ padding: '0.6rem 1rem', color: isDelayed ? color.danger : color.muted }}>
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <Clock size={11} /> {expected}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '0.6rem 1rem', fontWeight: 700, color: color.slate }}>
+                                      {p._entry.fieldNr}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 1rem', fontWeight: 800, color: color.inkSoft }}>
+                                      {p.name}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 1rem', color: color.muted }}>
+                                      {getClub(p.clubId)?.name ?? ''}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
-              </>
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>
@@ -809,10 +892,15 @@ export default function LiveView() {
         <button style={s.mainTab(liveTab === 'podium')} onClick={() => setLiveTab('podium')}>
           <Trophy size={15} /> Podium
         </button>
+        <button style={s.mainTab(liveTab === 'boodschap')} onClick={() => setLiveTab('boodschap')}>
+          <Megaphone size={15} /> Boodschap
+        </button>
       </div>
 
       <div style={s.pageBody}>
-        {liveTab === 'reeksen' ? reeksenContent : (
+        {liveTab === 'reeksen' && reeksenContent}
+
+        {liveTab === 'podium' && (
           <div style={s.podiumTabBody}>
             {/* ── Podium-subtabs: Ceremonie (live bediening) / Beheer (podia + laureaten) ── */}
             <div style={s.podiumSubTabsBar}>
@@ -831,6 +919,12 @@ export default function LiveView() {
                 <PodiumManager competitionId={activeCompetition.id} />
               </div>
             )}
+          </div>
+        )}
+
+        {liveTab === 'boodschap' && (
+          <div style={{ flex: 1, overflowY: 'auto', background: color.surface }}>
+            <MessageManager competitionId={activeCompetition.id} />
           </div>
         )}
       </div>
