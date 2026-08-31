@@ -36,16 +36,16 @@ const VISUAL_ORDER = [2, 1, 3];
 
 const SIZES = {
   full: {
-    baseHeight: 260,
-    riserWidth: '15rem',
-    gap: '1.25rem',
-    placeNr: '3.2rem',
-    name: '1.5rem',
-    club: '0.95rem',
-    trophy: 44,
-    title: '2rem',
-    event: '1.05rem',
-    placeholder: '1.4rem',
+    baseHeight: 400,
+    riserWidth: '20rem',
+    gap: '2rem',
+    placeNr: '4.5rem',
+    name: '2.2rem',
+    club: '1.3rem',
+    trophy: 64,
+    title: '3.2rem',
+    event: '1.4rem',
+    logoSize: '4.5rem',
   },
   mini: {
     baseHeight: 84,
@@ -57,7 +57,7 @@ const SIZES = {
     trophy: 15,
     title: '0.82rem',
     event: '0.55rem',
-    placeholder: '0.6rem',
+    logoSize: '1.3rem',
   },
 };
 
@@ -71,7 +71,7 @@ function resolveLaureates(place, participants, getClub) {
       const p = participants.find(pp => pp.id === id);
       if (!p) return null;
       const club = p.clubId ? getClub(p.clubId) : null;
-      return { id, name: p.name, clubName: club?.name ?? '' };
+      return { id, name: p.name, clubName: club?.name ?? '', logoUrl: club?.logoUrl ?? '' };
     })
     .filter(Boolean);
 }
@@ -133,32 +133,34 @@ export default function PodiumStage({
 
           return (
             <div key={placeNr} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: d.riserWidth }}>
-              {/* Laureaat-info boven de zuil */}
+              {/* Laureaat-info boven de zuil — blijft leeg zolang niet onthuld */}
               <div style={{
-                minHeight: `calc(${d.name} * 2 + ${d.club} + 0.6rem)`,
+                minHeight: `calc(${d.logoSize} + ${d.name} * 2 + ${d.club} + 0.8rem)`,
                 display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                 alignItems: 'center', textAlign: 'center', marginBottom: '0.6rem',
               }}>
-                {revealed ? (
-                  hasLaureates ? (
-                    laureates.map((l, i) => (
-                      <div key={l.id} style={{ marginBottom: i < laureates.length - 1 ? '0.3rem' : 0 }}>
-                        <div style={{ fontSize: d.name, fontWeight: 900, color: color.stageInk, lineHeight: 1.15 }}>
-                          {l.name}
-                        </div>
-                        {l.clubName && (
-                          <div style={{ fontSize: d.club, color: color.stageMuted, fontWeight: 600 }}>
-                            {l.clubName}
-                          </div>
-                        )}
+                {revealed && hasLaureates && laureates.map((l, i) => (
+                  <div key={l.id} style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    marginBottom: i < laureates.length - 1 ? '0.5rem' : 0,
+                  }}>
+                    {l.logoUrl && (
+                      <img
+                        src={l.logoUrl}
+                        alt=""
+                        style={{ width: d.logoSize, height: d.logoSize, objectFit: 'contain', marginBottom: '0.3rem' }}
+                      />
+                    )}
+                    <div style={{ fontSize: d.name, fontWeight: 900, color: color.stageInk, lineHeight: 1.15 }}>
+                      {l.name}
+                    </div>
+                    {l.clubName && (
+                      <div style={{ fontSize: d.club, color: color.stageMuted, fontWeight: 600 }}>
+                        {l.clubName}
                       </div>
-                    ))
-                  ) : (
-                    <div style={{ fontSize: d.club, color: color.stageMuted, fontStyle: 'italic' }}>—</div>
-                  )
-                ) : (
-                  <div style={{ fontSize: d.placeholder, color: color.stageMuted, fontWeight: 900 }}>?</div>
-                )}
+                    )}
+                  </div>
+                ))}
               </div>
 
               {/* Zuil */}
