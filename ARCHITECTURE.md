@@ -688,6 +688,22 @@ lijst zichtbaar zoals voorheen. `finishedEvents` (het complete-onderdeel-vlag)
 blijft wel gebaseerd op de ECHTE laatste reeks over alle blokken van het
 onderdeel heen, niet enkel de laatste van het huidige tijdvenster.
 
+**Race tussen de blokken- en wedstrijd-listener bij het heropenen (LiveView):**
+`blocks` en `finishedSeries` komen uit twee losse Firestore-subscripties
+(`blockFactory.subscribe` resp. de wedstrijd-listener die `competitions`
+vult) die niet gegarandeerd in dezelfde volgorde bijwerken. `currentBlock`
+springt bij het heropenen terug naar een vroeger blok (lagere `order`); het
+effect dat `activeSeriesNr` initialiseert bij een blok-wissel draaide
+daardoor soms nog op de VEROUDERDE `finishedSeries` (als de blokken-update
+eerder aankwam dan de wedstrijd-update) en sprong dan naar de verkeerde
+reeks — de zonet heropende reeks bleef zo ten onrechte als VOLTOOID staan,
+tot een tweede klik op Heropenen (dat werkte, omdat het dan de reeks 1 trof
+en dus de volledige voortgang van het onderdeel wiste). Fix: een
+`prevBlockOrderRef` in `LiveView` onthoudt de vorige `currentBlock.order` en
+het effect slaat zijn herberekening over zodra de nieuwe order LAGER is dan
+voorheen — zo'n terugsprong gebeurt alleen bij heropenen, en `activeSeriesNr`
+staat dan al correct (de reopen-handler verandert het zelf niet).
+
 ---
 
 ## Podium & prijsuitreiking (Fase 3)

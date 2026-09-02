@@ -8,7 +8,7 @@
  * Data komt volledig uit AppContext — geen directe Firebase-toegang.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock, Coffee, Activity,
@@ -486,7 +486,24 @@ export default function LiveView() {
   // onderdeel (bv. van het eerste naar het tweede Freestyles-blok na een
   // pauze) — anders blijft activeSeriesNr hangen op de net afgesloten reeks
   // van het vorige venster.
+  //
+  // currentBlock wisselt ook TERUG naar een vroeger blok bij het heropenen
+  // van een reeks (handleUnfinishSeries hieronder) — de blokken-listener en
+  // de wedstrijd-listener (die finishedSeries bijhoudt) zijn twee losse
+  // Firestore-subscripties die niet gegarandeerd in dezelfde volgorde
+  // bijwerken. Komt de blokken-update eerst binnen, dan berekent dit effect
+  // "eerste niet-voltooide reeks" nog op de VEROUDERDE (nog niet-heropende)
+  // finishedSeries, en springt het naar de verkeerde reeks — de zonet
+  // heropende reeks blijft dan ten onrechte als VOLTOOID staan. Bij zo'n
+  // terugsprong (lagere order dan voorheen) is activeSeriesNr al correct
+  // (handleUnfinishSeries verandert het niet), dus wordt de herberekening
+  // hier overgeslagen.
+  const prevBlockOrderRef = useRef(null);
   useEffect(() => {
+    const prevOrder = prevBlockOrderRef.current;
+    prevBlockOrderRef.current = currentBlock?.order ?? null;
+    if (prevOrder !== null && currentBlock && currentBlock.order < prevOrder) return;
+
     if (activeEventId) {
       const done = finishedSeries[activeEventId] ?? [];
       const first = seriesNrs.find(nr => !done.includes(nr)) ?? seriesNrs[0] ?? 1;
