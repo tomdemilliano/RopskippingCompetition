@@ -637,16 +637,25 @@ dagtijdlijn.
 
 ### Een reeks of blok heropenen (vergissingen rechtzetten)
 
-`unfinishSeries(competitionId, eventId, seriesNr)` (AppContext) markeert een
-reeks terug als niet-afgelopen. Reeksen zijn sequentieel, dus elke latere
-reeks van hetzelfde onderdeel die al "klaar" was, wordt automatisch mee
-heropend — je kan nooit reeks 5 voltooid hebben terwijl reeks 3 heropend
-staat. `seriesNr = 1` wist zo de volledige voortgang van een onderdeel. Het
+`unfinishSeries(competitionId, resets)` (AppContext) markeert één of meerdere
+reeksen terug als niet-afgelopen, met `resets` als lijst van
+`{ eventId, seriesNr }`. Reeksen zijn sequentieel, dus elke latere reeks van
+hetzelfde onderdeel die al "klaar" was, wordt automatisch mee heropend — je
+kan nooit reeks 5 voltooid hebben terwijl reeks 3 heropend staat.
+`seriesNr = 1` wist zo de volledige voortgang van een onderdeel. Het
 onderdeel verliest ook zijn `finishedEvents`-vlag. Neemt bewust een
 expliciete `competitionId` i.p.v. altijd `activeCompetition` te gebruiken
 (de competitie wordt opgezocht in de `competitions`-array): `LiveView` werkt
 altijd op de live wedstrijd, maar `CompetitionDetail` (Beheer) moet dit ook
 kunnen voor een wedstrijd die niet live staat.
+
+Neemt bewust een LIJST i.p.v. één `{eventId, seriesNr}` per aanroep en doet
+al die resets in ÉÉN `saveProgress`-schrijfactie: `saveProgress` vervangt het
+hele `finishedSeries`-veld (geen deep merge per key), dus twee losse
+`unfinishSeries`-aanroepen die na elkaar (of via `Promise.all` naast elkaar)
+vanaf dezelfde `competitions`-momentopname draaien, zouden elkaars wijziging
+overschrijven i.p.v. optellen — exact wat er gebeurde toen de cascade meer
+dan één onderdeel moest terugzetten (zie de fix hieronder).
 
 Welke blokken mee heropenen — gedeelde logica in **`blockCascade.js`**
 (`computeReopenCascade(sortedBlocks, rollbackOrder, skipEventId?)`), puur
@@ -658,21 +667,25 @@ niet beperkt tot blokken van hetzelfde onderdeel: een pauze/briefing/
 proefjury/prijsuitreiking, of zelfs een heats-blok van een heel ANDER,
 later gepland onderdeel, die al afgesloten was terwijl dit punt nog "klaar"
 stond, klopt niet meer zodra hier heropend wordt — en moet dus mee
-heropenen, inclusief een volledige reset (`unfinishSeries(..., 1)`) van elk
-zo meegesleept onderdeel. Zonder die reset zou zo'n later onderdeel bij het
-bereiken ervan alsnog al zijn reeksen als VOLTOOID tonen.
+heropenen, inclusief een volledige reset (`seriesNr: 1` in de `resets`-lijst)
+van elk zo meegesleept onderdeel. Zonder die reset zou zo'n later onderdeel
+bij het bereiken ervan alsnog al zijn reeksen als VOLTOOID tonen.
 
-Twee aanroepplekken, beide via dezelfde `computeReopenCascade`:
+Twee aanroepplekken, beide via dezelfde `computeReopenCascade`, en beide
+bouwen hun volledige `resets`-lijst op VOOR ze `unfinishSeries` aanroepen
+(één aanroep, één write — zie hierboven waarom):
 - **`LiveView`** (reeks-niveau): de "Heropenen"-knop naast de VOLTOOID-
   indicator. `rollbackOrder` = het vroegste afgewerkte heats-blok van het
-  actieve onderdeel; roept zelf eerst `unfinishSeries(..., activeEventId,
-  activeSeriesNr)` aan (partiële reset) en geeft `activeEventId` mee als
-  `skipEventId`, zodat dat onderdeel niet nogmaals volledig gereset wordt.
+  actieve onderdeel; de reset van het eigen onderdeel (`activeEventId`,
+  `activeSeriesNr`) staat vooraan in de lijst, `activeEventId` gaat als
+  `skipEventId` naar `computeReopenCascade` zodat het niet nogmaals (met
+  `seriesNr: 1`, te agressief) wordt toegevoegd.
 - **`CompetitionDetail`** (blok-niveau): de "Heropenen"-knop in Programma.
   `rollbackOrder` = het geklikte blok zelf, geen `skipEventId` — is het
-  geklikte blok zelf een heats-blok, dan wordt ook zíjn onderdeel volledig
-  gereset. Bevat het geklikte blok geen reeksen en staat er niets afgewerkts
-  na, dan verandert enkel de status van dat ene blok.
+  geklikte blok zelf een heats-blok, dan staat het gewoon tussen de
+  `eventIdsToReset` en wordt het dus ook volledig gereset. Bevat het
+  geklikte blok geen reeksen en staat er niets afgewerkts na, dan is de
+  `resets`-lijst leeg en verandert enkel de status van dat ene blok.
 
 Eén onderdeel kan over **meerdere fysieke blokken** lopen — Freestyles
 onderbroken door pauzes, of Speed/Endurance met een reeks die over twee
