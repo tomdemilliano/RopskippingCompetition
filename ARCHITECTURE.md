@@ -59,6 +59,7 @@ src/
   seedData.js                      # Éénmalige seed voor events + competitionTypes
   theme.js                         # Design tokens: color, radius, shadow, font, space, statusColor
   timeUtils.js                     # timeToMinutes("HH:MM") — gedeeld door pdfSchedule.js en LiveView.jsx
+  blockCascade.js                  # computeReopenCascade — gedeeld door LiveView.jsx en CompetitionDetail.jsx
   pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
   pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
   pdfImport.js                     # Browserlaag (pdfjs-worker) — enige toegangspunt voor componenten
@@ -634,28 +635,44 @@ op een heats-blok in de linkerkolom (dagtijdlijn) blijft een handmatige
 "overschrijf-optie" om naar eender welk onderdeel te springen, los van de
 dagtijdlijn.
 
-### Een reeks heropenen (vergissingen rechtzetten)
+### Een reeks of blok heropenen (vergissingen rechtzetten)
 
-`unfinishSeries(eventId, seriesNr)` (AppContext) markeert een reeks terug als
-niet-afgelopen. Reeksen zijn sequentieel, dus elke latere reeks van hetzelfde
-onderdeel die al "klaar" was, wordt automatisch mee heropend — je kan nooit
-reeks 5 voltooid hebben terwijl reeks 3 heropend staat. Het onderdeel
-verliest ook zijn `finishedEvents`-vlag. `LiveView` roept dit aan via de
-"Heropenen"-knop naast de VOLTOOID-indicator (met een `window.confirm`), en
-zet meteen ook blokken in de dagtijdlijn terug op `'gepland'` — dat gebeurt
-bewust in `LiveView` zelf (niet in `unfinishSeries`), omdat het de bestaande
-block-tijdvenster-logica van dat scherm nodig heeft (zie hierboven), die niet
-in AppContext gedupliceerd wordt.
+`unfinishSeries(competitionId, eventId, seriesNr)` (AppContext) markeert een
+reeks terug als niet-afgelopen. Reeksen zijn sequentieel, dus elke latere
+reeks van hetzelfde onderdeel die al "klaar" was, wordt automatisch mee
+heropend — je kan nooit reeks 5 voltooid hebben terwijl reeks 3 heropend
+staat. `seriesNr = 1` wist zo de volledige voortgang van een onderdeel. Het
+onderdeel verliest ook zijn `finishedEvents`-vlag. Neemt bewust een
+expliciete `competitionId` i.p.v. altijd `activeCompetition` te gebruiken
+(de competitie wordt opgezocht in de `competitions`-array): `LiveView` werkt
+altijd op de live wedstrijd, maar `CompetitionDetail` (Beheer) moet dit ook
+kunnen voor een wedstrijd die niet live staat.
 
-Welke blokken precies heropenen: eerst het vroegste afgewerkte heats-blok van
-dit onderdeel opzoeken (`rollbackOrder` = zijn `order`), en dan ELK blok —
-ongeacht type — met `order >= rollbackOrder` dat nog op `'afgewerkt'` staat
-terugzetten. Bewust niet beperkt tot heats-blokken van hetzelfde onderdeel:
-een pauze/briefing/proefjury/prijsuitreiking die de speaker al afgesloten had
-terwijl deze reeks nog "klaar" stond, klopt niet meer zodra de reeks
-heropend wordt, en moet dus mee heropenen — anders blijft `currentBlock`
-(en dus DisplayView) bij zo'n later blok hangen i.p.v. terug bij dit
-onderdeel uit te komen.
+Welke blokken mee heropenen — gedeelde logica in **`blockCascade.js`**
+(`computeReopenCascade(sortedBlocks, rollbackOrder, skipEventId?)`), puur
+berekening, geen Firestore-toegang: elk blok — ongeacht type — met
+`order >= rollbackOrder` dat nog op `'afgewerkt'` staat, plus de set
+`eventId`'s van elk HEATS-blok daarin (behalve optioneel `skipEventId`, het
+onderdeel waarvan de finishedSeries al apart/partieel is aangepast). Bewust
+niet beperkt tot blokken van hetzelfde onderdeel: een pauze/briefing/
+proefjury/prijsuitreiking, of zelfs een heats-blok van een heel ANDER,
+later gepland onderdeel, die al afgesloten was terwijl dit punt nog "klaar"
+stond, klopt niet meer zodra hier heropend wordt — en moet dus mee
+heropenen, inclusief een volledige reset (`unfinishSeries(..., 1)`) van elk
+zo meegesleept onderdeel. Zonder die reset zou zo'n later onderdeel bij het
+bereiken ervan alsnog al zijn reeksen als VOLTOOID tonen.
+
+Twee aanroepplekken, beide via dezelfde `computeReopenCascade`:
+- **`LiveView`** (reeks-niveau): de "Heropenen"-knop naast de VOLTOOID-
+  indicator. `rollbackOrder` = het vroegste afgewerkte heats-blok van het
+  actieve onderdeel; roept zelf eerst `unfinishSeries(..., activeEventId,
+  activeSeriesNr)` aan (partiële reset) en geeft `activeEventId` mee als
+  `skipEventId`, zodat dat onderdeel niet nogmaals volledig gereset wordt.
+- **`CompetitionDetail`** (blok-niveau): de "Heropenen"-knop in Programma.
+  `rollbackOrder` = het geklikte blok zelf, geen `skipEventId` — is het
+  geklikte blok zelf een heats-blok, dan wordt ook zíjn onderdeel volledig
+  gereset. Bevat het geklikte blok geen reeksen en staat er niets afgewerkts
+  na, dan verandert enkel de status van dat ene blok.
 
 Eén onderdeel kan over **meerdere fysieke blokken** lopen — Freestyles
 onderbroken door pauzes, of Speed/Endurance met een reeks die over twee
