@@ -17,6 +17,7 @@ import {
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { timeToMinutes } from '../timeUtils';
+import { computeReopenCascade } from '../blockCascade';
 import PodiumManager from './PodiumManager';
 import PodiumCeremonyPanel from './PodiumCeremonyPanel';
 import MessageManager from './MessageManager';
@@ -567,34 +568,37 @@ export default function LiveView() {
   };
 
   // Reeks terugzetten naar "niet afgelopen" — om een vergissing recht te
-  // zetten. Reeksen zijn sequentieel, dus alle latere reeksen die al klaar
-  // waren, worden mee heropend (unfinishSeries). In de dagtijdlijn gaat
-  // alles vanaf het vroegste afgewerkte heats-blok van dit onderdeel ook
-  // terug open — ook niet-heats-blokken (pauze/briefing/proefjury/
-  // prijsuitreiking): als die al afgesloten waren terwijl deze reeks nog
-  // "klaar" stond, klopt dat niet meer zodra de reeks heropend wordt. Zo
-  // komt currentBlock (en dus DisplayView) weer bij dit onderdeel uit
-  // i.p.v. bij een later blok te blijven staan.
+  // zetten. Reeksen zijn sequentieel, dus alle latere reeksen van hetzelfde
+  // onderdeel die al klaar waren, worden mee heropend (unfinishSeries). In
+  // de dagtijdlijn gaat alles vanaf het vroegste afgewerkte heats-blok van
+  // dit onderdeel ook terug open — elk bloktype (pauze/briefing/proefjury/
+  // prijsuitreiking, maar ook heats-blokken van ANDERE, later geplande
+  // onderdelen): als die al afgesloten waren terwijl deze reeks nog "klaar"
+  // stond, klopt dat niet meer zodra de reeks heropend wordt. Voor elk
+  // heats-blok van zo'n ander onderdeel dat mee heropent, verliest dat
+  // onderdeel ook zijn volledige finishedSeries — anders zou LiveView bij
+  // het bereiken ervan alle reeksen alsnog als VOLTOOID tonen. Zo komt
+  // currentBlock (en dus DisplayView) weer bij dit onderdeel uit i.p.v. bij
+  // een later blok te blijven staan.
   const handleUnfinishSeries = async () => {
     const ok = window.confirm(
       `Reeks ${activeSeriesNr} terug als niet-afgelopen markeren?\n\n` +
-      'Alle latere reeksen van dit onderdeel die al klaar waren, worden ook terug opengezet.'
+      'Alle latere reeksen en blokken die al klaar waren, worden ook terug opengezet.'
     );
     if (!ok) return;
 
-    await unfinishSeries(activeEventId, activeSeriesNr);
+    await unfinishSeries(activeCompetition.id, activeEventId, activeSeriesNr);
 
     const eventBlocksDone = sortedBlocks.filter(b =>
       b.type === 'heats' && b.eventId === activeEventId && b.status === 'afgewerkt'
     );
     if (eventBlocksDone.length > 0) {
       const rollbackOrder = Math.min(...eventBlocksDone.map(b => b.order));
-      const blocksToReopen = sortedBlocks.filter(b =>
-        b.order >= rollbackOrder && b.status === 'afgewerkt'
-      );
-      await Promise.all(
-        blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland'))
-      );
+      const { blocksToReopen, eventIdsToReset } = computeReopenCascade(sortedBlocks, rollbackOrder, activeEventId);
+      await Promise.all([
+        ...blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland')),
+        ...eventIdsToReset.map(eventId => unfinishSeries(activeCompetition.id, eventId, 1)),
+      ]);
     }
   };
 

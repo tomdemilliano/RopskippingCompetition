@@ -482,25 +482,34 @@ export function AppProvider({ children }) {
    * Markeer een reeks terug als niet-afgelopen — om vergissingen recht te
    * zetten. Reeksen zijn sequentieel: elke latere reeks die al klaar was,
    * wordt automatisch mee heropend (je kan geen reeks 5 "klaar" hebben terwijl
-   * reeks 3 heropend is). Het onderdeel zelf verliest ook zijn "volledig
-   * afgewerkt"-vlag. De bijhorende dagtijdlijn-blokken heropent LiveView zelf
-   * (setBlockStatus) — dat vereist de block-tijdvenster-logica die daar al
+   * reeks 3 heropend is; seriesNr=1 wist dus de volledige voortgang van het
+   * onderdeel). Het onderdeel verliest ook zijn "volledig afgewerkt"-vlag.
+   *
+   * Neemt bewust een expliciete competitionId i.p.v. altijd activeCompetition
+   * te gebruiken: LiveView werkt enkel op de live wedstrijd, maar Beheer
+   * (CompetitionDetail) moet dit ook kunnen voor een wedstrijd die niet live
+   * staat. De bijhorende dagtijdlijn-blokken heropenen de schermen zelf (zie
+   * blockCascade.js) — dat vereist de block-tijdvenster-logica die daar al
    * leeft, niet hier gedupliceerd.
    */
-  const unfinishSeries = useCallback((eventId, seriesNr) => {
-    if (!activeCompetition) throw new Error('Geen actieve wedstrijd.');
+  const unfinishSeries = useCallback((competitionId, eventId, seriesNr) => {
+    const comp = competitions.find(c => c.id === competitionId);
+    if (!comp) throw new Error('Wedstrijd niet gevonden.');
+
+    const compFinishedSeries = comp.finishedSeries ?? {};
+    const compFinishedEvents = comp.finishedEvents ?? [];
 
     const newFinishedSeries = {
-      ...finishedSeries,
-      [eventId]: (finishedSeries[eventId] ?? []).filter(nr => nr < seriesNr),
+      ...compFinishedSeries,
+      [eventId]: (compFinishedSeries[eventId] ?? []).filter(nr => nr < seriesNr),
     };
-    const newFinishedEvents = finishedEvents.filter(id => id !== eventId);
+    const newFinishedEvents = compFinishedEvents.filter(id => id !== eventId);
 
-    return competitionFactory.saveProgress(activeCompetition.id, {
+    return competitionFactory.saveProgress(competitionId, {
       finishedEvents: newFinishedEvents,
       finishedSeries: newFinishedSeries,
     });
-  }, [activeCompetition, finishedEvents, finishedSeries]);
+  }, [competitions]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // ACTIONS — deelnemers

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
+import { computeReopenCascade } from '../../blockCascade';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import PodiumManager from '../PodiumManager';
@@ -416,6 +417,7 @@ export default function CompetitionDetail({
     createBlock,
     setBlockStatus,
     deleteBlock,
+    unfinishSeries,
   } = useAppContext();
 
   // 'wedstrijd' (onderdelen + programma) | 'deelnemers' (volle hoogte)
@@ -443,6 +445,32 @@ export default function CompetitionDetail({
     () => [...blocks].sort((a, b) => a.order - b.order),
     [blocks]
   );
+
+  // Blok markeren als afgewerkt: gewoon de status wijzigen, geen cascade
+  // nodig. Heropenen zet dit blok en alles wat chronologisch erna al
+  // afgewerkt was terug open (elk bloktype), en reset de finishedSeries van
+  // elk onderdeel waarvan een heats-blok in dat bereik valt — inclusief het
+  // geklikte blok zelf als het er een is. Bevat het blok geen reeksen (geen
+  // heats-blok in het heropende bereik), dan verandert enkel de status.
+  const handleToggleBlock = async (block) => {
+    const done = block.status === 'afgewerkt';
+    if (!done) {
+      await setBlockStatus(competition.id, block.id, 'afgewerkt');
+      return;
+    }
+
+    const ok = window.confirm(
+      'Dit blok heropenen?\n\n' +
+      'Alle reeksen van dit blok, en alle latere blokken/reeksen die al klaar waren, worden ook teruggezet.'
+    );
+    if (!ok) return;
+
+    const { blocksToReopen, eventIdsToReset } = computeReopenCascade(sortedBlocks, block.order);
+    await Promise.all([
+      ...blocksToReopen.map(b => setBlockStatus(competition.id, b.id, 'gepland')),
+      ...eventIdsToReset.map(eventId => unfinishSeries(competition.id, eventId, 1)),
+    ]);
+  };
 
   const handleAddBlock = async () => {
     if (newBlockType === 'heats' && !newBlockEventId) return;
@@ -685,7 +713,7 @@ export default function CompetitionDetail({
                 <button
                   style={s.actionBtn(done ? color.warning : color.success)}
                   title={done ? 'Heropenen' : 'Markeer afgewerkt'}
-                  onClick={() => setBlockStatus(competition.id, b.id, done ? 'gepland' : 'afgewerkt')}
+                  onClick={() => handleToggleBlock(b)}
                 >
                   {done ? <RotateCcw size={15} /> : <Check size={15} />}
                 </button>
