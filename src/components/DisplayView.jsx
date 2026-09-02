@@ -37,6 +37,19 @@ function calcExpectedTime(scheduledTime, timeDiff) {
   }
 }
 
+/** Afwijking t.o.v. het geplande uur — enkel zichtbaar vanaf > 2 minuten. */
+function TimeDeviationBadge({ timeDiff }) {
+  if (timeDiff === null || Math.abs(timeDiff) <= 2) return null;
+  return (
+    <span style={{
+      marginLeft: '0.5rem', fontWeight: 700, fontSize: '0.85rem',
+      color: timeDiff > 0 ? '#f87171' : '#34d399',
+    }}>
+      {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+    </span>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,9 +164,13 @@ export default function DisplayView({ onClose }) {
     return list;
   }, [currentSkippers, isFreestyle]);
 
-  // Volgende lijst — zelfde event of volgend event
-  const { nextList, nextEventObj, isNextEvent } = useMemo(() => {
-    if (!officialEvent) return { nextList: [], nextEventObj: null, isNextEvent: false };
+  // Volgende lijst — zelfde event of volgend event. Bij speed (meerdere
+  // velden per reeks) delen alle rijen dezelfde scheduledTime — daarom
+  // krijgt zo'n groep ook groupSeriesNr/groupSeriesTotal mee, zodat het uur
+  // één keer bovenaan getoond kan worden i.p.v. overbodig op elke rij.
+  const { nextList, nextEventObj, isNextEvent, nextIsFreestyle, groupSeriesNr, groupSeriesTotal } = useMemo(() => {
+    const empty = { nextList: [], nextEventObj: null, isNextEvent: false, nextIsFreestyle: false, groupSeriesNr: null, groupSeriesTotal: null };
+    if (!officialEvent) return empty;
 
     const currentSeriesIdx = seriesNrs.indexOf(officialSeriesNr);
     const hasMoreSeries = currentSeriesIdx < seriesNrs.length - 1;
@@ -172,7 +189,12 @@ export default function DisplayView({ onClose }) {
             }
             return list;
           })();
-      return { nextList, nextEventObj: officialEvent, isNextEvent: false };
+      return {
+        nextList, nextEventObj: officialEvent, isNextEvent: false,
+        nextIsFreestyle: isFreestyle,
+        groupSeriesNr: isFreestyle ? null : nextNr,
+        groupSeriesTotal: isFreestyle ? null : totalSeries,
+      };
     }
 
     // Zoek volgend event met deelnemers
@@ -189,10 +211,10 @@ export default function DisplayView({ onClose }) {
         });
 
       if (nextParts.length > 0) {
+        const firstNr = nextParts[0]._entry.seriesNr;
         const list = nextFreestyle
           ? nextParts.slice(0, 8)
           : (() => {
-              const firstNr = nextParts[0]._entry.seriesNr;
               const raw = nextParts.filter(p => p._entry.seriesNr === firstNr);
               const max = Math.max(...raw.map(p => parseInt(p._entry.fieldNr) || 0), 0);
               const result = [];
@@ -202,12 +224,17 @@ export default function DisplayView({ onClose }) {
               }
               return result;
             })();
-        return { nextList: list, nextEventObj: nextEv, isNextEvent: true };
+        return {
+          nextList: list, nextEventObj: nextEv, isNextEvent: true,
+          nextIsFreestyle: nextFreestyle,
+          groupSeriesNr: nextFreestyle ? null : firstNr,
+          groupSeriesTotal: nextFreestyle ? null : new Set(nextParts.map(p => p._entry.seriesNr)).size,
+        };
       }
     }
 
-    return { nextList: [], nextEventObj: null, isNextEvent: false };
-  }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedEvents, participants, isFreestyle]);
+    return empty;
+  }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedEvents, participants, isFreestyle, totalSeries]);
 
   // "Volgende"-lijst verrijkt met tussenliggende pauze/briefing/proefjury/
   // prijsuitreiking-blokken uit de dagtijdlijn — die vielen voorheen
@@ -471,85 +498,115 @@ export default function DisplayView({ onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {displayList.map((item, idx) => {
-                  if (item.kind === 'block') {
-                    const b = item.data;
-                    const BlockIcon = BREAK_ICONS[b.type] ?? Coffee;
-                    const label = b.label || blockTypeLabels[b.type] || b.type;
-                    return (
-                      <tr key={`block-${b.id}`} style={{ fontSize: '1.1rem' }}>
-                        <td colSpan={4} style={{
-                          padding: '0.6rem 0.875rem',
-                          borderRadius: '8px',
-                          background: 'rgba(56,189,248,0.12)',
-                          border: `1px dashed ${color.info}`,
-                          boxSizing: 'border-box',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: color.info, fontWeight: 800 }}>
-                            <BlockIcon size={18} />
-                            {label.toUpperCase()}
-                            {b.scheduledTime && (
-                              <span style={{ marginLeft: 'auto', fontSize: '0.9rem', opacity: 0.85 }}>
-                                {b.scheduledTime}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
+                {(() => {
+                  // Bij speed delen alle rijen van displayList dezelfde reeks
+                  // (groupSeriesNr) — het uur wordt dan één keer bovenaan
+                  // getoond i.p.v. overbodig op elke rij (freestyle-rijen
+                  // kunnen wél elk een eigen tijdstip hebben, dus daar blijft
+                  // het per-rij uur staan).
+                  const isGrouped = !nextIsFreestyle && groupSeriesNr !== null;
+                  let groupHeaderShown = false;
 
-                  const p       = item.data;
-                  const entry    = p._entry;
-                  const expected = calcExpectedTime(entry?.scheduledTime, timeDiff);
-                  return (
-                    <tr key={idx} style={{
-                      background: 'rgba(30,41,59,0.4)',
-                      fontSize: '1.3rem',
-                      opacity: p._isEmpty ? 0.5 : 1,
-                    }}>
-                      <td style={{
-                        padding: '0.5rem 0.875rem',
-                        borderRadius: '8px 0 0 8px',
-                        fontWeight: 800, color: color.stageMuted,
-                      }}>
-                        {expected || '--:--'}
-                        {timeDiff !== null && Math.abs(timeDiff) > 2 && (
-                          <span style={{
-                            marginLeft: '0.5rem', fontWeight: 700, fontSize: '0.85rem',
-                            color: timeDiff > 0 ? '#f87171' : '#34d399',
+                  return displayList.map((item, idx) => {
+                    if (item.kind === 'block') {
+                      const b = item.data;
+                      const BlockIcon = BREAK_ICONS[b.type] ?? Coffee;
+                      const label = b.label || blockTypeLabels[b.type] || b.type;
+                      return (
+                        <tr key={`block-${b.id}`} style={{ fontSize: '1.1rem' }}>
+                          <td colSpan={4} style={{
+                            padding: '0.6rem 0.875rem',
+                            borderRadius: '8px',
+                            background: 'rgba(56,189,248,0.12)',
+                            border: `1px dashed ${color.info}`,
+                            boxSizing: 'border-box',
                           }}>
-                            {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
-                          </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: color.info, fontWeight: 800 }}>
+                              <BlockIcon size={18} />
+                              {label.toUpperCase()}
+                              {b.scheduledTime && (
+                                <span style={{ marginLeft: 'auto', fontSize: '0.9rem', opacity: 0.85 }}>
+                                  {b.scheduledTime}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const p        = item.data;
+                    const entry    = p._entry;
+                    const expected = calcExpectedTime(entry?.scheduledTime, timeDiff);
+                    const showGroupHeaderNow = isGrouped && !groupHeaderShown;
+                    if (showGroupHeaderNow) groupHeaderShown = true;
+
+                    return (
+                      <React.Fragment key={idx}>
+                        {showGroupHeaderNow && (
+                          <tr>
+                            <td colSpan={4} style={{ padding: '0.4rem 0.875rem 0.6rem' }}>
+                              <div style={{
+                                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                              }}>
+                                <span style={{ fontSize: '1.5rem', fontWeight: 900, color: color.stageInk }}>
+                                  Reeks {groupSeriesNr}
+                                  <span style={{ color: color.stageMuted, fontWeight: 400, fontSize: '1.1rem' }}> / {groupSeriesTotal}</span>
+                                </span>
+                                <span style={{ fontSize: '1.3rem', fontWeight: 800, color: color.stageMuted }}>
+                                  {expected || '--:--'}
+                                  <TimeDeviationBadge timeDiff={timeDiff} />
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td style={{ padding: '0.5rem 0.875rem' }}>
-                        <span style={{
-                          background: color.slate, color: '#fff',
-                          minWidth: '2rem', display: 'inline-block',
-                          textAlign: 'center', padding: '0.1rem 0.5rem',
-                          borderRadius: '5px',
+                        <tr style={{
+                          background: 'rgba(30,41,59,0.4)',
+                          fontSize: '1.3rem',
+                          opacity: p._isEmpty ? 0.5 : 1,
                         }}>
-                          {entry?.fieldNr ?? '-'}
-                        </span>
-                      </td>
-                      <td style={{
-                        padding: '0.5rem 0.875rem',
-                        fontWeight: 800,
-                        fontStyle: p._isEmpty ? 'italic' : 'normal',
-                      }}>
-                        {p._isEmpty ? '---' : p.name}
-                      </td>
-                      <td style={{
-                        padding: '0.5rem 0.875rem',
-                        borderRadius: '0 8px 8px 0',
-                        color: color.stageMuted, fontSize: '1.1rem',
-                      }}>
-                        {p.clubId ? getClub(p.clubId)?.name ?? '' : ''}
-                      </td>
-                    </tr>
-                  );
-                })}
+                          <td style={{
+                            padding: '0.5rem 0.875rem',
+                            borderRadius: '8px 0 0 8px',
+                            fontWeight: 800, color: color.stageMuted,
+                          }}>
+                            {!isGrouped && (
+                              <>
+                                {expected || '--:--'}
+                                <TimeDeviationBadge timeDiff={timeDiff} />
+                              </>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.875rem' }}>
+                            <span style={{
+                              background: color.slate, color: '#fff',
+                              minWidth: '2rem', display: 'inline-block',
+                              textAlign: 'center', padding: '0.1rem 0.5rem',
+                              borderRadius: '5px',
+                            }}>
+                              {entry?.fieldNr ?? '-'}
+                            </span>
+                          </td>
+                          <td style={{
+                            padding: '0.5rem 0.875rem',
+                            fontWeight: 800,
+                            fontStyle: p._isEmpty ? 'italic' : 'normal',
+                          }}>
+                            {p._isEmpty ? '---' : p.name}
+                          </td>
+                          <td style={{
+                            padding: '0.5rem 0.875rem',
+                            borderRadius: '0 8px 8px 0',
+                            color: color.stageMuted, fontSize: '1.1rem',
+                          }}>
+                            {p.clubId ? getClub(p.clubId)?.name ?? '' : ''}
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           ) : (
