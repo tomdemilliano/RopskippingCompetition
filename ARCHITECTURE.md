@@ -614,11 +614,12 @@ sortering niet verstoort.
 Bij speed (meerdere velden per reeks) is die reekstijd voor elke rij in de
 groep identiek — die dus op elke rij herhalen is overbodig. De grote
 `nextList`-useMemo geeft daarom ook `nextIsFreestyle`/`groupSeriesNr`/
-`groupSeriesTotal` mee; als het geen freestyle is, wordt vlak vóór de eerste
-skipper-rij één headerrij ingevoegd ("Reeks X / Y" + het verwachte uur incl.
-afwijkingsbadge), en laat elke individuele rij zijn Verwacht-kolom dan leeg.
-Freestyle-rijen (elk potentieel een eigen reekstijd) behouden gewoon hun
-per-rij uur, zoals voorheen.
+`groupSeriesTotal` mee; is het geen freestyle (`isGroupedList`), dan komt
+"Reeks X / Y" met het verwachte uur (incl. afwijkingsbadge) op dezelfde
+regel als de "Volgende"-titel te staan — niet als aparte tabelrij — en
+blijft de "Verwacht"-kolomkop leeg, want elke individuele rij laat zijn
+Verwacht-cel dan leeg. Freestyle-rijen (elk potentieel een eigen reekstijd)
+behouden gewoon hun per-rij uur en kolomkop, zoals voorheen.
 
 ### Blok-gedreven navigatie in LiveView
 
