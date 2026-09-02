@@ -525,6 +525,7 @@ export default function DisplayView({ onClose }) {
                     const b = item.data;
                     const BlockIcon = BREAK_ICONS[b.type] ?? Coffee;
                     const label = b.label || blockTypeLabels[b.type] || b.type;
+                    const blockExpected = calcExpectedTime(b.scheduledTime, timeDiff);
                     return (
                       <tr key={`block-${b.id}`} style={{ fontSize: '1.1rem' }}>
                         <td colSpan={4} style={{
@@ -534,14 +535,17 @@ export default function DisplayView({ onClose }) {
                           border: `1px dashed ${color.info}`,
                           boxSizing: 'border-box',
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: color.info, fontWeight: 800 }}>
-                            <BlockIcon size={18} />
-                            {label.toUpperCase()}
-                            {b.scheduledTime && (
-                              <span style={{ marginLeft: 'auto', fontSize: '0.9rem', opacity: 0.85 }}>
-                                {b.scheduledTime}
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {blockExpected && (
+                              <span style={{ position: 'absolute', left: 0, fontSize: '0.9rem', fontWeight: 800, color: color.stageMuted }}>
+                                {blockExpected}
+                                <TimeDeviationBadge timeDiff={timeDiff} />
                               </span>
                             )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: color.info, fontWeight: 800 }}>
+                              <BlockIcon size={18} />
+                              {label.toUpperCase()}
+                            </div>
                           </div>
                         </td>
                       </tr>
