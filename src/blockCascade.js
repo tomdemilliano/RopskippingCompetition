@@ -28,9 +28,17 @@ export function computeReopenCascade(sortedBlocks, rollbackOrder, skipEventId = 
     b.order >= rollbackOrder && b.status === 'afgewerkt'
   );
 
+  // Een onderdeel kan al deels voortgang hebben (reeksen individueel als
+  // "klaar" gemarkeerd) terwijl zijn heats-blok zelf nog niet 'afgewerkt' is
+  // (bv. het huidige, nog actieve blok). Zo'n blok zit niet in
+  // blocksToReopen — het hoeft niet terug op 'gepland' gezet te worden, dat
+  // staat het al — maar de reeksen die er al binnen voltooid zijn, liggen
+  // wel chronologisch NA het heropende punt en horen dus wel mee te
+  // heropenen. Daarom kijkt eventIdsToReset naar ALLE heats-blokken vanaf
+  // rollbackOrder, ongeacht hun status — niet enkel de afgewerkte.
   const eventIdsToReset = [...new Set(
-    blocksToReopen
-      .filter(b => b.type === 'heats' && b.eventId && b.eventId !== skipEventId)
+    sortedBlocks
+      .filter(b => b.order >= rollbackOrder && b.type === 'heats' && b.eventId && b.eventId !== skipEventId)
       .map(b => b.eventId)
   )];
 

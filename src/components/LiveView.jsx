@@ -389,13 +389,49 @@ export default function LiveView() {
     const idx = sortedBlocks.findIndex(b => b.id === currentBlock.id);
     return idx >= 0 ? (sortedBlocks[idx + 1] ?? null) : null;
   }, [sortedBlocks, currentBlock]);
-  const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
-  const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
-  const BreakIcon = BREAK_ICONS[currentBlock?.type] ?? Coffee;
+
+  // Welk blok het rechterpaneel toont: standaard het echte huidige blok
+  // (currentBlock), maar de speaker kan via het linkerpaneel een ANDER blok
+  // bekijken — bv. een al afgewerkte pauze/proefjury opnieuw openen. Zonder
+  // dit zou het rechterpaneel altijd het pauzescherm van currentBlock tonen,
+  // ook wanneer een heats-blok werd aangeklikt (activeEventId volgt dan wel
+  // mee, maar isBreakBlock bleef op currentBlock gebaseerd) — waardoor
+  // doorklikken naar een reeks leek te "niets doen" zodra currentBlock zelf
+  // een pauze/proefjury was. Springt currentBlock naar iets anders (normale
+  // voortgang, of net doordat hier heropend is), dan valt dit vanzelf terug
+  // op "volg het echte huidige blok".
+  const [viewedBlockId, setViewedBlockId] = useState(null);
+  useEffect(() => { setViewedBlockId(null); }, [currentBlock?.id]);
+  const viewedBlock = (viewedBlockId && sortedBlocks.find(b => b.id === viewedBlockId)) || currentBlock;
+
+  const isBreakBlock = !!viewedBlock && viewedBlock.type !== 'heats';
+  const breakLabel = viewedBlock?.label || blockTypeLabels[viewedBlock?.type] || 'Pauze';
+  const BreakIcon = BREAK_ICONS[viewedBlock?.type] ?? Coffee;
+  const viewedBlockIsCurrent = viewedBlock?.id === currentBlock?.id;
+  const viewedBlockIsDone = viewedBlock?.status === 'afgewerkt';
 
   const handleFinishBlock = () => {
     if (!activeCompetition || !currentBlock) return;
     setBlockStatus(activeCompetition.id, currentBlock.id, 'afgewerkt');
+  };
+
+  // Een al afgewerkt (niet-heats) blok heropenen — bv. een pauze of
+  // proefjury waar per ongeluk voorbij gescrold werd. Zelfde cascade als het
+  // blok-niveau heropenen in Beheer (CompetitionDetail): alles vanaf dit
+  // blok dat al klaar was, gaat mee terug open.
+  const handleReopenBlock = async (block) => {
+    const ok = window.confirm(
+      'Dit blok heropenen?\n\n' +
+      'Alle latere blokken/reeksen die al klaar waren, worden ook teruggezet.'
+    );
+    if (!ok) return;
+
+    const { blocksToReopen, eventIdsToReset } = computeReopenCascade(sortedBlocks, block.order);
+    const resets = eventIdsToReset.map(eventId => ({ eventId, seriesNr: 1 }));
+    await Promise.all([
+      ...blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland')),
+      ...(resets.length > 0 ? [unfinishSeries(activeCompetition.id, resets)] : []),
+    ]);
   };
 
   const sortedEvents = getSortedEvents(activeCompetition);
@@ -663,15 +699,17 @@ export default function LiveView() {
         {sortedBlocks.map(b => {
           const done      = b.status === 'afgewerkt';
           const isCurrent = b.id === currentBlock?.id;
-          const clickable = b.type === 'heats';
           const label = b.type === 'heats'
             ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
             : (b.label || blockTypeLabels[b.type] || b.type);
           return (
             <div
               key={b.id}
-              style={s.blockRow(isCurrent, done, clickable)}
-              onClick={clickable ? () => setActiveEventId(b.eventId) : undefined}
+              style={s.blockRow(isCurrent, done, true)}
+              onClick={() => {
+                setViewedBlockId(b.id);
+                if (b.type === 'heats' && b.eventId) setActiveEventId(b.eventId);
+              }}
             >
               <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
               <span style={s.blockLabel}>{label}</span>
@@ -704,9 +742,20 @@ export default function LiveView() {
                 Het grote scherm toont dit ook aan de deelnemers.
               </div>
             </div>
-            <button style={s.nextBtn} onClick={handleFinishBlock}>
-              Volgende <ChevronRight size={18} />
-            </button>
+            {viewedBlockIsCurrent && !viewedBlockIsDone && (
+              <button style={s.nextBtn} onClick={handleFinishBlock}>
+                Volgende <ChevronRight size={18} />
+              </button>
+            )}
+            {viewedBlockIsDone && (
+              <button
+                style={s.undoBtn}
+                onClick={() => handleReopenBlock(viewedBlock)}
+                title="Blok terug als niet-afgelopen markeren"
+              >
+                <RotateCcw size={14} /> Heropenen
+              </button>
+            )}
           </div>
         ) : (
           <>
