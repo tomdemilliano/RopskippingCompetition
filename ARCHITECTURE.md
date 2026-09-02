@@ -659,33 +659,74 @@ dan één onderdeel moest terugzetten (zie de fix hieronder).
 
 Welke blokken mee heropenen — gedeelde logica in **`blockCascade.js`**
 (`computeReopenCascade(sortedBlocks, rollbackOrder, skipEventId?)`), puur
-berekening, geen Firestore-toegang: elk blok — ongeacht type — met
-`order >= rollbackOrder` dat nog op `'afgewerkt'` staat, plus de set
-`eventId`'s van elk HEATS-blok daarin (behalve optioneel `skipEventId`, het
-onderdeel waarvan de finishedSeries al apart/partieel is aangepast). Bewust
-niet beperkt tot blokken van hetzelfde onderdeel: een pauze/briefing/
-proefjury/prijsuitreiking, of zelfs een heats-blok van een heel ANDER,
-later gepland onderdeel, die al afgesloten was terwijl dit punt nog "klaar"
-stond, klopt niet meer zodra hier heropend wordt — en moet dus mee
-heropenen, inclusief een volledige reset (`seriesNr: 1` in de `resets`-lijst)
-van elk zo meegesleept onderdeel. Zonder die reset zou zo'n later onderdeel
-bij het bereiken ervan alsnog al zijn reeksen als VOLTOOID tonen.
+berekening, geen Firestore-toegang. Twee aparte sets, met opzet niet
+hetzelfde filter:
+- `blocksToReopen`: elk blok — ongeacht type — met `order >= rollbackOrder`
+  dat nog op `'afgewerkt'` staat. Enkel DIE blokken moeten terug naar
+  `'gepland'`; een blok dat nog niet afgewerkt is, staat al open.
+- `eventIdsToReset`: de set `eventId`'s van elk HEATS-blok met
+  `order >= rollbackOrder`, ONGEACHT status (behalve optioneel `skipEventId`,
+  het onderdeel waarvan de finishedSeries al apart/partieel is aangepast).
+  Bewust ruimer dan `blocksToReopen`: een onderdeel kan al deels reeksen
+  voltooid hebben terwijl zijn heats-blok zelf nog niet `'afgewerkt'` is (het
+  huidige, nog actieve blok) — die reeksen liggen chronologisch al na het
+  heropende punt en horen dus mee te heropenen, ook al hoeft het blok zelf
+  niet van status te veranderen. Zonder dit bleven zulke reeksen VOLTOOID
+  staan (bv. de eerste reeksen van een al aangevatte Freestyle-blok, terwijl
+  een eerder Speed-onderdeel heropend werd).
 
-Twee aanroepplekken, beide via dezelfde `computeReopenCascade`, en beide
+Bewust niet beperkt tot blokken van hetzelfde onderdeel: een pauze/briefing/
+proefjury/prijsuitreiking, of zelfs een heats-blok van een heel ANDER,
+later gepland onderdeel, die al afgesloten was (of al deels voortgang had)
+terwijl dit punt nog "klaar" stond, klopt niet meer zodra hier heropend
+wordt — en moet dus mee heropenen, inclusief een volledige reset
+(`seriesNr: 1` in de `resets`-lijst) van elk zo meegesleept onderdeel.
+Zonder die reset zou zo'n later onderdeel bij het bereiken ervan alsnog al
+zijn reeksen als VOLTOOID tonen.
+
+Drie aanroepplekken, alle via dezelfde `computeReopenCascade`, en alle
 bouwen hun volledige `resets`-lijst op VOOR ze `unfinishSeries` aanroepen
 (één aanroep, één write — zie hierboven waarom):
-- **`LiveView`** (reeks-niveau): de "Heropenen"-knop naast de VOLTOOID-
-  indicator. `rollbackOrder` = het vroegste afgewerkte heats-blok van het
-  actieve onderdeel; de reset van het eigen onderdeel (`activeEventId`,
-  `activeSeriesNr`) staat vooraan in de lijst, `activeEventId` gaat als
-  `skipEventId` naar `computeReopenCascade` zodat het niet nogmaals (met
-  `seriesNr: 1`, te agressief) wordt toegevoegd.
-- **`CompetitionDetail`** (blok-niveau): de "Heropenen"-knop in Programma.
-  `rollbackOrder` = het geklikte blok zelf, geen `skipEventId` — is het
-  geklikte blok zelf een heats-blok, dan staat het gewoon tussen de
-  `eventIdsToReset` en wordt het dus ook volledig gereset. Bevat het
-  geklikte blok geen reeksen en staat er niets afgewerkts na, dan is de
-  `resets`-lijst leeg en verandert enkel de status van dat ene blok.
+- **`LiveView` — reeks-niveau** (`handleUnfinishSeries`): de "Heropenen"-knop
+  naast de VOLTOOID-indicator van een reeks. `rollbackOrder` = het vroegste
+  afgewerkte heats-blok van het actieve onderdeel; de reset van het eigen
+  onderdeel (`activeEventId`, `activeSeriesNr`) staat vooraan in de lijst,
+  `activeEventId` gaat als `skipEventId` naar `computeReopenCascade` zodat
+  het niet nogmaals (met `seriesNr: 1`, te agressief) wordt toegevoegd.
+- **`LiveView` — blok-niveau** (`handleReopenBlock`): de "Heropenen"-knop in
+  het pauzescherm van het linkerpaneel, voor een afgewerkt niet-heats blok
+  (pauze/briefing/proefjury/prijsuitreiking) dat via het dagtijdlijn-paneel
+  bekeken wordt. `rollbackOrder` = het bekeken blok zelf, geen `skipEventId`
+  — zelfde vorm als `CompetitionDetail` hieronder, enkel de aanroeper
+  verschilt.
+- **`CompetitionDetail` — blok-niveau** (`handleToggleBlock`): de
+  "Heropenen"-knop in Programma. `rollbackOrder` = het geklikte blok zelf,
+  geen `skipEventId` — is het geklikte blok zelf een heats-blok, dan staat
+  het gewoon tussen de `eventIdsToReset` en wordt het dus ook volledig
+  gereset. Bevat het geklikte blok geen reeksen en staat er niets afgewerkts
+  na, dan is de `resets`-lijst leeg en verandert enkel de status van dat ene
+  blok.
+
+**Een ander blok bekijken in LiveView (`viewedBlockId`):** het dagtijdlijn-
+paneel liet voorheen enkel HEATS-blokken aanklikken (`clickable = b.type ===
+'heats'`) — een pauze/proefjury kon dus nooit bekeken of heropend worden.
+Bovendien bepaalde `isBreakBlock` (welk scherm het rechterpaneel toont)
+zich uitsluitend op `currentBlock` (het echte huidige blok): klikte de
+speaker op een heats-blok terwijl `currentBlock` toevallig een pauze/
+proefjury was, dan wijzigde dat wel `activeEventId`, maar het rechterpaneel
+bleef toch het pauzescherm tonen — doorklikken naar een reeks leek zo
+"niets te doen". Elk blok is nu klikbaar en zet `viewedBlockId`; het
+rechterpaneel baseert `isBreakBlock`/`breakLabel`/`BreakIcon` op
+`viewedBlock` (`viewedBlockId` opgezocht in `sortedBlocks`, of anders
+`currentBlock`) i.p.v. rechtstreeks op `currentBlock`. Springt `currentBlock`
+naar iets anders (normale voortgang, of doordat hier heropend werd), dan
+valt `viewedBlockId` vanzelf terug naar `null` (effect op `currentBlock?.id`)
+— "volg het echte huidige blok" is dus altijd de standaardstand. In het
+pauzescherm zelf bepalen `viewedBlockIsCurrent`/`viewedBlockIsDone` welke
+knop verschijnt: "Volgende" (`handleFinishBlock`, enkel voor het echte
+huidige blok) of "Heropenen" (`handleReopenBlock`, enkel voor een al
+afgewerkt blok) — een bekeken blok dat noch huidig, noch afgewerkt is (een
+nog niet bereikt, toekomstig blok) toont geen van beide.
 
 Eén onderdeel kan over **meerdere fysieke blokken** lopen — Freestyles
 onderbroken door pauzes, of Speed/Endurance met een reeks die over twee
