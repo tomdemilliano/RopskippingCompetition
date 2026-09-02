@@ -152,16 +152,6 @@ export default function DisplayView({ onClose }) {
 
   const MessageIcon = MESSAGE_ICON_MAP[activeMessage.icon] ?? null;
 
-  // Bij speed (meerdere deelnemers/velden per reeks) delen alle rijen van
-  // displayList dezelfde reekstijd — die hoort dan ook maar één keer getoond
-  // te worden, naast de "Volgende"-titel, i.p.v. overbodig op elke rij.
-  // Freestyle-rijen (elk mogelijk een eigen tijdstip) tonen hun uur gewoon
-  // per rij, zoals voorheen.
-  const isGroupedList = !nextIsFreestyle && groupSeriesNr !== null;
-  const groupExpected = isGroupedList
-    ? calcExpectedTime(nextList.find(p => !p._isEmpty)?._entry?.scheduledTime ?? null, timeDiff)
-    : null;
-
   // Volledig veldlijst (speed: aanvullen met lege velden)
   const fullFieldsList = useMemo(() => {
     if (isFreestyle || currentSkippers.length === 0) return currentSkippers;
@@ -245,6 +235,16 @@ export default function DisplayView({ onClose }) {
 
     return empty;
   }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedEvents, participants, isFreestyle, totalSeries]);
+
+  // Bij speed (meerdere deelnemers/velden per reeks) delen alle rijen van
+  // displayList dezelfde reekstijd — die hoort dan ook maar één keer getoond
+  // te worden, naast de "Volgende"-titel, i.p.v. overbodig op elke rij.
+  // Freestyle-rijen (elk mogelijk een eigen tijdstip) tonen hun uur gewoon
+  // per rij, zoals voorheen.
+  const isGroupedList = !nextIsFreestyle && groupSeriesNr !== null;
+  const groupExpected = isGroupedList
+    ? calcExpectedTime(nextList.find(p => !p._isEmpty)?._entry?.scheduledTime ?? null, timeDiff)
+    : null;
 
   // "Volgende"-lijst verrijkt met tussenliggende pauze/briefing/proefjury/
   // prijsuitreiking-blokken uit de dagtijdlijn — die vielen voorheen
