@@ -152,6 +152,16 @@ export default function DisplayView({ onClose }) {
 
   const MessageIcon = MESSAGE_ICON_MAP[activeMessage.icon] ?? null;
 
+  // Bij speed (meerdere deelnemers/velden per reeks) delen alle rijen van
+  // displayList dezelfde reekstijd — die hoort dan ook maar één keer getoond
+  // te worden, naast de "Volgende"-titel, i.p.v. overbodig op elke rij.
+  // Freestyle-rijen (elk mogelijk een eigen tijdstip) tonen hun uur gewoon
+  // per rij, zoals voorheen.
+  const isGroupedList = !nextIsFreestyle && groupSeriesNr !== null;
+  const groupExpected = isGroupedList
+    ? calcExpectedTime(nextList.find(p => !p._isEmpty)?._entry?.scheduledTime ?? null, timeDiff)
+    : null;
+
   // Volledig veldlijst (speed: aanvullen met lege velden)
   const fullFieldsList = useMemo(() => {
     if (isFreestyle || currentSkippers.length === 0) return currentSkippers;
@@ -469,7 +479,7 @@ export default function DisplayView({ onClose }) {
         <div style={{ flex: 1, padding: '1.25rem 2rem', overflowY: 'auto' }}>
           <div style={{
             marginBottom: '1rem',
-            display: 'flex', alignItems: 'center', gap: '1.25rem',
+            display: 'flex', alignItems: 'baseline', gap: '1.25rem',
           }}>
             <h2 style={{ fontSize: '2rem', fontWeight: 900, margin: 0, color: color.stageInk }}>
               Volgende
@@ -485,128 +495,107 @@ export default function DisplayView({ onClose }) {
                 {nextEventObj.name.toUpperCase()}
               </div>
             )}
+            {isGroupedList && (
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
+                <span style={{ fontSize: '1.3rem', fontWeight: 900, color: color.stageInk }}>
+                  Reeks {groupSeriesNr}
+                  <span style={{ color: color.stageMuted, fontWeight: 400, fontSize: '1rem' }}> / {groupSeriesTotal}</span>
+                </span>
+                <span style={{ fontSize: '1.2rem', fontWeight: 800, color: color.stageMuted }}>
+                  {groupExpected || '--:--'}
+                  <TimeDeviationBadge timeDiff={timeDiff} />
+                </span>
+              </div>
+            )}
           </div>
 
           {displayList.length > 0 ? (
             <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 5px' }}>
               <thead>
                 <tr style={{ color: color.muted, fontSize: '0.85rem', textAlign: 'left' }}>
-                  <th style={{ padding: '0 0.875rem' }}>Verwacht</th>
+                  <th style={{ padding: '0 0.875rem' }}>{isGroupedList ? '' : 'Verwacht'}</th>
                   <th style={{ padding: '0 0.875rem' }}>Veld</th>
                   <th style={{ padding: '0 0.875rem' }}>Skipper / Team</th>
                   <th style={{ padding: '0 0.875rem' }}>Club</th>
                 </tr>
               </thead>
               <tbody>
-                {(() => {
-                  // Bij speed delen alle rijen van displayList dezelfde reeks
-                  // (groupSeriesNr) — het uur wordt dan één keer bovenaan
-                  // getoond i.p.v. overbodig op elke rij (freestyle-rijen
-                  // kunnen wél elk een eigen tijdstip hebben, dus daar blijft
-                  // het per-rij uur staan).
-                  const isGrouped = !nextIsFreestyle && groupSeriesNr !== null;
-                  let groupHeaderShown = false;
-
-                  return displayList.map((item, idx) => {
-                    if (item.kind === 'block') {
-                      const b = item.data;
-                      const BlockIcon = BREAK_ICONS[b.type] ?? Coffee;
-                      const label = b.label || blockTypeLabels[b.type] || b.type;
-                      return (
-                        <tr key={`block-${b.id}`} style={{ fontSize: '1.1rem' }}>
-                          <td colSpan={4} style={{
-                            padding: '0.6rem 0.875rem',
-                            borderRadius: '8px',
-                            background: 'rgba(56,189,248,0.12)',
-                            border: `1px dashed ${color.info}`,
-                            boxSizing: 'border-box',
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: color.info, fontWeight: 800 }}>
-                              <BlockIcon size={18} />
-                              {label.toUpperCase()}
-                              {b.scheduledTime && (
-                                <span style={{ marginLeft: 'auto', fontSize: '0.9rem', opacity: 0.85 }}>
-                                  {b.scheduledTime}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    }
-
-                    const p        = item.data;
-                    const entry    = p._entry;
-                    const expected = calcExpectedTime(entry?.scheduledTime, timeDiff);
-                    const showGroupHeaderNow = isGrouped && !groupHeaderShown;
-                    if (showGroupHeaderNow) groupHeaderShown = true;
-
+                {displayList.map((item, idx) => {
+                  if (item.kind === 'block') {
+                    const b = item.data;
+                    const BlockIcon = BREAK_ICONS[b.type] ?? Coffee;
+                    const label = b.label || blockTypeLabels[b.type] || b.type;
                     return (
-                      <React.Fragment key={idx}>
-                        {showGroupHeaderNow && (
-                          <tr>
-                            <td colSpan={4} style={{ padding: '0.4rem 0.875rem 0.6rem' }}>
-                              <div style={{
-                                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-                              }}>
-                                <span style={{ fontSize: '1.5rem', fontWeight: 900, color: color.stageInk }}>
-                                  Reeks {groupSeriesNr}
-                                  <span style={{ color: color.stageMuted, fontWeight: 400, fontSize: '1.1rem' }}> / {groupSeriesTotal}</span>
-                                </span>
-                                <span style={{ fontSize: '1.3rem', fontWeight: 800, color: color.stageMuted }}>
-                                  {expected || '--:--'}
-                                  <TimeDeviationBadge timeDiff={timeDiff} />
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                        <tr style={{
-                          background: 'rgba(30,41,59,0.4)',
-                          fontSize: '1.3rem',
-                          opacity: p._isEmpty ? 0.5 : 1,
+                      <tr key={`block-${b.id}`} style={{ fontSize: '1.1rem' }}>
+                        <td colSpan={4} style={{
+                          padding: '0.6rem 0.875rem',
+                          borderRadius: '8px',
+                          background: 'rgba(56,189,248,0.12)',
+                          border: `1px dashed ${color.info}`,
+                          boxSizing: 'border-box',
                         }}>
-                          <td style={{
-                            padding: '0.5rem 0.875rem',
-                            borderRadius: '8px 0 0 8px',
-                            fontWeight: 800, color: color.stageMuted,
-                          }}>
-                            {!isGrouped && (
-                              <>
-                                {expected || '--:--'}
-                                <TimeDeviationBadge timeDiff={timeDiff} />
-                              </>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: color.info, fontWeight: 800 }}>
+                            <BlockIcon size={18} />
+                            {label.toUpperCase()}
+                            {b.scheduledTime && (
+                              <span style={{ marginLeft: 'auto', fontSize: '0.9rem', opacity: 0.85 }}>
+                                {b.scheduledTime}
+                              </span>
                             )}
-                          </td>
-                          <td style={{ padding: '0.5rem 0.875rem' }}>
-                            <span style={{
-                              background: color.slate, color: '#fff',
-                              minWidth: '2rem', display: 'inline-block',
-                              textAlign: 'center', padding: '0.1rem 0.5rem',
-                              borderRadius: '5px',
-                            }}>
-                              {entry?.fieldNr ?? '-'}
-                            </span>
-                          </td>
-                          <td style={{
-                            padding: '0.5rem 0.875rem',
-                            fontWeight: 800,
-                            fontStyle: p._isEmpty ? 'italic' : 'normal',
-                          }}>
-                            {p._isEmpty ? '---' : p.name}
-                          </td>
-                          <td style={{
-                            padding: '0.5rem 0.875rem',
-                            borderRadius: '0 8px 8px 0',
-                            color: color.stageMuted, fontSize: '1.1rem',
-                          }}>
-                            {p.clubId ? getClub(p.clubId)?.name ?? '' : ''}
-                          </td>
-                        </tr>
-                      </React.Fragment>
+                          </div>
+                        </td>
+                      </tr>
                     );
-                  });
-                })()}
+                  }
+
+                  const p        = item.data;
+                  const entry    = p._entry;
+                  const expected = calcExpectedTime(entry?.scheduledTime, timeDiff);
+                  return (
+                    <tr key={idx} style={{
+                      background: 'rgba(30,41,59,0.4)',
+                      fontSize: '1.3rem',
+                      opacity: p._isEmpty ? 0.5 : 1,
+                    }}>
+                      <td style={{
+                        padding: '0.5rem 0.875rem',
+                        borderRadius: '8px 0 0 8px',
+                        fontWeight: 800, color: color.stageMuted,
+                      }}>
+                        {!isGroupedList && (
+                          <>
+                            {expected || '--:--'}
+                            <TimeDeviationBadge timeDiff={timeDiff} />
+                          </>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.5rem 0.875rem' }}>
+                        <span style={{
+                          background: color.slate, color: '#fff',
+                          minWidth: '2rem', display: 'inline-block',
+                          textAlign: 'center', padding: '0.1rem 0.5rem',
+                          borderRadius: '5px',
+                        }}>
+                          {entry?.fieldNr ?? '-'}
+                        </span>
+                      </td>
+                      <td style={{
+                        padding: '0.5rem 0.875rem',
+                        fontWeight: 800,
+                        fontStyle: p._isEmpty ? 'italic' : 'normal',
+                      }}>
+                        {p._isEmpty ? '---' : p.name}
+                      </td>
+                      <td style={{
+                        padding: '0.5rem 0.875rem',
+                        borderRadius: '0 8px 8px 0',
+                        color: color.stageMuted, fontSize: '1.1rem',
+                      }}>
+                        {p.clubId ? getClub(p.clubId)?.name ?? '' : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (
