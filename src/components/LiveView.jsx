@@ -586,17 +586,23 @@ export default function LiveView() {
 
   // Reeks terugzetten naar "niet afgelopen" — om een vergissing recht te
   // zetten. Reeksen zijn sequentieel, dus alle latere reeksen van hetzelfde
-  // onderdeel die al klaar waren, worden mee heropend (unfinishSeries). In
-  // de dagtijdlijn gaat alles vanaf het vroegste afgewerkte heats-blok van
-  // dit onderdeel ook terug open — elk bloktype (pauze/briefing/proefjury/
-  // prijsuitreiking, maar ook heats-blokken van ANDERE, later geplande
-  // onderdelen): als die al afgesloten waren terwijl deze reeks nog "klaar"
-  // stond, klopt dat niet meer zodra de reeks heropend wordt. Voor elk
-  // heats-blok van zo'n ander onderdeel dat mee heropent, verliest dat
-  // onderdeel ook zijn volledige finishedSeries — anders zou LiveView bij
-  // het bereiken ervan alle reeksen alsnog als VOLTOOID tonen. Zo komt
-  // currentBlock (en dus DisplayView) weer bij dit onderdeel uit i.p.v. bij
-  // een later blok te blijven staan.
+  // onderdeel die al klaar waren, worden mee heropend. In de dagtijdlijn gaat
+  // alles vanaf het vroegste afgewerkte heats-blok van dit onderdeel ook
+  // terug open — elk bloktype (pauze/briefing/proefjury/prijsuitreiking, maar
+  // ook heats-blokken van ANDERE, later geplande onderdelen): als die al
+  // afgesloten waren terwijl deze reeks nog "klaar" stond, klopt dat niet
+  // meer zodra de reeks heropend wordt. Voor elk heats-blok van zo'n ander
+  // onderdeel dat mee heropent, verliest dat onderdeel ook zijn volledige
+  // finishedSeries — anders zou LiveView bij het bereiken ervan alle reeksen
+  // alsnog als VOLTOOID tonen. Zo komt currentBlock (en dus DisplayView) weer
+  // bij dit onderdeel uit i.p.v. bij een later blok te blijven staan.
+  //
+  // Alle betrokken onderdelen (het eigen + eventueel meegesleepte) worden in
+  // ÉÉN unfinishSeries-aanroep gereset, niet los na elkaar: elke losse
+  // aanroep zou zijn eigen momentopname van finishedSeries als basis nemen en
+  // zo de wijziging van de vorige aanroep overschrijven zodra er meerdere
+  // onderdelen meegesleept worden (bv. via een tussenliggende pauze/
+  // proefjury verder terug in de tijdlijn).
   const handleUnfinishSeries = async () => {
     const ok = window.confirm(
       `Reeks ${activeSeriesNr} terug als niet-afgelopen markeren?\n\n` +
@@ -604,19 +610,23 @@ export default function LiveView() {
     );
     if (!ok) return;
 
-    await unfinishSeries(activeCompetition.id, activeEventId, activeSeriesNr);
+    const resets = [{ eventId: activeEventId, seriesNr: activeSeriesNr }];
+    let blocksToReopen = [];
 
     const eventBlocksDone = sortedBlocks.filter(b =>
       b.type === 'heats' && b.eventId === activeEventId && b.status === 'afgewerkt'
     );
     if (eventBlocksDone.length > 0) {
       const rollbackOrder = Math.min(...eventBlocksDone.map(b => b.order));
-      const { blocksToReopen, eventIdsToReset } = computeReopenCascade(sortedBlocks, rollbackOrder, activeEventId);
-      await Promise.all([
-        ...blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland')),
-        ...eventIdsToReset.map(eventId => unfinishSeries(activeCompetition.id, eventId, 1)),
-      ]);
+      const cascade = computeReopenCascade(sortedBlocks, rollbackOrder, activeEventId);
+      blocksToReopen = cascade.blocksToReopen;
+      cascade.eventIdsToReset.forEach(eventId => resets.push({ eventId, seriesNr: 1 }));
     }
+
+    await Promise.all([
+      unfinishSeries(activeCompetition.id, resets),
+      ...blocksToReopen.map(b => setBlockStatus(activeCompetition.id, b.id, 'gepland')),
+    ]);
   };
 
   // ── Geen actieve wedstrijd ──────────────────────────────────────────────

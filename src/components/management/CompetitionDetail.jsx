@@ -465,10 +465,15 @@ export default function CompetitionDetail({
     );
     if (!ok) return;
 
+    // Alle meegesleepte onderdelen in ÉÉN unfinishSeries-aanroep resetten,
+    // niet los na elkaar — anders zou elke losse aanroep zijn eigen
+    // momentopname van finishedSeries als basis nemen en de wijziging van de
+    // vorige aanroep overschrijven (zie AppContext.jsx#unfinishSeries).
     const { blocksToReopen, eventIdsToReset } = computeReopenCascade(sortedBlocks, block.order);
+    const resets = eventIdsToReset.map(eventId => ({ eventId, seriesNr: 1 }));
     await Promise.all([
       ...blocksToReopen.map(b => setBlockStatus(competition.id, b.id, 'gepland')),
-      ...eventIdsToReset.map(eventId => unfinishSeries(competition.id, eventId, 1)),
+      ...(resets.length > 0 ? [unfinishSeries(competition.id, resets)] : []),
     ]);
   };
 

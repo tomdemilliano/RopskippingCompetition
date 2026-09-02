@@ -479,31 +479,43 @@ export function AppProvider({ children }) {
   }, [activeCompetition, finishedEvents, finishedSeries]);
 
   /**
-   * Markeer een reeks terug als niet-afgelopen — om vergissingen recht te
-   * zetten. Reeksen zijn sequentieel: elke latere reeks die al klaar was,
+   * Markeer één of meerdere reeksen terug als niet-afgelopen — om
+   * vergissingen recht te zetten, in ÉÉN atomaire schrijfactie. Reeksen zijn
+   * sequentieel: elke latere reeks van hetzelfde onderdeel die al klaar was,
    * wordt automatisch mee heropend (je kan geen reeks 5 "klaar" hebben terwijl
    * reeks 3 heropend is; seriesNr=1 wist dus de volledige voortgang van het
-   * onderdeel). Het onderdeel verliest ook zijn "volledig afgewerkt"-vlag.
+   * onderdeel). Elk onderdeel verliest ook zijn "volledig afgewerkt"-vlag.
    *
-   * Neemt bewust een expliciete competitionId i.p.v. altijd activeCompetition
+   * Neemt bewust een LIJST van { eventId, seriesNr } i.p.v. één per aanroep:
+   * de heropenen-cascade (blockCascade.js) moet vaak meerdere onderdelen
+   * tegelijk terugzetten (reeks X van onderdeel A heropenen sleept een later,
+   * al afgewerkt onderdeel B mee). Los na elkaar aanroepen zou telkens zijn
+   * eigen momentopname van finishedSeries als basis nemen — competitionFactory
+   * .saveProgress vervangt het hele veld (geen deep merge), dus de laatste
+   * losse write zou de vorige stilzwijgend overschrijven. Daarom hier één
+   * berekening op één consistente basis, gevolgd door één write.
+   *
+   * Neemt ook bewust een expliciete competitionId i.p.v. altijd activeCompetition
    * te gebruiken: LiveView werkt enkel op de live wedstrijd, maar Beheer
    * (CompetitionDetail) moet dit ook kunnen voor een wedstrijd die niet live
    * staat. De bijhorende dagtijdlijn-blokken heropenen de schermen zelf (zie
    * blockCascade.js) — dat vereist de block-tijdvenster-logica die daar al
    * leeft, niet hier gedupliceerd.
+   *
+   * @param {string} competitionId
+   * @param {Array<{eventId: string, seriesNr: number}>} resets
    */
-  const unfinishSeries = useCallback((competitionId, eventId, seriesNr) => {
+  const unfinishSeries = useCallback((competitionId, resets) => {
     const comp = competitions.find(c => c.id === competitionId);
     if (!comp) throw new Error('Wedstrijd niet gevonden.');
 
-    const compFinishedSeries = comp.finishedSeries ?? {};
-    const compFinishedEvents = comp.finishedEvents ?? [];
+    const newFinishedSeries = { ...(comp.finishedSeries ?? {}) };
+    let newFinishedEvents = comp.finishedEvents ?? [];
 
-    const newFinishedSeries = {
-      ...compFinishedSeries,
-      [eventId]: (compFinishedSeries[eventId] ?? []).filter(nr => nr < seriesNr),
-    };
-    const newFinishedEvents = compFinishedEvents.filter(id => id !== eventId);
+    for (const { eventId, seriesNr } of resets) {
+      newFinishedSeries[eventId] = (newFinishedSeries[eventId] ?? []).filter(nr => nr < seriesNr);
+      newFinishedEvents = newFinishedEvents.filter(id => id !== eventId);
+    }
 
     return competitionFactory.saveProgress(competitionId, {
       finishedEvents: newFinishedEvents,
