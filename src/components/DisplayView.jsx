@@ -514,6 +514,14 @@ export default function DisplayView({ onClose }) {
                         fontWeight: 800, color: color.stageMuted,
                       }}>
                         {expected || '--:--'}
+                        {timeDiff !== null && Math.abs(timeDiff) > 2 && (
+                          <span style={{
+                            marginLeft: '0.5rem', fontWeight: 700, fontSize: '0.85rem',
+                            color: timeDiff > 0 ? '#f87171' : '#34d399',
+                          }}>
+                            {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '0.5rem 0.875rem' }}>
                         <span style={{
