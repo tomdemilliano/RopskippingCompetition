@@ -45,7 +45,7 @@ const SIZES = {
     trophy: 64,
     title: '3.2rem',
     event: '1.4rem',
-    logoSize: '5.5rem',
+    logoSize: '7.5rem',
     showLogosInPillar: true,
   },
   mini: {
