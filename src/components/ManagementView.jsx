@@ -112,6 +112,7 @@ export default function ManagementView() {
   const [importEventId,   setImportEventId]   = useState(null);
   const [showPdfImport,   setShowPdfImport]   = useState(false);
   const [editParticipant, setEditParticipant] = useState(null);
+  const [editParticipantFocusEventId, setEditParticipantFocusEventId] = useState(null);
   const [showAddParticipant, setShowAddParticipant] = useState(false);
 
   // Navigeer naar detailscherm
@@ -190,7 +191,10 @@ export default function ManagementView() {
               onEdit={handleEditFromDetail}
               onImport={(eventId) => setImportEventId(eventId)}
               onImportPdf={() => setShowPdfImport(true)}
-              onEditParticipant={(p) => setEditParticipant(p)}
+              onEditParticipant={(p, eventId) => {
+                setEditParticipant(p);
+                setEditParticipantFocusEventId(eventId ?? null);
+              }}
               onAddParticipant={() => setShowAddParticipant(true)}
             />
           </div>
@@ -234,7 +238,11 @@ export default function ManagementView() {
         <EditParticipantModal
           competitionId={selectedCompId}
           participant={editParticipant}
-          onClose={() => setEditParticipant(null)}
+          focusEventId={editParticipantFocusEventId}
+          onClose={() => {
+            setEditParticipant(null);
+            setEditParticipantFocusEventId(null);
+          }}
         />
       )}
 
@@ -250,6 +258,7 @@ export default function ManagementView() {
             // minimaal lokaal object volstaat (EditParticipantModal heeft
             // enkel id/name/clubId/entries nodig).
             setEditParticipant({ id, name: '', clubId: '', entries: [] });
+            setEditParticipantFocusEventId(null);
           }}
         />
       )}

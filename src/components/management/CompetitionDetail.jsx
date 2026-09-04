@@ -14,11 +14,12 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronLeft, ChevronRight,
-  Plus, ListTodo, Flag, Trophy, Megaphone,
+  Plus, ListTodo, Flag, Trophy, Megaphone, Repeat, X,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
 import { computeReopenCascade } from '../../blockCascade';
+import { resolveBlockEntries } from '../../blockParticipants';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import PodiumManager from '../PodiumManager';
@@ -215,17 +216,18 @@ const s = {
     minWidth: '300px',
     maxWidth: '460px',
   },
-  blockRow: (done) => ({
+  blockRow: (done, selected, clickable) => ({
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
     padding: '0.4rem 0.55rem',
     borderRadius: radius.sm,
     background: done ? color.surface : '#fff',
-    border: `1px solid ${color.borderSoft}`,
+    border: `1px solid ${selected ? color.primary : color.borderSoft}`,
     marginBottom: '4px',
     fontSize: '0.76rem',
     opacity: done ? 0.55 : 1,
+    cursor: clickable ? 'pointer' : 'default',
   }),
   blockOrder: {
     fontFamily: "'IBM Plex Mono', monospace",
@@ -269,6 +271,84 @@ const s = {
     background: color.surface,
     minWidth: 0,
     flex: '1 1 90px',
+  },
+
+  // Reeksdeelnemers — paneel dat verschijnt bij het aanklikken van een
+  // heats-blok in Programma
+  reeksPanel: {
+    flex: '1 1 320px',
+    minWidth: '280px',
+    maxWidth: '420px',
+  },
+  reeksPanelHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+    marginBottom: '0.6rem',
+  },
+  panelCloseBtn: {
+    background: 'none',
+    border: 'none',
+    color: color.faint,
+    cursor: 'pointer',
+    padding: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  reeksScroll: {
+    maxHeight: '320px',
+    overflowY: 'auto',
+    paddingRight: '2px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  reeksGroup: {
+    border: `1px solid ${color.borderSoft}`,
+    borderRadius: radius.sm,
+    padding: '0.4rem 0.5rem',
+    background: color.surface,
+  },
+  reeksGroupHeader: {
+    fontSize: '0.66rem',
+    fontWeight: 800,
+    color: color.faint,
+    marginBottom: '0.3rem',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  },
+  reeksParticipantRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '0.15rem 0',
+    fontSize: '0.76rem',
+  },
+  reeksFieldNr: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontWeight: 700,
+    color: color.faint,
+    minWidth: '1.3rem',
+    fontSize: '0.7rem',
+  },
+  reeksParticipantName: {
+    fontWeight: 700,
+    color: color.inkSoft,
+    flex: '1 1 auto',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  reeksClubName: {
+    color: color.muted,
+    fontSize: '0.7rem',
+    flex: '0 1 auto',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    maxWidth: '110px',
   },
 
   // Participants list
@@ -383,7 +463,8 @@ const s = {
  * @param {function} props.onEdit          — opent EditCompetitionModal
  * @param {function} props.onImport        — cb(eventId) opent ImportModal
  * @param {function} props.onImportPdf     — opent PdfImportModal (volledig wedstrijdschema)
- * @param {function} props.onEditParticipant — cb(participant) opent EditParticipantModal
+ * @param {function} props.onEditParticipant — cb(participant, eventId?) opent EditParticipantModal;
+ *   eventId optioneel om meteen de reskip-picker van dat onderdeel te openen
  * @param {function} props.onAddParticipant — opent AddParticipantModal
  */
 export default function CompetitionDetail({
@@ -431,6 +512,10 @@ export default function CompetitionDetail({
   const [newBlockLabel,   setNewBlockLabel]   = useState('');
   const [newBlockTime,    setNewBlockTime]    = useState('');
 
+  // Welk heats-blok in Programma aangeklikt is — toont zijn reeksen/
+  // deelnemers in een paneel ernaast.
+  const [selectedBlockId, setSelectedBlockId] = useState(null);
+
   const competition = competitions.find(c => c.id === competitionId) ?? null;
 
   // Laad deelnemers en programma (blocks) bij selectie
@@ -444,6 +529,12 @@ export default function CompetitionDetail({
   const sortedBlocks = useMemo(
     () => [...blocks].sort((a, b) => a.order - b.order),
     [blocks]
+  );
+
+  const selectedBlock = sortedBlocks.find(b => b.id === selectedBlockId) ?? null;
+  const blockEntries = useMemo(
+    () => resolveBlockEntries(selectedBlock, sortedBlocks, participants),
+    [selectedBlock, sortedBlocks, participants]
   );
 
   // Blok markeren als afgewerkt: gewoon de status wijzigen, geen cascade
@@ -513,6 +604,20 @@ export default function CompetitionDetail({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [participants, filterStatus, searchTerm, isFullyScratched, getClub]);
+
+  // Aantal deelnemers per status — los van de zoek-/filterkeuze, zodat de
+  // filterknoppen altijd de volledige stand van zaken tonen (live, want
+  // participants komt uit een Firestore-listener). searchTerm blijft dus
+  // bewust buiten deze telling.
+  const filterCounts = useMemo(() => {
+    const counts = { alle: participants.length, aangemeld: 0, 'niet-aangemeld': 0, geschrapt: 0 };
+    for (const p of participants) {
+      if (isFullyScratched(p)) counts.geschrapt++;
+      else if (p.isPresent) counts.aangemeld++;
+      else counts['niet-aangemeld']++;
+    }
+    return counts;
+  }, [participants, isFullyScratched]);
 
   // Aantal deelnemers per event (actief)
   const participantCountByEvent = useMemo(() => {
@@ -706,11 +811,17 @@ export default function CompetitionDetail({
         <div style={s.blocksScroll}>
           {sortedBlocks.map(b => {
             const done = b.status === 'afgewerkt';
+            const clickable = b.type === 'heats';
+            const selected = b.id === selectedBlockId;
             const label = b.type === 'heats'
               ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
               : (b.label || blockTypeLabels[b.type] || b.type);
             return (
-              <div key={b.id} style={s.blockRow(done)}>
+              <div
+                key={b.id}
+                style={s.blockRow(done, selected, clickable)}
+                onClick={clickable ? () => setSelectedBlockId(selected ? null : b.id) : undefined}
+              >
                 <span style={s.blockOrder}>{b.order}</span>
                 <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
                 <span style={s.blockLabel}>{label}</span>
@@ -718,14 +829,14 @@ export default function CompetitionDetail({
                 <button
                   style={s.actionBtn(done ? color.warning : color.success)}
                   title={done ? 'Heropenen' : 'Markeer afgewerkt'}
-                  onClick={() => handleToggleBlock(b)}
+                  onClick={(e) => { e.stopPropagation(); handleToggleBlock(b); }}
                 >
                   {done ? <RotateCcw size={15} /> : <Check size={15} />}
                 </button>
                 <button
                   style={s.actionBtn(color.danger)}
                   title="Verwijderen"
-                  onClick={() => deleteBlock(competition.id, b.id)}
+                  onClick={(e) => { e.stopPropagation(); deleteBlock(competition.id, b.id); }}
                 >
                   <Trash2 size={15} />
                 </button>
@@ -779,6 +890,55 @@ export default function CompetitionDetail({
         </div>
       </div>
 
+      {/* ── Reeksdeelnemers van het aangeklikte blok ── */}
+      {selectedBlock && (
+        <div style={{ ...s.panel, ...s.reeksPanel }}>
+          <div style={s.reeksPanelHeader}>
+            <div style={{ ...s.panelLabel, marginBottom: 0 }}>
+              <Users size={11} /> {events.find(e => e.id === selectedBlock.eventId)?.name ?? '— onbekend onderdeel —'}
+            </div>
+            <button style={s.panelCloseBtn} title="Sluiten" onClick={() => setSelectedBlockId(null)}>
+              <X size={15} />
+            </button>
+          </div>
+
+          {blockEntries.seriesNrs.length === 0 && (
+            <div style={{ fontSize: '0.78rem', color: color.faint, fontStyle: 'italic' }}>
+              Geen deelnemers gevonden voor dit blok.
+            </div>
+          )}
+
+          <div style={s.reeksScroll}>
+            {blockEntries.seriesNrs.map(nr => {
+              const rows = blockEntries.entriesBySeriesNr.get(nr);
+              return (
+                <div key={nr} style={s.reeksGroup}>
+                  <div style={s.reeksGroupHeader}>
+                    Reeks {nr} · {rows[0]?._entry.scheduledTime || '--:--'}
+                  </div>
+                  {rows.map(p => (
+                    <div key={p.id} style={s.reeksParticipantRow}>
+                      <span style={s.reeksFieldNr}>{p._entry.fieldNr}</span>
+                      <span style={s.reeksParticipantName} title={p.name}>{p.name}</span>
+                      <span style={s.reeksClubName} title={getClub(p.clubId)?.name}>
+                        {getClub(p.clubId)?.name ?? '—'}
+                      </span>
+                      <button
+                        style={s.actionBtn(color.primary)}
+                        title="Reskip — verplaats naar een ander tijdslot"
+                        onClick={() => onEditParticipant(p, selectedBlock.eventId)}
+                      >
+                        <Repeat size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       </div>
       </div>
       )}
@@ -794,7 +954,7 @@ export default function CompetitionDetail({
                 style={s.filterBtn(filterStatus === f.key, f.c)}
                 onClick={() => setFilterStatus(f.key)}
               >
-                {f.icon} {f.label}
+                {f.icon} {f.label} ({filterCounts[f.key] ?? 0})
               </button>
             ))}
             <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: color.body, fontWeight: 700 }}>
