@@ -7,6 +7,10 @@
  * herkansing krijgt) naar een bestaand leeg tijdslot of een nieuwe reeks
  * achteraan het onderdeel. Dit is de enige plek waar zulke correcties
  * gebeuren — Aanwezigheidsregistratie toont onderdelen enkel read-only.
+ *
+ * Optionele prop `focusEventId`: opent de modal meteen met de reskip-picker
+ * van dat ene onderdeel uitgeklapt (gebruikt door CompetitionDetail.jsx's
+ * Programma-blokoverzicht — klik een blok, reskip een deelnemer eruit).
  */
 
 import React, { useMemo, useState } from 'react';
@@ -183,7 +187,7 @@ function SlotPicker({ event, participants, excludeParticipantId, onConfirm, onCa
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function EditParticipantModal({ competitionId, participant, onClose }) {
+export default function EditParticipantModal({ competitionId, participant, focusEventId, onClose }) {
   const {
     competitions,
     clubs,
@@ -202,8 +206,13 @@ export default function EditParticipantModal({ competitionId, participant, onClo
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
 
-  // 'add:<eventId>' of 'reskip:<eventId>' — welk slot-picker paneel open staat
-  const [activePicker, setActivePicker] = useState(null);
+  // 'add:<eventId>' of 'reskip:<eventId>' — welk slot-picker paneel open staat.
+  // focusEventId (bv. vanuit het Programma-blokoverzicht in Beheer) opent
+  // meteen de reskip-picker van dat onderdeel, i.p.v. dat de operator hem
+  // zelf tussen de onderdelen moet opzoeken.
+  const [activePicker, setActivePicker] = useState(
+    focusEventId ? `reskip:${focusEventId}` : null
+  );
 
   // Events waaraan deze deelnemer meedoet
   const participantEvents = sortedEvents.filter(ev =>

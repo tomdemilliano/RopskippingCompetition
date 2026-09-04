@@ -60,6 +60,7 @@ src/
   theme.js                         # Design tokens: color, radius, shadow, font, space, statusColor
   timeUtils.js                     # timeToMinutes("HH:MM") — gedeeld door pdfSchedule.js en LiveView.jsx
   blockCascade.js                  # computeReopenCascade — gedeeld door LiveView.jsx en CompetitionDetail.jsx
+  blockParticipants.js             # resolveBlockEntries — reeksen/deelnemers van een blok (CompetitionDetail.jsx)
   pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
   pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
   pdfImport.js                     # Browserlaag (pdfjs-worker) — enige toegangspunt voor componenten
@@ -545,6 +546,17 @@ een nieuwe reeks mogelijk.
 toevoegen"-stap toegekend worden — geen aparte, tweede manier om iemand aan
 een onderdeel te koppelen.
 
+**Live aanwezigheid.** `participants` komt via `participantFactory.subscribe`
+(een `onSnapshot`-listener, gestart door `loadParticipants`) binnen — geen
+eenmalige `getDocs`. Wijzigt iemand de aanwezigheidsstatus in
+`AttendanceView` (elders, zelfs een ander tabblad/toestel), dan komt die
+wijziging dus vanzelf binnen in `CompetitionDetail`'s Deelnemers-tab zolang
+beide naar dezelfde wedstrijd kijken — geen aparte "ververs"-actie nodig. De
+filterknoppen (Alle/Aangemeld/Niet aangemeld/Geschrapt) tonen daarom ook een
+live aantal per status (`filterCounts`, berekend over de volledige
+`participants`-lijst, los van de zoekterm) zodat de wedstrijdbeheerder in één
+oogopslag de actuele stand ziet.
+
 ---
 
 ## Dagtijdlijn (`blocks`)
@@ -584,6 +596,22 @@ klikbaar (manuele `activeEventId`-overschrijving, zie hieronder).
 `CompetitionDetail` (Beheer) heeft een minimale "Programma"-sectie om blokken
 manueel te beheren (nodig zolang PDF-import — dat blokken automatisch zal
 aanmaken — er nog niet is).
+
+**Reeksdeelnemers per blok bekijken + reskippen.** Een heats-blokrij in
+Programma is klikbaar (niet-heats-rijen niet — er zijn dan geen reeksen om te
+tonen): dit opent een derde paneel ernaast met alle reeksen van dat blok en
+hun deelnemers per veld. `src/blockParticipants.js#resolveBlockEntries(block,
+sortedBlocks, participants)` is de pure logica hierachter — dezelfde
+tijdvenster-afbakening als `LiveView`'s `eventParticipants` hierboven, maar
+geparametriseerd op een willekeurig, expliciet blok i.p.v. enkel het
+live-actieve, zodat Beheer élk blok kan tonen. Bewust een apart bestand i.p.v.
+LiveView's inline versie hergebruiken: die is verweven met haar eigen
+navigatiestate (`currentBlock`/`activeEventId`/`activeSeriesNr`) — enkel de
+onderliggende berekening is hier los getrokken. Elke deelnemersrij heeft een
+**Reskip**-knop die `EditParticipantModal` opent met `focusEventId` gezet op
+het blok se `eventId`, zodat de reskip-picker van dát onderdeel meteen
+openstaat i.p.v. dat de operator hem tussen alle onderdelen van de deelnemer
+moet opzoeken.
 
 ---
 
