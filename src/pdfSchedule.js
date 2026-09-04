@@ -31,7 +31,12 @@ import { timeToMinutes } from './timeUtils';
 export const TIME_RE = /^(\d{1,2}):(\d{2})$/;
 const VELD_NUM_RE = /^Veld\s+(\d+)\s*$/i;
 const VELD_LETTER_RE = /^Veld\s+([A-Za-z])\b\s*-?\s*(.*)$/i;
-const TITLE_RE = /^Individuele wedstrijd/i;
+// Gymfed gebruikt meerdere titelvarianten voor dezelfde paginakop, met
+// wisselende woordvolgorde per wedstrijdfase — "Individuele wedstrijd" en
+// "Voorronde Individueel | <dag> ..." zijn beide waargenomen. Bewust geen
+// vaste prefix: zoek gewoon het woord "individuele"/"individueel" ergens in
+// de regel, ongeacht wat ervoor staat.
+const TITLE_RE = /\bindividue(el|le)\b/i;
 
 export { timeToMinutes };
 

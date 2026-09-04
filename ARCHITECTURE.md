@@ -411,11 +411,14 @@ rechtstreeks.
 
 ### Grammatica
 
-Elke pagina begint met "Individuele wedstrijd" gevolgd door een dagdeel-titel
-(bv. "B-niveau 13-15 jaar (...)") — een wissel van die titel opent een nieuwe
-**sectie**. Eén PDF kan dus meerdere dagdelen/wedstrijden bevatten;
-`PdfImportModal` laat de gebruiker kiezen welke sectie bij de geopende
-wedstrijd hoort zodra er meer dan één is.
+Elke pagina begint met een titelregel die het woord "individuele"/
+"individueel" bevat (Gymfed gebruikt hiervoor meerdere woordvolgordes per
+wedstrijdfase, bv. "Individuele wedstrijd" of "Voorronde Individueel |
+<dag> ..." — `TITLE_RE` zoekt bewust enkel het woord zelf, niet een vaste
+prefix), gevolgd door een dagdeel-titel (bv. "B-niveau 13-15 jaar (...)") —
+een wissel van die titel opent een nieuwe **sectie**. Eén PDF kan dus
+meerdere dagdelen/wedstrijden bevatten; `PdfImportModal` laat de gebruiker
+kiezen welke sectie bij de geopende wedstrijd hoort zodra er meer dan één is.
 
 Binnen een sectie:
 - Een onderdeelnaam-regel (bv. "Speed Sprint (30 seconden)") opent een nieuw
