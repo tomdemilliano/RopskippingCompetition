@@ -653,6 +653,22 @@ blijft de "Verwacht"-kolomkop leeg, want elke individuele rij laat zijn
 Verwacht-cel dan leeg. Freestyle-rijen (elk potentieel een eigen reekstijd)
 behouden gewoon hun per-rij uur en kolomkop, zoals voorheen.
 
+**`nextList` tijdens een pauze/briefing vóór de eerste reeks na die pauze.**
+`officialSeriesNr` ("eerste nog niet voltooide reeks", uit `finishedSeries`)
+is normaal de reeks die NU loopt — `nextList` toonde daarom altijd de reeks
+ERNA. Staat `currentBlock` echter nog op een niet-heats blok (`isBreakBlock`
+— pauze/briefing/deuren/proefjury/prijsuitreiking, bv. een jurybriefing vóór
+de allereerste reeks van de dag), dan is `officialSeriesNr` zelf nog niet
+gestart: het linkerpaneel toont dan het pauzescherm, niet die reeks. In dat
+geval moet `nextList` die reeks dus ZELF tonen i.p.v. de reeks erna, anders
+slaat het grote scherm telkens na elke pauze/briefing ten onrechte de eerste
+erop volgende reeks over. `currentBlock`/`isBreakBlock` worden daarom nu
+vóór `nextList` berekend en zijn een afhankelijkheid van die useMemo; de
+twee eerder losstaande, bijna-identieke veldenlijst-opbouwers (voor "reeks
+erna" en voor "eerste reeks van het volgende event") zijn samengetrokken tot
+één gedeelde module-level helper `buildFieldList(seriesNr, participants)`,
+nu ook gebruikt door deze nieuwe pauze-tak én door `fullFieldsList`.
+
 ### Blok-gedreven navigatie in LiveView
 
 `LiveView` volgt de dagtijdlijn actief, niet enkel bij het tonen van een

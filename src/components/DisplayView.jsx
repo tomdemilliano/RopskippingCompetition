@@ -37,6 +37,22 @@ function calcExpectedTime(scheduledTime, timeDiff) {
   }
 }
 
+/**
+ * Veldenlijst voor één reeks van een speed-event (fieldNr 1..max), aangevuld
+ * met lege velden — gedeeld door de "nu bezig"-lijst en de twee plekken in
+ * nextList die telkens één reeks moeten weergeven.
+ */
+function buildFieldList(seriesNr, eventParticipants) {
+  const raw = eventParticipants.filter(p => p._entry.seriesNr === seriesNr);
+  const max = Math.max(...raw.map(p => parseInt(p._entry.fieldNr) || 0), 0);
+  const list = [];
+  for (let v = 1; v <= max; v++) {
+    const s = raw.find(p => parseInt(p._entry.fieldNr) === v);
+    list.push(s ?? { _isEmpty: true, _entry: { fieldNr: v } });
+  }
+  return list;
+}
+
 /** Afwijking t.o.v. het geplande uur — enkel zichtbaar vanaf > 2 minuten. */
 function TimeDeviationBadge({ timeDiff }) {
   if (timeDiff === null || Math.abs(timeDiff) <= 2) return null;
@@ -126,6 +142,16 @@ export default function DisplayView({ onClose }) {
 
   const totalSeries = seriesNrs.length;
 
+  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
+  // Vóór nextList nodig: zolang dit een pauze/briefing/proefjury/... is, is
+  // officialSeriesNr nog niet echt gestart (zie nextList hieronder).
+  const currentBlock = useMemo(() =>
+    [...blocks].sort((a, b) => a.order - b.order).find(b => b.status !== 'afgewerkt') ?? null,
+  [blocks]);
+  const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
+  const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
+  const BreakIcon = BREAK_ICONS[currentBlock?.type] ?? Coffee;
+
   // Deelnemers in de officiële reeks
   const currentSkippers = useMemo(() =>
     eventParticipants.filter(p => p._entry.seriesNr === officialSeriesNr),
@@ -142,27 +168,13 @@ export default function DisplayView({ onClose }) {
     return Math.floor((currentTime - planned) / 60000);
   }, [plannedTime, currentTime]);
 
-  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
-  const currentBlock = useMemo(() =>
-    [...blocks].sort((a, b) => a.order - b.order).find(b => b.status !== 'afgewerkt') ?? null,
-  [blocks]);
-  const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
-  const breakLabel = currentBlock?.label || blockTypeLabels[currentBlock?.type] || 'Pauze';
-  const BreakIcon = BREAK_ICONS[currentBlock?.type] ?? Coffee;
-
   const MessageIcon = MESSAGE_ICON_MAP[activeMessage.icon] ?? null;
 
   // Volledig veldlijst (speed: aanvullen met lege velden)
   const fullFieldsList = useMemo(() => {
     if (isFreestyle || currentSkippers.length === 0) return currentSkippers;
-    const maxField = Math.max(...currentSkippers.map(p => parseInt(p._entry.fieldNr) || 0), 0);
-    const list = [];
-    for (let v = 1; v <= maxField; v++) {
-      const skipper = currentSkippers.find(p => parseInt(p._entry.fieldNr) === v);
-      list.push(skipper ?? { _isEmpty: true, _entry: { fieldNr: v } });
-    }
-    return list;
-  }, [currentSkippers, isFreestyle]);
+    return buildFieldList(officialSeriesNr, eventParticipants);
+  }, [eventParticipants, currentSkippers, isFreestyle, officialSeriesNr]);
 
   // Volgende lijst — zelfde event of volgend event. Bij speed (meerdere
   // velden per reeks) delen alle rijen dezelfde scheduledTime — daarom
@@ -172,6 +184,24 @@ export default function DisplayView({ onClose }) {
     const empty = { nextList: [], nextEventObj: null, isNextEvent: false, nextIsFreestyle: false, groupSeriesNr: null, groupSeriesTotal: null };
     if (!officialEvent) return empty;
 
+    // Zolang het huidige blok een pauze/briefing/proefjury/deuren/... is, is
+    // officialSeriesNr (de "officieel actieve" reeks) nog niet echt gestart
+    // — het linkerpaneel toont dan het pauzescherm i.p.v. die reeks (zie
+    // isBreakBlock hierboven). "Volgende" moet dan DIE reeks zelf tonen,
+    // niet de reeks erna — anders slaat het grote scherm de eerste reeks na
+    // elke pauze/briefing altijd ten onrechte over.
+    if (isBreakBlock) {
+      const list = isFreestyle
+        ? eventParticipants.filter(p => p._entry.seriesNr >= officialSeriesNr).slice(0, 8)
+        : buildFieldList(officialSeriesNr, eventParticipants);
+      return {
+        nextList: list, nextEventObj: officialEvent, isNextEvent: false,
+        nextIsFreestyle: isFreestyle,
+        groupSeriesNr: isFreestyle ? null : officialSeriesNr,
+        groupSeriesTotal: isFreestyle ? null : totalSeries,
+      };
+    }
+
     const currentSeriesIdx = seriesNrs.indexOf(officialSeriesNr);
     const hasMoreSeries = currentSeriesIdx < seriesNrs.length - 1;
 
@@ -179,16 +209,7 @@ export default function DisplayView({ onClose }) {
       const nextNr   = seriesNrs[currentSeriesIdx + 1];
       const nextList = isFreestyle
         ? eventParticipants.filter(p => p._entry.seriesNr > officialSeriesNr).slice(0, 8)
-        : (() => {
-            const raw = eventParticipants.filter(p => p._entry.seriesNr === nextNr);
-            const max = Math.max(...raw.map(p => parseInt(p._entry.fieldNr) || 0), 0);
-            const list = [];
-            for (let v = 1; v <= max; v++) {
-              const s = raw.find(p => parseInt(p._entry.fieldNr) === v);
-              list.push(s ?? { _isEmpty: true, _entry: { fieldNr: v } });
-            }
-            return list;
-          })();
+        : buildFieldList(nextNr, eventParticipants);
       return {
         nextList, nextEventObj: officialEvent, isNextEvent: false,
         nextIsFreestyle: isFreestyle,
@@ -214,16 +235,7 @@ export default function DisplayView({ onClose }) {
         const firstNr = nextParts[0]._entry.seriesNr;
         const list = nextFreestyle
           ? nextParts.slice(0, 8)
-          : (() => {
-              const raw = nextParts.filter(p => p._entry.seriesNr === firstNr);
-              const max = Math.max(...raw.map(p => parseInt(p._entry.fieldNr) || 0), 0);
-              const result = [];
-              for (let v = 1; v <= max; v++) {
-                const s = raw.find(p => parseInt(p._entry.fieldNr) === v);
-                result.push(s ?? { _isEmpty: true, _entry: { fieldNr: v } });
-              }
-              return result;
-            })();
+          : buildFieldList(firstNr, nextParts);
         return {
           nextList: list, nextEventObj: nextEv, isNextEvent: true,
           nextIsFreestyle: nextFreestyle,
@@ -234,7 +246,7 @@ export default function DisplayView({ onClose }) {
     }
 
     return empty;
-  }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedEvents, participants, isFreestyle, totalSeries]);
+  }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedEvents, participants, isFreestyle, totalSeries, isBreakBlock]);
 
   // Bij speed (meerdere deelnemers/velden per reeks) delen alle rijen van
   // displayList dezelfde reekstijd — die hoort dan ook maar één keer getoond
