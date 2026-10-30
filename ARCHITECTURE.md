@@ -504,10 +504,19 @@ Hergebruikt zoveel mogelijk van het bestaande CSV-stramien (`ImportModal`):
 
 ## Deelnemersbeheer en correcties
 
-`CompetitionDetail` heeft twee interne tabs, geen lange verticale stapel meer:
-- **Wedstrijd** — Onderdelen en Programma (dagtijdlijn), compact naast elkaar
-  in twee smalle kolommen (elk met eigen `max-height` + interne scroll). Dit
-  is configuratie-informatie, niet iets waar continu in gewerkt wordt.
+`CompetitionDetail` heeft vier interne tabs, geen lange verticale stapel meer:
+- **Algemeen** — wedstrijdgegevens (naam/type/locatie/datum, met een
+  "Bewerken"-knop die `EditCompetitionModal` opent) en Onderdelen, compact
+  naast elkaar. Dit is configuratie-informatie, niet iets waar continu in
+  gewerkt wordt.
+- **Programma** — dagtijdlijn links, reeksen/deelnemers van het
+  geselecteerde blok rechts, **beide over de volle hoogte van het scherm**
+  (geen `tabScroll`, zelfde volle-hoogte-patroon als Deelnemers hieronder).
+  Bewust een eigen tab i.p.v. samen met Algemeen: onderdelen (Onderdelen-
+  tab) en programmablokken (Programma-tab) zijn conceptueel losgekoppeld —
+  een onderdeel bestaat los van hoe/wanneer het in de dagtijdlijn ingepland
+  staat — en beide hebben, zodra een wedstrijd een PDF-import met veel
+  blokken/reeksen heeft, elk hun eigen volle scherm nodig.
 - **Deelnemers** — de volledige deelnemerstabel, op een lege tab dus met de
   volle beschikbare hoogte. Dit is het scherm waar tijdens en rond een
   wedstrijd het meest in gewerkt wordt (aanmelden, corrigeren, reskips) en
@@ -594,22 +603,25 @@ dagtijdlijn (heats- én niet-heats-blokken, met hun `scheduledTime`) i.p.v.
 enkel de kale onderdelenlijst van vroeger — enkel heats-blokken zijn
 klikbaar (manuele `activeEventId`-overschrijving, zie hieronder).
 
-`CompetitionDetail` (Beheer) heeft een minimale "Programma"-sectie om blokken
+`CompetitionDetail` (Beheer) heeft een minimale "Programma"-tab om blokken
 manueel te beheren (nodig zolang PDF-import — dat blokken automatisch zal
 aanmaken — er nog niet is): aanmaken, benaming (niet-heats) en starttijd
 bewerken (potloodknop → inline formulier, `updateBlock`), status wisselen
-(afwerken/heropenen) en verwijderen. De "Wedstrijd"-tab is een verticale
-stack i.p.v. een flex-rij: enkel Onderdelen blijft smal (compacte lijst, geen
-nood aan volle breedte); Programma en — indien een blok aangeklikt is —
-Reeksdeelnemers (hieronder) krijgen elk de volle breedte, want een lange
-dagtijdlijn of een onderdeel met veel velden heeft die ruimte wel nodig. De
-volgorde-chevrons bij Onderdelen wijzen op-en-neer (niet links-rechts) — dat
-is de visueel logische richting in een verticale lijst.
+(afwerken/heropenen) en verwijderen. Deze tab is zelf, net als Deelnemers,
+een **volle-hoogte** layout (geen `tabScroll`): links de dagtijdlijn, rechts
+de reeksen/deelnemers van het geselecteerde blok (hieronder) — beide
+kolommen vullen de beschikbare hoogte met een eigen interne scroll, zodat
+een lange dagtijdlijn (na een PDF-import met tientallen blokken) of een
+onderdeel met veel velden niet meer vast zit op een paar honderd pixels
+hoogte. Zonder geselecteerd blok toont de rechterkolom een duidelijke
+plaatshouder ("Selecteer een blok..."). De volgorde-chevrons bij Onderdelen
+(Algemeen-tab) wijzen op-en-neer (niet links-rechts) — dat is de visueel
+logische richting in een verticale lijst.
 
 **Reeksdeelnemers per blok bekijken + reskippen.** Een heats-blokrij in
 Programma is klikbaar (niet-heats-rijen niet — er zijn dan geen reeksen om te
-tonen): dit opent een derde paneel ernaast met alle reeksen van dat blok en
-hun deelnemers per veld. `src/blockParticipants.js#resolveBlockEntries(block,
+tonen): dit toont in de rechterkolom alle reeksen van dat blok en hun
+deelnemers per veld. `src/blockParticipants.js#resolveBlockEntries(block,
 sortedBlocks, participants, events)` is de pure logica hierachter — dezelfde
 tijdvenster-afbakening als `LiveView`'s `eventParticipants` hierboven, maar
 geparametriseerd op een willekeurig, expliciet blok i.p.v. enkel het

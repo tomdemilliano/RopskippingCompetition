@@ -14,7 +14,7 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronUp, ChevronDown,
-  Plus, ListTodo, Flag, Trophy, Megaphone, Repeat, X,
+  Plus, ListTodo, Flag, Trophy, Megaphone, Repeat, X, Info,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
@@ -118,15 +118,13 @@ const s = {
     alignItems: 'center',
   }),
 
-  // "Wedstrijd"-tab: onderdelen (compact) boven, programma en (indien een
-  // blok aangeklikt is) reeksdeelnemers elk over de volle breedte daaronder
-  // — die laatste twee hebben de ruimte nodig (lange dagtijdlijnen, brede
-  // reeksoverzichten), onderdelen niet.
+  // "Algemeen"-tab: wedstrijdgegevens + onderdelen, compact naast elkaar
   overviewGrid: {
     display: 'flex',
-    flexDirection: 'column',
     gap: '1.25rem',
+    alignItems: 'flex-start',
     padding: '1.1rem 1.5rem',
+    flexWrap: 'wrap',
   },
   panel: {
     background: color.surfaceAlt,
@@ -146,10 +144,40 @@ const s = {
     gap: '6px',
   },
 
-  // Events panel — compacte verticale lijst, blijft smal (geen volle
-  // breedte nodig) i.p.v. mee te stretchen in de verticale stack.
+  // Wedstrijdgegevens panel
+  infoPanel: {
+    flex: '1 1 280px',
+    minWidth: '260px',
+    maxWidth: '380px',
+  },
+  infoRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    padding: '0.35rem 0',
+    fontSize: '0.82rem',
+    borderBottom: `1px solid ${color.borderSoft}`,
+  },
+  infoLabel: {
+    color: color.faint,
+    fontWeight: 700,
+    fontSize: '0.72rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    flexShrink: 0,
+  },
+  infoValue: {
+    color: color.inkSoft,
+    fontWeight: 600,
+    textAlign: 'right',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+
+  // Events panel — compacte verticale lijst
   eventsPanel: {
-    alignSelf: 'flex-start',
+    flex: '1 1 280px',
     minWidth: '260px',
     maxWidth: '420px',
   },
@@ -213,8 +241,30 @@ const s = {
   }),
 
   // Programma (blocks) — volle breedte, lange dagtijdlijnen hebben de ruimte nodig
-  programmaPanel: {
-    width: '100%',
+  // "Programma"-tab: dagtijdlijn links, reeksen/deelnemers van het
+  // geselecteerde blok rechts — beide over de volle hoogte van het scherm
+  // (geen tabScroll: dit is net als de Deelnemers-tab een volle-hoogte
+  // layout, geen lange-pagina-scroll).
+  programmaSplit: {
+    flex: 1,
+    display: 'flex',
+    gap: '1.25rem',
+    padding: '1.1rem 1.5rem',
+    overflow: 'hidden',
+    minHeight: 0,
+  },
+  programmaLeftPanel: {
+    flex: '0 0 380px',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  programmaRightPanel: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
   },
   blockRow: (done, selected, clickable) => ({
     display: 'flex',
@@ -262,7 +312,7 @@ const s = {
     whiteSpace: 'nowrap',
   },
   blocksScroll: {
-    maxHeight: '260px',
+    flex: 1,
     overflowY: 'auto',
     paddingRight: '2px',
   },
@@ -272,6 +322,7 @@ const s = {
     marginTop: '0.6rem',
     flexWrap: 'wrap',
     alignItems: 'center',
+    flexShrink: 0,
   },
   addBlockInput: {
     border: `1px solid ${color.faintest}`,
@@ -283,17 +334,15 @@ const s = {
     flex: '1 1 90px',
   },
 
-  // Reeksdeelnemers — paneel dat verschijnt bij het aanklikken van een
-  // heats-blok in Programma, over de volle breedte (lange reeksoverzichten)
-  reeksPanel: {
-    width: '100%',
-  },
+  // Reeksdeelnemers — rechterpaneel van de Programma-tab, toont de reeksen
+  // en deelnemers van het in de dagtijdlijn geselecteerde blok
   reeksPanelHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '0.5rem',
     marginBottom: '0.6rem',
+    flexShrink: 0,
   },
   panelCloseBtn: {
     background: 'none',
@@ -306,12 +355,24 @@ const s = {
     flexShrink: 0,
   },
   reeksScroll: {
-    maxHeight: '320px',
+    flex: 1,
     overflowY: 'auto',
     paddingRight: '2px',
     display: 'flex',
     flexDirection: 'column',
     gap: '0.5rem',
+  },
+  reeksEmptyState: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.75rem',
+    color: color.faint,
+    fontSize: '0.85rem',
+    textAlign: 'center',
+    padding: '2rem',
   },
   reeksGroup: {
     border: `1px solid ${color.borderSoft}`,
@@ -515,8 +576,9 @@ export default function CompetitionDetail({
     unfinishSeries,
   } = useAppContext();
 
-  // 'wedstrijd' (onderdelen + programma) | 'deelnemers' (volle hoogte)
-  const [detailTab, setDetailTab] = useState('wedstrijd');
+  // 'algemeen' (wedstrijdgegevens + onderdelen) | 'programma' (dagtijdlijn +
+  // reeksdeelnemers, volle hoogte) | 'deelnemers' (volle hoogte)
+  const [detailTab, setDetailTab] = useState('algemeen');
 
   const [filterStatus, setFilterStatus] = useState('alle');
   const [searchTerm,   setSearchTerm]   = useState('');
@@ -769,8 +831,11 @@ export default function CompetitionDetail({
 
       {/* ── Interne tabs ── */}
       <div style={s.tabsBar}>
-        <button style={s.tab(detailTab === 'wedstrijd')} onClick={() => setDetailTab('wedstrijd')}>
-          <ListTodo size={14} /> Wedstrijd
+        <button style={s.tab(detailTab === 'algemeen')} onClick={() => setDetailTab('algemeen')}>
+          <Info size={14} /> Algemeen
+        </button>
+        <button style={s.tab(detailTab === 'programma')} onClick={() => setDetailTab('programma')}>
+          <ListTodo size={14} /> Programma
         </button>
         <button style={s.tab(detailTab === 'deelnemers')} onClick={() => setDetailTab('deelnemers')}>
           <Users size={14} /> Deelnemers
@@ -785,9 +850,39 @@ export default function CompetitionDetail({
       </div>
 
       {/* ── Tab: Wedstrijd (onderdelen + programma) ── */}
-      {detailTab === 'wedstrijd' && (
+      {detailTab === 'algemeen' && (
       <div style={s.tabScroll}>
       <div style={s.overviewGrid}>
+
+      {/* ── Wedstrijdgegevens panel ── */}
+      <div style={{ ...s.panel, ...s.infoPanel }}>
+        <div style={s.panelLabel}><Info size={11} /> Wedstrijdgegevens</div>
+        <div style={s.infoRow}>
+          <span style={s.infoLabel}>Naam</span>
+          <span style={s.infoValue} title={competition.name}>{competition.name}</span>
+        </div>
+        <div style={s.infoRow}>
+          <span style={s.infoLabel}>Type</span>
+          <span style={s.infoValue} title={compTypeName}>{compTypeName}</span>
+        </div>
+        <div style={s.infoRow}>
+          <span style={s.infoLabel}>Locatie</span>
+          <span style={s.infoValue} title={competition.location}>{competition.location || '—'}</span>
+        </div>
+        <div style={s.infoRow}>
+          <span style={s.infoLabel}>Datum</span>
+          <span style={s.infoValue}>{competition.date || '—'}</span>
+        </div>
+        {!isLive && !isDone && (
+          <Button
+            variant="secondary" size="sm" icon={<Edit2 size={14} />}
+            onClick={onEdit}
+            style={{ marginTop: '0.75rem' }}
+          >
+            Bewerken
+          </Button>
+        )}
+      </div>
 
       {/* ── Events panel ── */}
       <div style={{ ...s.panel, ...s.eventsPanel }}>
@@ -833,199 +928,213 @@ export default function CompetitionDetail({
         </div>
       </div>
 
-      {/* ── Programma (dagtijdlijn) ── */}
-      <div style={{ ...s.panel, ...s.programmaPanel }}>
-        <div style={s.panelLabel}><ListTodo size={11} /> Programma (dagtijdlijn)</div>
+      </div>
+      </div>
+      )}
 
-        {sortedBlocks.length === 0 && (
-          <div style={{ fontSize: '0.78rem', color: color.faint, fontStyle: 'italic', marginBottom: '0.4rem' }}>
-            Nog geen blokken — komt automatisch mee bij PDF-import, of hieronder manueel toevoegen.
-          </div>
-        )}
+      {/* ── Tab: Programma (dagtijdlijn + reeksdeelnemers, volle hoogte) ── */}
+      {detailTab === 'programma' && (
+      <div style={s.programmaSplit}>
 
-        <div style={s.blocksScroll}>
-          {sortedBlocks.map(b => {
-            const done = b.status === 'afgewerkt';
-            const clickable = b.type === 'heats';
-            const selected = b.id === selectedBlockId;
-            const label = b.type === 'heats'
-              ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
-              : (b.label || blockTypeLabels[b.type] || b.type);
+        {/* ── Links: dagtijdlijn ── */}
+        <div style={{ ...s.panel, ...s.programmaLeftPanel }}>
+          <div style={s.panelLabel}><ListTodo size={11} /> Programma (dagtijdlijn)</div>
 
-            if (b.id === editingBlockId) {
-              return (
-                <div key={b.id} style={s.blockEditRow}>
-                  {b.type !== 'heats' && (
+          {sortedBlocks.length === 0 && (
+            <div style={{ fontSize: '0.78rem', color: color.faint, fontStyle: 'italic', marginBottom: '0.4rem' }}>
+              Nog geen blokken — komt automatisch mee bij PDF-import, of hieronder manueel toevoegen.
+            </div>
+          )}
+
+          <div style={s.blocksScroll}>
+            {sortedBlocks.map(b => {
+              const done = b.status === 'afgewerkt';
+              const clickable = b.type === 'heats';
+              const selected = b.id === selectedBlockId;
+              const label = b.type === 'heats'
+                ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
+                : (b.label || blockTypeLabels[b.type] || b.type);
+
+              if (b.id === editingBlockId) {
+                return (
+                  <div key={b.id} style={s.blockEditRow}>
+                    {b.type !== 'heats' && (
+                      <input
+                        style={s.addBlockInput}
+                        placeholder="Label"
+                        value={editBlockLabel}
+                        onChange={e => setEditBlockLabel(e.target.value)}
+                        autoFocus
+                      />
+                    )}
                     <input
                       style={s.addBlockInput}
-                      placeholder="Label"
-                      value={editBlockLabel}
-                      onChange={e => setEditBlockLabel(e.target.value)}
-                      autoFocus
+                      type="time"
+                      value={editBlockTime}
+                      onChange={e => setEditBlockTime(e.target.value)}
                     />
-                  )}
-                  <input
-                    style={s.addBlockInput}
-                    type="time"
-                    value={editBlockTime}
-                    onChange={e => setEditBlockTime(e.target.value)}
-                  />
-                  <button
-                    style={s.actionBtn(color.success)}
-                    title="Opslaan"
-                    onClick={() => handleSaveBlockEdit(b)}
-                  >
-                    <Check size={15} />
-                  </button>
-                  <button
-                    style={s.actionBtn(color.faint)}
-                    title="Annuleren"
-                    onClick={cancelEditBlock}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-              );
-            }
-
-            return (
-              <div
-                key={b.id}
-                style={s.blockRow(done, selected, clickable)}
-                onClick={clickable ? () => setSelectedBlockId(selected ? null : b.id) : undefined}
-              >
-                <span style={s.blockOrder}>{b.order}</span>
-                <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
-                <span style={s.blockLabel}>{label}</span>
-                <Badge tone="neutral">{b.type}</Badge>
-                <button
-                  style={s.actionBtn(color.primary)}
-                  title="Bewerken"
-                  onClick={(e) => { e.stopPropagation(); startEditBlock(b); }}
-                >
-                  <Edit2 size={15} />
-                </button>
-                <button
-                  style={s.actionBtn(done ? color.warning : color.success)}
-                  title={done ? 'Heropenen' : 'Markeer afgewerkt'}
-                  onClick={(e) => { e.stopPropagation(); handleToggleBlock(b); }}
-                >
-                  {done ? <RotateCcw size={15} /> : <Check size={15} />}
-                </button>
-                <button
-                  style={s.actionBtn(color.danger)}
-                  title="Verwijderen"
-                  onClick={(e) => { e.stopPropagation(); deleteBlock(competition.id, b.id); }}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={s.addBlockForm}>
-          <select
-            style={s.addBlockInput}
-            value={newBlockType}
-            onChange={e => setNewBlockType(e.target.value)}
-          >
-            <option value="heats">Onderdeel (reeksen)</option>
-            {Object.entries(blockTypeLabels).map(([type, label]) => (
-              <option key={type} value={type}>{label}</option>
-            ))}
-          </select>
-
-          {newBlockType === 'heats' ? (
-            <select
-              style={s.addBlockInput}
-              value={newBlockEventId}
-              onChange={e => setNewBlockEventId(e.target.value)}
-            >
-              <option value="">Kies onderdeel…</option>
-              {sortedEvents.map(ev => (
-                <option key={ev.id} value={ev.id}>{ev.name}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              style={s.addBlockInput}
-              placeholder="Label (optioneel)"
-              value={newBlockLabel}
-              onChange={e => setNewBlockLabel(e.target.value)}
-            />
-          )}
-
-          <input
-            style={s.addBlockInput}
-            type="time"
-            value={newBlockTime}
-            onChange={e => setNewBlockTime(e.target.value)}
-          />
-
-          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={handleAddBlock}>
-            Blok
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Reeksdeelnemers van het aangeklikte blok ── */}
-      {selectedBlock && (
-        <div style={{ ...s.panel, ...s.reeksPanel }}>
-          <div style={s.reeksPanelHeader}>
-            <div style={{ ...s.panelLabel, marginBottom: 0 }}>
-              <Users size={11} /> {events.find(e => e.id === selectedBlock.eventId)?.name ?? '— onbekend onderdeel —'}
-            </div>
-            <button style={s.panelCloseBtn} title="Sluiten" onClick={() => setSelectedBlockId(null)}>
-              <X size={15} />
-            </button>
-          </div>
-
-          {blockEntries.seriesNrs.length === 0 && (
-            <div style={{ fontSize: '0.78rem', color: color.faint, fontStyle: 'italic' }}>
-              Geen deelnemers gevonden voor dit blok.
-            </div>
-          )}
-
-          <div style={s.reeksScroll}>
-            {blockEntries.seriesNrs.map(nr => {
-              const rows = blockEntries.entriesBySeriesNr.get(nr);
-              const reeksTime = rows.find(p => !p._isEmpty)?._entry.scheduledTime || '--:--';
-              return (
-                <div key={nr} style={s.reeksGroup}>
-                  <div style={s.reeksGroupHeader}>
-                    Reeks {nr} · {reeksTime}
+                    <button
+                      style={s.actionBtn(color.success)}
+                      title="Opslaan"
+                      onClick={() => handleSaveBlockEdit(b)}
+                    >
+                      <Check size={15} />
+                    </button>
+                    <button
+                      style={s.actionBtn(color.faint)}
+                      title="Annuleren"
+                      onClick={cancelEditBlock}
+                    >
+                      <X size={15} />
+                    </button>
                   </div>
-                  {rows.map(p => (
-                    <div key={p.id ?? `empty-${nr}-${p._entry.fieldNr}`} style={s.reeksParticipantRow}>
-                      <span style={s.reeksFieldNr}>{p._entry.fieldNr}</span>
-                      {p._isEmpty ? (
-                        <span style={s.reeksEmptyLabel}>— leeg —</span>
-                      ) : (
-                        <>
-                          <span style={s.reeksParticipantName} title={p.name}>{p.name}</span>
-                          <span style={s.reeksClubName} title={getClub(p.clubId)?.name}>
-                            {getClub(p.clubId)?.name ?? '—'}
-                          </span>
-                          <button
-                            style={s.actionBtn(color.primary)}
-                            title="Reskip — verplaats naar een ander tijdslot"
-                            onClick={() => onEditParticipant(p, selectedBlock.eventId)}
-                          >
-                            <Repeat size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ))}
+                );
+              }
+
+              return (
+                <div
+                  key={b.id}
+                  style={s.blockRow(done, selected, clickable)}
+                  onClick={clickable ? () => setSelectedBlockId(selected ? null : b.id) : undefined}
+                >
+                  <span style={s.blockOrder}>{b.order}</span>
+                  <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
+                  <span style={s.blockLabel}>{label}</span>
+                  <Badge tone="neutral">{b.type}</Badge>
+                  <button
+                    style={s.actionBtn(color.primary)}
+                    title="Bewerken"
+                    onClick={(e) => { e.stopPropagation(); startEditBlock(b); }}
+                  >
+                    <Edit2 size={15} />
+                  </button>
+                  <button
+                    style={s.actionBtn(done ? color.warning : color.success)}
+                    title={done ? 'Heropenen' : 'Markeer afgewerkt'}
+                    onClick={(e) => { e.stopPropagation(); handleToggleBlock(b); }}
+                  >
+                    {done ? <RotateCcw size={15} /> : <Check size={15} />}
+                  </button>
+                  <button
+                    style={s.actionBtn(color.danger)}
+                    title="Verwijderen"
+                    onClick={(e) => { e.stopPropagation(); deleteBlock(competition.id, b.id); }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
 
-      </div>
+          <div style={s.addBlockForm}>
+            <select
+              style={s.addBlockInput}
+              value={newBlockType}
+              onChange={e => setNewBlockType(e.target.value)}
+            >
+              <option value="heats">Onderdeel (reeksen)</option>
+              {Object.entries(blockTypeLabels).map(([type, label]) => (
+                <option key={type} value={type}>{label}</option>
+              ))}
+            </select>
+
+            {newBlockType === 'heats' ? (
+              <select
+                style={s.addBlockInput}
+                value={newBlockEventId}
+                onChange={e => setNewBlockEventId(e.target.value)}
+              >
+                <option value="">Kies onderdeel…</option>
+                {sortedEvents.map(ev => (
+                  <option key={ev.id} value={ev.id}>{ev.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                style={s.addBlockInput}
+                placeholder="Label (optioneel)"
+                value={newBlockLabel}
+                onChange={e => setNewBlockLabel(e.target.value)}
+              />
+            )}
+
+            <input
+              style={s.addBlockInput}
+              type="time"
+              value={newBlockTime}
+              onChange={e => setNewBlockTime(e.target.value)}
+            />
+
+            <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={handleAddBlock}>
+              Blok
+            </Button>
+          </div>
+        </div>
+
+        {/* ── Rechts: reeksen & deelnemers van het geselecteerde blok ── */}
+        <div style={{ ...s.panel, ...s.programmaRightPanel }}>
+          {selectedBlock ? (
+            <>
+              <div style={s.reeksPanelHeader}>
+                <div style={{ ...s.panelLabel, marginBottom: 0 }}>
+                  <Users size={11} /> {events.find(e => e.id === selectedBlock.eventId)?.name ?? '— onbekend onderdeel —'}
+                </div>
+                <button style={s.panelCloseBtn} title="Sluiten" onClick={() => setSelectedBlockId(null)}>
+                  <X size={15} />
+                </button>
+              </div>
+
+              {blockEntries.seriesNrs.length === 0 && (
+                <div style={{ fontSize: '0.78rem', color: color.faint, fontStyle: 'italic' }}>
+                  Geen deelnemers gevonden voor dit blok.
+                </div>
+              )}
+
+              <div style={s.reeksScroll}>
+                {blockEntries.seriesNrs.map(nr => {
+                  const rows = blockEntries.entriesBySeriesNr.get(nr);
+                  const reeksTime = rows.find(p => !p._isEmpty)?._entry.scheduledTime || '--:--';
+                  return (
+                    <div key={nr} style={s.reeksGroup}>
+                      <div style={s.reeksGroupHeader}>
+                        Reeks {nr} · {reeksTime}
+                      </div>
+                      {rows.map(p => (
+                        <div key={p.id ?? `empty-${nr}-${p._entry.fieldNr}`} style={s.reeksParticipantRow}>
+                          <span style={s.reeksFieldNr}>{p._entry.fieldNr}</span>
+                          {p._isEmpty ? (
+                            <span style={s.reeksEmptyLabel}>— leeg —</span>
+                          ) : (
+                            <>
+                              <span style={s.reeksParticipantName} title={p.name}>{p.name}</span>
+                              <span style={s.reeksClubName} title={getClub(p.clubId)?.name}>
+                                {getClub(p.clubId)?.name ?? '—'}
+                              </span>
+                              <button
+                                style={s.actionBtn(color.primary)}
+                                title="Reskip — verplaats naar een ander tijdslot"
+                                onClick={() => onEditParticipant(p, selectedBlock.eventId)}
+                              >
+                                <Repeat size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div style={s.reeksEmptyState}>
+              <ListTodo size={32} color={color.faintest} />
+              <div>Selecteer een blok in de dagtijdlijn om de reeksen en deelnemers te bekijken.</div>
+            </div>
+          )}
+        </div>
+
       </div>
       )}
 
