@@ -596,7 +596,15 @@ klikbaar (manuele `activeEventId`-overschrijving, zie hieronder).
 
 `CompetitionDetail` (Beheer) heeft een minimale "Programma"-sectie om blokken
 manueel te beheren (nodig zolang PDF-import — dat blokken automatisch zal
-aanmaken — er nog niet is).
+aanmaken — er nog niet is): aanmaken, benaming (niet-heats) en starttijd
+bewerken (potloodknop → inline formulier, `updateBlock`), status wisselen
+(afwerken/heropenen) en verwijderen. De "Wedstrijd"-tab is een verticale
+stack i.p.v. een flex-rij: enkel Onderdelen blijft smal (compacte lijst, geen
+nood aan volle breedte); Programma en — indien een blok aangeklikt is —
+Reeksdeelnemers (hieronder) krijgen elk de volle breedte, want een lange
+dagtijdlijn of een onderdeel met veel velden heeft die ruimte wel nodig. De
+volgorde-chevrons bij Onderdelen wijzen op-en-neer (niet links-rechts) — dat
+is de visueel logische richting in een verticale lijst.
 
 **Reeksdeelnemers per blok bekijken + reskippen.** Een heats-blokrij in
 Programma is klikbaar (niet-heats-rijen niet — er zijn dan geen reeksen om te
