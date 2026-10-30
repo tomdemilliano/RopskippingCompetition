@@ -18,6 +18,7 @@ import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { timeToMinutes } from '../timeUtils';
 import { computeReopenCascade } from '../blockCascade';
+import { maxFieldNr as computeMaxFieldNr } from '../fieldLayout';
 import PodiumManager from './PodiumManager';
 import PodiumCeremonyPanel from './PodiumCeremonyPanel';
 import MessageManager from './MessageManager';
@@ -577,13 +578,15 @@ export default function LiveView() {
   const isSeriesDone  = doneInEvent.includes(activeSeriesNr);
   const isEventDone   = finishedEvents.includes(activeEventId);
 
-  // Max veld in huidige reeks (voor speed)
+  // Max veld van het onderdeel (voor speed) — bewust over ALLE reeksen van
+  // het onderdeel berekend, niet enkel de getoonde reeks: blijft een veld in
+  // precies deze reeks leeg (niets ingevuld bij PDF-import), dan vult een
+  // andere reeks van hetzelfde onderdeel dat veld doorgaans wel, en telt dus
+  // mee — zonder dit zou zo'n structureel bestaand, maar toevallig leeg veld
+  // in deze reeks gewoon onzichtbaar blijven i.p.v. als leeg plekje te tonen.
   const maxFieldNr = useMemo(() =>
-    currentSeriesParticipants.reduce((max, p) => {
-      const f = parseInt(p._entry.fieldNr) || 0;
-      return f > max ? f : max;
-    }, 0),
-  [currentSeriesParticipants]);
+    computeMaxFieldNr(allEventParticipants),
+  [allEventParticipants]);
 
   // Volgende deelnemers (freestyle)
   const upcomingParticipants = useMemo(() =>

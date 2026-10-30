@@ -61,6 +61,7 @@ src/
   timeUtils.js                     # timeToMinutes("HH:MM") — gedeeld door pdfSchedule.js en LiveView.jsx
   blockCascade.js                  # computeReopenCascade — gedeeld door LiveView.jsx en CompetitionDetail.jsx
   blockParticipants.js             # resolveBlockEntries — reeksen/deelnemers van een blok (CompetitionDetail.jsx)
+  fieldLayout.js                   # maxFieldNr/padFieldList — lege velden tonen (LiveView/DisplayView/CompetitionDetail)
   pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
   pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
   pdfImport.js                     # Browserlaag (pdfjs-worker) — enige toegangspunt voor componenten
@@ -601,7 +602,7 @@ aanmaken — er nog niet is).
 Programma is klikbaar (niet-heats-rijen niet — er zijn dan geen reeksen om te
 tonen): dit opent een derde paneel ernaast met alle reeksen van dat blok en
 hun deelnemers per veld. `src/blockParticipants.js#resolveBlockEntries(block,
-sortedBlocks, participants)` is de pure logica hierachter — dezelfde
+sortedBlocks, participants, events)` is de pure logica hierachter — dezelfde
 tijdvenster-afbakening als `LiveView`'s `eventParticipants` hierboven, maar
 geparametriseerd op een willekeurig, expliciet blok i.p.v. enkel het
 live-actieve, zodat Beheer élk blok kan tonen. Bewust een apart bestand i.p.v.
@@ -612,6 +613,27 @@ onderliggende berekening is hier los getrokken. Elke deelnemersrij heeft een
 het blok se `eventId`, zodat de reskip-picker van dát onderdeel meteen
 openstaat i.p.v. dat de operator hem tussen alle onderdelen van de deelnemer
 moet opzoeken.
+
+**Lege velden (niet-freestyle).** Bij PDF-import kan een veld voor één
+specifieke reeks volledig leeg blijven — niets ingevuld in het schema op dat
+tijdstip/veld. Zonder verdere maatregel is zo'n veld onzichtbaar: er bestaat
+simpelweg geen entry om het te tonen, en het hoogste veldnummer "lijkt" dan
+lager dan het structureel is. `src/fieldLayout.js` lost dit op zonder
+schemawijziging: `maxFieldNr(participants)` wordt bewust over een RUIMERE
+set berekend (alle reeksen van het onderdeel, niet enkel de getoonde reeks)
+— vult een andere reeks van hetzelfde onderdeel dat veldnummer wél, dan
+bestaat het structureel en telt het dus mee; `padFieldList(seriesParticipants,
+max)` vult de getoonde reeks dan aan tot `1..max` met
+`{ _isEmpty: true, _entry: { fieldNr } }`-placeholders. Dit geldt enkel voor
+niet-freestyle onderdelen (freestyle: elke reeks is precies 1 deelnemer, het
+begrip "leeg veld" bestaat daar niet). Een leeg veld en een geschrapte
+deelnemer (al uit de deelnemerslijst gefilterd vóór dit punt) zien er hierdoor
+overal vanzelf identiek uit — in `LiveView`'s velden-grid en `DisplayView`'s
+"nu bezig"/"Volgende"-lijsten was dit al zo (beide filteren `isScratched`
+eruit en padden al, maar rekenden het hoogste veldnummer enkel over de
+getoonde reeks — ditzelfde "ruimere set"-probleem, nu ook daar gefixt); het
+nieuwe reeksdeelnemers-paneel in `CompetitionDetail` toont een leeg veld als
+"— leeg —", zonder club of Reskip-knop.
 
 ---
 
