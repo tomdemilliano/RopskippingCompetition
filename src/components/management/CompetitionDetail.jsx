@@ -425,6 +425,36 @@ const s = {
     whiteSpace: 'nowrap',
     maxWidth: '110px',
   },
+  // Freestyle: alle info van één reeks op dezelfde rij — compacter dan het
+  // gestapelde speed/endurance-overzicht, zodat meer reeksen op het scherm
+  // passen (freestyle heeft doorgaans maar 1-2 deelnemers per reeks).
+  reeksRowCompact: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    padding: '0.3rem 0.6rem',
+    border: `1px solid ${color.borderSoft}`,
+    borderRadius: radius.sm,
+    background: color.surface,
+    fontSize: '0.76rem',
+    flexWrap: 'wrap',
+  },
+  reeksRowLabel: {
+    fontSize: '0.66rem',
+    fontWeight: 800,
+    color: color.faint,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+    flexShrink: 0,
+    minWidth: '82px',
+  },
+  reeksCompactEntry: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    paddingLeft: '0.5rem',
+    borderLeft: `1px solid ${color.borderSoft}`,
+  },
 
   // Participants list
   participantsPanel: {
@@ -621,6 +651,7 @@ export default function CompetitionDetail({
     () => resolveBlockEntries(selectedBlock, sortedBlocks, participants, events),
     [selectedBlock, sortedBlocks, participants, events]
   );
+  const isFreestyleSelected = events.find(e => e.id === selectedBlock?.eventId)?.scoringType === 'freestyle';
 
   // Blok markeren als afgewerkt: gewoon de status wijzigen, geen cascade
   // nodig. Heropenen zet dit blok en alles wat chronologisch erna al
@@ -1125,6 +1156,37 @@ export default function CompetitionDetail({
                 {blockEntries.seriesNrs.map(nr => {
                   const rows = blockEntries.entriesBySeriesNr.get(nr);
                   const reeksTime = rows.find(p => !p._isEmpty)?._entry.scheduledTime || '--:--';
+
+                  if (isFreestyleSelected) {
+                    return (
+                      <div key={nr} style={s.reeksRowCompact}>
+                        <span style={s.reeksRowLabel}>Reeks {nr} · {reeksTime}</span>
+                        {rows.map(p => (
+                          <span key={p.id ?? `empty-${nr}-${p._entry.fieldNr}`} style={s.reeksCompactEntry}>
+                            <span style={s.reeksFieldNr}>{p._entry.fieldNr}</span>
+                            {p._isEmpty ? (
+                              <span style={s.reeksEmptyLabel}>— leeg —</span>
+                            ) : (
+                              <>
+                                <span style={s.reeksParticipantName} title={p.name}>{p.name}</span>
+                                <span style={s.reeksClubName} title={getClub(p.clubId)?.name}>
+                                  {getClub(p.clubId)?.name ?? '—'}
+                                </span>
+                                <button
+                                  style={s.actionBtn(color.primary)}
+                                  title="Reskip — verplaats naar een ander tijdslot"
+                                  onClick={() => onEditParticipant(p, selectedBlock.eventId)}
+                                >
+                                  <Repeat size={14} />
+                                </button>
+                              </>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={nr} style={s.reeksGroup}>
                       <div style={s.reeksGroupHeader}>
