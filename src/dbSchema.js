@@ -410,6 +410,8 @@ function normalizeEntry(raw) {
  * @property {string} scheduledTime  "HH:MM"
  * @property {number} order          positie in de dagtijdlijn
  * @property {string} status         "gepland" | "actief" | "afgewerkt"
+ * @property {string} icon           optionele override-sleutel uit blockIcons.jsx#BLOCK_ICON_OPTIONS —
+ *                                    leeg laat het scherm zelf een standaardicoon kiezen (zie resolveBlockIconKey)
  */
 const blockConverter = {
   fromFirestore(snapshot) {
@@ -422,10 +424,11 @@ const blockConverter = {
       scheduledTime: d.scheduledTime ?? '',
       order:         d.order         ?? 0,
       status:        d.status        ?? 'gepland',
+      icon:          d.icon          ?? '',
     };
   },
-  toFirestore({ type, eventId = '', label = '', scheduledTime = '', order = 0, status = 'gepland' }) {
-    return { type, eventId, label, scheduledTime, order, status };
+  toFirestore({ type, eventId = '', label = '', scheduledTime = '', order = 0, status = 'gepland', icon = '' }) {
+    return { type, eventId, label, scheduledTime, order, status, icon };
   },
 };
 
@@ -1057,7 +1060,7 @@ export const blockFactory = {
   /**
    * Maak een nieuw blok aan.
    * @param {string} competitionId
-   * @param {{ type: string, eventId?: string, label?: string, scheduledTime?: string, order?: number }} data
+   * @param {{ type: string, eventId?: string, label?: string, scheduledTime?: string, order?: number, icon?: string }} data
    * @returns {Promise<string>} nieuw id
    */
   async create(competitionId, data) {

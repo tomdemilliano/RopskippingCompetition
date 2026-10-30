@@ -12,15 +12,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Maximize2, Minimize2, Clock, X, Coffee, Activity, ChevronRight, Check,
+  Maximize2, Minimize2, Clock, X, ChevronRight, Check,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { MESSAGE_ICON_MAP } from './MessageManager';
 import { timeToMinutes } from '../timeUtils';
 import { maxFieldNr, padFieldList } from '../fieldLayout';
-
-const BREAK_ICONS = { proefjury: Activity };
+import { resolveBlockIconKey, getBlockIcon } from '../blockIcons';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -454,9 +453,11 @@ export default function DisplayView({ onClose }) {
             {sortedAllBlocks.map(b => {
               const done = b.status === 'afgewerkt';
               const isCurrent = b.id === currentBlock?.id;
+              const blockEvent = b.type === 'heats' ? events.find(e => e.id === b.eventId) : null;
               const label = b.type === 'heats'
-                ? (events.find(e => e.id === b.eventId)?.name ?? '—')
+                ? (blockEvent?.name ?? '—')
                 : (b.label || blockTypeLabels[b.type] || b.type);
+              const RowIcon = getBlockIcon(resolveBlockIconKey(b, blockEvent));
               return (
                 <div
                   key={b.id}
@@ -475,6 +476,7 @@ export default function DisplayView({ onClose }) {
                   }}>
                     {b.scheduledTime || '--:--'}
                   </span>
+                  <RowIcon size={13} color={isCurrent ? color.info : color.stageMuted} style={{ flexShrink: 0 }} />
                   <span style={{
                     flex: 1, fontSize: '0.8rem', fontWeight: isCurrent ? 800 : 600,
                     color: isCurrent ? color.stageInk : color.stageMuted,
@@ -521,9 +523,10 @@ export default function DisplayView({ onClose }) {
                   const n = breakSequence.length;
                   const iconSize = n <= 2 ? 80 : n === 3 ? 56 : 40;
                   const fontSize = n <= 2 ? '1.8rem' : n === 3 ? '1.3rem' : '1rem';
-                  const ItemIcon = isHeatsPreview ? ChevronRight : (BREAK_ICONS[b.type] ?? Coffee);
+                  const previewEvent = isHeatsPreview ? events.find(e => e.id === b.eventId) : null;
+                  const ItemIcon = getBlockIcon(resolveBlockIconKey(b, previewEvent));
                   const itemLabel = isHeatsPreview
-                    ? (events.find(e => e.id === b.eventId)?.name ?? '—')
+                    ? (previewEvent?.name ?? '—')
                     : (b.label || blockTypeLabels[b.type] || b.type);
                   return (
                     <div key={b.id} style={{
@@ -653,7 +656,7 @@ export default function DisplayView({ onClose }) {
                 {displayList.map((item, idx) => {
                   if (item.kind === 'block') {
                     const b = item.data;
-                    const BlockIcon = BREAK_ICONS[b.type] ?? Coffee;
+                    const BlockIcon = getBlockIcon(resolveBlockIconKey(b));
                     const label = b.label || blockTypeLabels[b.type] || b.type;
                     const blockExpected = calcExpectedTime(b.scheduledTime, timeDiff);
                     return (

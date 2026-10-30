@@ -20,6 +20,7 @@ import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
 import { computeReopenCascade } from '../../blockCascade';
 import { resolveBlockEntries } from '../../blockParticipants';
+import { BLOCK_ICON_OPTIONS, resolveBlockIconKey, getBlockIcon } from '../../blockIcons';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import PodiumManager from '../PodiumManager';
@@ -587,6 +588,7 @@ export default function CompetitionDetail({
   const [newBlockEventId, setNewBlockEventId] = useState('');
   const [newBlockLabel,   setNewBlockLabel]   = useState('');
   const [newBlockTime,    setNewBlockTime]    = useState('');
+  const [newBlockIcon,    setNewBlockIcon]    = useState('');
 
   // Welk heats-blok in Programma aangeklikt is — toont zijn reeksen/
   // deelnemers in een paneel ernaast.
@@ -597,6 +599,7 @@ export default function CompetitionDetail({
   const [editingBlockId, setEditingBlockId] = useState(null);
   const [editBlockLabel, setEditBlockLabel] = useState('');
   const [editBlockTime,  setEditBlockTime]  = useState('');
+  const [editBlockIcon,  setEditBlockIcon]  = useState('');
 
   const competition = competitions.find(c => c.id === competitionId) ?? null;
 
@@ -659,22 +662,25 @@ export default function CompetitionDetail({
       label:         newBlockType === 'heats' ? '' : newBlockLabel,
       scheduledTime: newBlockTime,
       order:         maxOrder + 1,
+      icon:          newBlockIcon,
     });
     setNewBlockEventId('');
     setNewBlockLabel('');
     setNewBlockTime('');
+    setNewBlockIcon('');
   };
 
   const startEditBlock = (block) => {
     setEditingBlockId(block.id);
     setEditBlockLabel(block.label ?? '');
     setEditBlockTime(block.scheduledTime ?? '');
+    setEditBlockIcon(block.icon ?? '');
   };
 
   const cancelEditBlock = () => setEditingBlockId(null);
 
   const handleSaveBlockEdit = async (block) => {
-    const data = { scheduledTime: editBlockTime };
+    const data = { scheduledTime: editBlockTime, icon: editBlockIcon };
     if (block.type !== 'heats') data.label = editBlockLabel.trim();
     await updateBlock(competition.id, block.id, data);
     setEditingBlockId(null);
@@ -951,9 +957,11 @@ export default function CompetitionDetail({
               const done = b.status === 'afgewerkt';
               const clickable = b.type === 'heats';
               const selected = b.id === selectedBlockId;
+              const blockEvent = b.type === 'heats' ? events.find(e => e.id === b.eventId) : null;
               const label = b.type === 'heats'
-                ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
+                ? (blockEvent?.name ?? '— onbekend onderdeel —')
                 : (b.label || blockTypeLabels[b.type] || b.type);
+              const BlockIcon = getBlockIcon(resolveBlockIconKey(b, blockEvent));
 
               if (b.id === editingBlockId) {
                 return (
@@ -973,6 +981,16 @@ export default function CompetitionDetail({
                       value={editBlockTime}
                       onChange={e => setEditBlockTime(e.target.value)}
                     />
+                    <select
+                      style={s.addBlockInput}
+                      value={editBlockIcon}
+                      onChange={e => setEditBlockIcon(e.target.value)}
+                    >
+                      <option value="">Icoon: automatisch</option>
+                      {BLOCK_ICON_OPTIONS.map(opt => (
+                        <option key={opt.key} value={opt.key}>{opt.label}</option>
+                      ))}
+                    </select>
                     <button
                       style={s.actionBtn(color.success)}
                       title="Opslaan"
@@ -999,6 +1017,7 @@ export default function CompetitionDetail({
                 >
                   <span style={s.blockOrder}>{b.order}</span>
                   <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
+                  <BlockIcon size={14} color={color.faint} />
                   <span style={s.blockLabel}>{label}</span>
                   <Badge tone="neutral">{b.type}</Badge>
                   <button
@@ -1065,6 +1084,17 @@ export default function CompetitionDetail({
               value={newBlockTime}
               onChange={e => setNewBlockTime(e.target.value)}
             />
+
+            <select
+              style={s.addBlockInput}
+              value={newBlockIcon}
+              onChange={e => setNewBlockIcon(e.target.value)}
+            >
+              <option value="">Icoon: automatisch</option>
+              {BLOCK_ICON_OPTIONS.map(opt => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
 
             <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={handleAddBlock}>
               Blok
