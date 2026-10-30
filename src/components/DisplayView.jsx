@@ -156,14 +156,27 @@ export default function DisplayView({ onClose }) {
 
   const plannedTime = currentSkippers[0]?._entry.scheduledTime ?? null;
 
-  // Tijdsverschil in minuten
+  // Is er al effectief voortgang? Zolang er nog niets afgewerkt is — ook
+  // niet als er vóór de eerste reeks meerdere informatieve blokken doorlopen
+  // zijn (deuren, briefing, ...) — is een "verschil tov het geplande uur"
+  // zinloos: de klok loopt dan nog niet mee met de wedstrijd zelf, enkel met
+  // de kalender. Dit is bewust niet gekoppeld aan één specifiek blok, dus
+  // blijft gelden over hoeveel van die informatieve blokken er ook vóór
+  // reeks 1 staan.
+  const hasProgressStarted = finishedEvents.length > 0
+    || Object.values(finishedSeries).some(arr => (arr?.length ?? 0) > 0);
+
+  // Tijdsverschil in minuten — null zolang de wedstrijd nog niet écht
+  // gestart is (zie hasProgressStarted), zodat calcExpectedTime() en
+  // TimeDeviationBadge overal gewoon het kale geplande uur tonen i.p.v. een
+  // misleidende afwijking.
   const timeDiff = useMemo(() => {
-    if (!plannedTime) return null;
+    if (!plannedTime || !hasProgressStarted) return null;
     const [h, m] = plannedTime.split(':').map(Number);
     const planned = new Date();
     planned.setHours(h, m, 0, 0);
     return Math.floor((currentTime - planned) / 60000);
-  }, [plannedTime, currentTime]);
+  }, [plannedTime, currentTime, hasProgressStarted]);
 
   const MessageIcon = MESSAGE_ICON_MAP[activeMessage.icon] ?? null;
 

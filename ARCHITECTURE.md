@@ -691,6 +691,24 @@ erna" en voor "eerste reeks van het volgende event") zijn samengetrokken tot
 één gedeelde module-level helper `buildFieldList(seriesNr, participants)`,
 nu ook gebruikt door deze nieuwe pauze-tak én door `fullFieldsList`.
 
+**Geen afwijkingstijd vóór de wedstrijd écht gestart is.** `timeDiff`
+("verschil tov het geplande uur") werd altijd berekend als `nu − geplande
+tijd van officialSeriesNr` — vóór de allereerste reeks is dat gewoon "hoe
+laat is het nu tov de kalender", niet "hoe loopt de wedstrijd tov schema",
+en dus misleidend (een badge als "+12 min" terwijl er nog niets bezig is).
+Dat geldt niet enkel voor het eerste informatieve blok (bv. "Deuren + start
+opwarming") maar voor élk informatief blok daarvoor (bv. ook een erop
+volgende jurybriefing) — `hasProgressStarted` (`finishedEvents.length > 0`
+of een niet-leeg `finishedSeries`-onderdeel) is daarom bewust niet aan één
+specifiek blok gekoppeld, maar aan "is er al iets afgewerkt", en blijft dus
+`false` over hoeveel van die informatieve blokken er ook vóór reeks 1 staan.
+Is dat zo, dan is `timeDiff` gewoon `null` — `calcExpectedTime()` en
+`TimeDeviationBadge` tonen dan overal (het "Nu bezig"-tijdschema, de
+"Volgende"-lijst, elk tussengevoegd blok) vanzelf het kale geplande uur
+zonder badge, want beide behandelen `null` al als "geen afwijking". Vanaf de
+eerste afgewerkte reeks loopt de afwijking weer gewoon mee, ook doorheen
+latere pauzes.
+
 ### Blok-gedreven navigatie in LiveView
 
 `LiveView` volgt de dagtijdlijn actief, niet enkel bij het tonen van een
