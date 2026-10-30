@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
-  Mic2, FastForward, Ghost, Clock, Coffee, Activity,
+  Mic2, FastForward, Ghost, Clock,
   ListTodo, Trophy, Settings, Megaphone,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
@@ -19,13 +19,10 @@ import { color, radius, shadow, font } from '../theme';
 import { timeToMinutes } from '../timeUtils';
 import { computeReopenCascade } from '../blockCascade';
 import { maxFieldNr as computeMaxFieldNr } from '../fieldLayout';
+import { resolveBlockIconKey, getBlockIcon } from '../blockIcons';
 import PodiumManager from './PodiumManager';
 import PodiumCeremonyPanel from './PodiumCeremonyPanel';
 import MessageManager from './MessageManager';
-
-// Bij een proefjury is een kopje koffie misleidend — lucide-react heeft geen
-// letterlijk touwtje-icoon, Activity (golvende lijn) staat er het dichtst bij.
-const BREAK_ICONS = { proefjury: Activity };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -407,7 +404,7 @@ export default function LiveView() {
 
   const isBreakBlock = !!viewedBlock && viewedBlock.type !== 'heats';
   const breakLabel = viewedBlock?.label || blockTypeLabels[viewedBlock?.type] || 'Pauze';
-  const BreakIcon = BREAK_ICONS[viewedBlock?.type] ?? Coffee;
+  const BreakIcon = getBlockIcon(resolveBlockIconKey(viewedBlock));
   const viewedBlockIsCurrent = viewedBlock?.id === currentBlock?.id;
   const viewedBlockIsDone = viewedBlock?.status === 'afgewerkt';
 
@@ -702,9 +699,11 @@ export default function LiveView() {
         {sortedBlocks.map(b => {
           const done      = b.status === 'afgewerkt';
           const isCurrent = b.id === currentBlock?.id;
+          const blockEvent = b.type === 'heats' ? events.find(e => e.id === b.eventId) : null;
           const label = b.type === 'heats'
-            ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
+            ? (blockEvent?.name ?? '— onbekend onderdeel —')
             : (b.label || blockTypeLabels[b.type] || b.type);
+          const RowIcon = getBlockIcon(resolveBlockIconKey(b, blockEvent));
           return (
             <div
               key={b.id}
@@ -715,6 +714,7 @@ export default function LiveView() {
               }}
             >
               <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
+              <RowIcon size={14} color={color.faint} />
               <span style={s.blockLabel}>{label}</span>
               {done && <Check size={14} color={color.success} />}
             </div>

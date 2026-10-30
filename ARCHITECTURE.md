@@ -62,6 +62,7 @@ src/
   blockCascade.js                  # computeReopenCascade — gedeeld door LiveView.jsx en CompetitionDetail.jsx
   blockParticipants.js             # resolveBlockEntries — reeksen/deelnemers van een blok (CompetitionDetail.jsx)
   fieldLayout.js                   # maxFieldNr/padFieldList — lege velden tonen (LiveView/DisplayView/CompetitionDetail)
+  blockIcons.jsx                   # resolveBlockIconKey/getBlockIcon + JumpRopeIcon — icoon per blok (zie "Icoon per blok")
   pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
   pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
   pdfImport.js                     # Browserlaag (pdfjs-worker) — enige toegangspunt voor componenten
@@ -162,7 +163,8 @@ Fase 3; leeg bij CSV-import, gevuld door PDF-import)
 ```
 type ("heats" | "pauze" | "lunchpauze" | "deuren" | "briefing" | "proefjury" | "prijsuitreiking"),
 eventId → events (enkel bij type "heats"), label (bij niet-heats types),
-scheduledTime "HH:MM", order, status ("gepland" | "actief" | "afgewerkt")
+scheduledTime "HH:MM", order, status ("gepland" | "actief" | "afgewerkt"),
+icon (optionele override-sleutel, '' = automatisch — zie "Icoon per blok")
 ```
 
 **`user/{uid}`**
@@ -1038,6 +1040,59 @@ Zelfde patroon als `finishedEvents`/`finishedSeries` en `podiumState`: enkel
 via een veld op het `competition`-document (`activeMessageId`), nooit via een
 rechtstreeks kanaal. `setActiveMessage(competitionId, messageId)` schrijft;
 `DisplayView` leest via zijn eigen Firestore-listener en volgt automatisch mee.
+
+---
+
+## Icoon per blok
+
+Elk blok in de dagtijdlijn toont een icoon — in `CompetitionDetail` (Programma-
+tab, dagtijdlijn-lijst), in `LiveView` (linker dagtijdlijn-paneel + het
+pauzescherm) en in `DisplayView` (linker dagtijdlijn-paneel, het "Nu
+bezig"-vak bij pauzeblokken, en de "Volgende"-lijst). Vroeger had elk van deze
+drie bestanden zijn eigen kleine `BREAK_ICONS`-lookup (enkel `proefjury` →
+`Activity`, alles anders → `Coffee`) — dit kon uit de pas lopen en bood geen
+visueel onderscheid tussen bv. lunchpauze en jurybriefing.
+
+### Datamodel
+
+`block.icon` (string, `?? ''`) is een **optionele override**. Leeg laat het
+scherm zelf een standaardicoon kiezen op basis van het bloktype (of, bij een
+heats-blok, het `scoringType` van het onderliggende onderdeel).
+
+### `src/blockIcons.jsx`
+
+Pure module (geen Firestore/AppContext-afhankelijkheid) met:
+- `BLOCK_ICON_OPTIONS` — de volledige lijst `{ key, label, Icon }`, gebruikt
+  om de icoon-keuzelijst in `CompetitionDetail` te vullen.
+- `DEFAULT_ICON_BY_BLOCK_TYPE` — standaardicoon per niet-heats bloktype
+  (`pauze` → koffie, `lunchpauze` → broodje, `deuren` → deur-open, `briefing`
+  → presentatie, `proefjury` → klembord-vink, `prijsuitreiking` → trofee).
+- `DEFAULT_ICON_BY_SCORING_TYPE` — standaardicoon voor heats-blokken, op basis
+  van het event-`scoringType` (`speed` → sportschoen/`Footprints` — lucide
+  heeft geen hardloop-icoon, dit is de dichtstbijzijnde match; `freestyle` →
+  `JumpRopeIcon`).
+- `JumpRopeIcon` — een eigen SVG-component (geen lucide-equivalent
+  beschikbaar) die een springtouw voorstelt als een vloeiende boog tussen twee
+  handvatten, bewust rond i.p.v. hoekig getekend. Volgt de lucide-API
+  (`size`/`color`/`strokeWidth`) zodat hij overal inwisselbaar is met een
+  lucide-icoon.
+- `resolveBlockIconKey(block, event?)` — de resolutievolgorde: expliciete
+  `block.icon` > berekende standaard (op `block.type`, of bij `type ===
+  'heats'` op `event?.scoringType`) > `'coffee'` als laatste terugval.
+- `getBlockIcon(key)` — geeft het icoon-component voor een sleutel, valt terug
+  op `Coffee` bij een onbekende sleutel.
+
+`LiveView.jsx` en `DisplayView.jsx` importeren enkel `resolveBlockIconKey`/
+`getBlockIcon` — hun eigen `BREAK_ICONS`-lookups zijn verwijderd.
+
+### Instellen in het wedstrijdbeheer
+
+In `CompetitionDetail` (Programma-tab) heeft zowel het blok-toevoegformulier
+als het inline blok-bewerkformulier (benaming + starttijd, zie "Blok
+bewerken" hierboven) een extra keuzelijst met alle `BLOCK_ICON_OPTIONS` plus
+een "Icoon: automatisch"-optie (= `''`, legt geen override vast). Elke rij in
+de dagtijdlijn-lijst toont het opgeloste icoon (`resolveBlockIconKey`) vóór de
+label, zodat direct zichtbaar is welk icoon een blok effectief krijgt.
 
 ---
 
