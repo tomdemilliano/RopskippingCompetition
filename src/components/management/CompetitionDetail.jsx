@@ -13,7 +13,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
-  Search, RotateCcw, UserMinus, Upload, ChevronLeft, ChevronRight,
+  Search, RotateCcw, UserMinus, Upload, ChevronUp, ChevronDown,
   Plus, ListTodo, Flag, Trophy, Megaphone, Repeat, X,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
@@ -118,15 +118,15 @@ const s = {
     alignItems: 'center',
   }),
 
-  // "Wedstrijd"-tab: onderdelen (compact) links, programma (smaller, capped
-  // breedte) rechts — geen van beide moet vechten om ruimte met de
-  // deelnemerslijst, die zit voortaan op haar eigen tab.
+  // "Wedstrijd"-tab: onderdelen (compact) boven, programma en (indien een
+  // blok aangeklikt is) reeksdeelnemers elk over de volle breedte daaronder
+  // — die laatste twee hebben de ruimte nodig (lange dagtijdlijnen, brede
+  // reeksoverzichten), onderdelen niet.
   overviewGrid: {
     display: 'flex',
+    flexDirection: 'column',
     gap: '1.25rem',
-    alignItems: 'flex-start',
     padding: '1.1rem 1.5rem',
-    flexWrap: 'wrap',
   },
   panel: {
     background: color.surfaceAlt,
@@ -146,11 +146,12 @@ const s = {
     gap: '6px',
   },
 
-  // Events panel — compacte verticale lijst i.p.v. brede kaarten
+  // Events panel — compacte verticale lijst, blijft smal (geen volle
+  // breedte nodig) i.p.v. mee te stretchen in de verticale stack.
   eventsPanel: {
-    flex: '1 1 280px',
+    alignSelf: 'flex-start',
     minWidth: '260px',
-    maxWidth: '360px',
+    maxWidth: '420px',
   },
   eventsList: {
     display: 'flex',
@@ -197,6 +198,7 @@ const s = {
   },
   orderBtns: {
     display: 'flex',
+    flexDirection: 'column',
     flexShrink: 0,
   },
   orderBtn: (disabled) => ({
@@ -210,11 +212,9 @@ const s = {
     color: color.faint,
   }),
 
-  // Programma (blocks) — smalle kolom, geen volle breedte
+  // Programma (blocks) — volle breedte, lange dagtijdlijnen hebben de ruimte nodig
   programmaPanel: {
-    flex: '1 1 340px',
-    minWidth: '300px',
-    maxWidth: '460px',
+    width: '100%',
   },
   blockRow: (done, selected, clickable) => ({
     display: 'flex',
@@ -229,6 +229,16 @@ const s = {
     opacity: done ? 0.55 : 1,
     cursor: clickable ? 'pointer' : 'default',
   }),
+  blockEditRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '0.3rem 0.55rem',
+    borderRadius: radius.sm,
+    border: `1px solid ${color.primaryBorder}`,
+    background: color.primarySoft,
+    marginBottom: '4px',
+  },
   blockOrder: {
     fontFamily: "'IBM Plex Mono', monospace",
     color: color.faint,
@@ -274,11 +284,9 @@ const s = {
   },
 
   // Reeksdeelnemers — paneel dat verschijnt bij het aanklikken van een
-  // heats-blok in Programma
+  // heats-blok in Programma, over de volle breedte (lange reeksoverzichten)
   reeksPanel: {
-    flex: '1 1 320px',
-    minWidth: '280px',
-    maxWidth: '420px',
+    width: '100%',
   },
   reeksPanelHeader: {
     display: 'flex',
@@ -502,6 +510,7 @@ export default function CompetitionDetail({
     blockTypeLabels,
     createBlock,
     setBlockStatus,
+    updateBlock,
     deleteBlock,
     unfinishSeries,
   } = useAppContext();
@@ -520,6 +529,12 @@ export default function CompetitionDetail({
   // Welk heats-blok in Programma aangeklikt is — toont zijn reeksen/
   // deelnemers in een paneel ernaast.
   const [selectedBlockId, setSelectedBlockId] = useState(null);
+
+  // Welk blok in Programma bewerkt wordt (benaming + starttijd), en zijn
+  // lokale formuliervelden.
+  const [editingBlockId, setEditingBlockId] = useState(null);
+  const [editBlockLabel, setEditBlockLabel] = useState('');
+  const [editBlockTime,  setEditBlockTime]  = useState('');
 
   const competition = competitions.find(c => c.id === competitionId) ?? null;
 
@@ -586,6 +601,21 @@ export default function CompetitionDetail({
     setNewBlockEventId('');
     setNewBlockLabel('');
     setNewBlockTime('');
+  };
+
+  const startEditBlock = (block) => {
+    setEditingBlockId(block.id);
+    setEditBlockLabel(block.label ?? '');
+    setEditBlockTime(block.scheduledTime ?? '');
+  };
+
+  const cancelEditBlock = () => setEditingBlockId(null);
+
+  const handleSaveBlockEdit = async (block) => {
+    const data = { scheduledTime: editBlockTime };
+    if (block.type !== 'heats') data.label = editBlockLabel.trim();
+    await updateBlock(competition.id, block.id, data);
+    setEditingBlockId(null);
   };
 
   const sortedEvents = useMemo(
@@ -773,14 +803,14 @@ export default function CompetitionDetail({
                     disabled={idx === 0}
                     onClick={() => handleMoveEvent(ev.id, 'left')}
                   >
-                    <ChevronLeft size={11} />
+                    <ChevronUp size={11} />
                   </button>
                   <button
                     style={s.orderBtn(idx === sortedEvents.length - 1)}
                     disabled={idx === sortedEvents.length - 1}
                     onClick={() => handleMoveEvent(ev.id, 'right')}
                   >
-                    <ChevronRight size={11} />
+                    <ChevronDown size={11} />
                   </button>
                 </div>
                 <span style={s.eventRowName} title={ev.name}>{idx + 1}. {ev.name}</span>
@@ -821,6 +851,43 @@ export default function CompetitionDetail({
             const label = b.type === 'heats'
               ? (events.find(e => e.id === b.eventId)?.name ?? '— onbekend onderdeel —')
               : (b.label || blockTypeLabels[b.type] || b.type);
+
+            if (b.id === editingBlockId) {
+              return (
+                <div key={b.id} style={s.blockEditRow}>
+                  {b.type !== 'heats' && (
+                    <input
+                      style={s.addBlockInput}
+                      placeholder="Label"
+                      value={editBlockLabel}
+                      onChange={e => setEditBlockLabel(e.target.value)}
+                      autoFocus
+                    />
+                  )}
+                  <input
+                    style={s.addBlockInput}
+                    type="time"
+                    value={editBlockTime}
+                    onChange={e => setEditBlockTime(e.target.value)}
+                  />
+                  <button
+                    style={s.actionBtn(color.success)}
+                    title="Opslaan"
+                    onClick={() => handleSaveBlockEdit(b)}
+                  >
+                    <Check size={15} />
+                  </button>
+                  <button
+                    style={s.actionBtn(color.faint)}
+                    title="Annuleren"
+                    onClick={cancelEditBlock}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={b.id}
@@ -831,6 +898,13 @@ export default function CompetitionDetail({
                 <span style={s.blockTime}>{b.scheduledTime || '--:--'}</span>
                 <span style={s.blockLabel}>{label}</span>
                 <Badge tone="neutral">{b.type}</Badge>
+                <button
+                  style={s.actionBtn(color.primary)}
+                  title="Bewerken"
+                  onClick={(e) => { e.stopPropagation(); startEditBlock(b); }}
+                >
+                  <Edit2 size={15} />
+                </button>
                 <button
                   style={s.actionBtn(done ? color.warning : color.success)}
                   title={done ? 'Heropenen' : 'Markeer afgewerkt'}
