@@ -636,6 +636,17 @@ het blok se `eventId`, zodat de reskip-picker van dát onderdeel meteen
 openstaat i.p.v. dat de operator hem tussen alle onderdelen van de deelnemer
 moet opzoeken.
 
+**Compacte rij-per-reeks (freestyle).** Bij speed/endurance krijgt elke reeks
+een eigen groepskader met een header-rij en daaronder één rij per veld — nodig
+omdat die reeksen vaak veel velden tegelijk hebben. Bij freestyle (meestal
+maar 1-2 deelnemers per reeks) kost die gestapelde layout onnodig veel
+schermhoogte per reeks. `isFreestyleSelected` (afgeleid uit het
+`scoringType` van het geselecteerde blok se event) schakelt dan over op
+`s.reeksRowCompact`: reeksnummer + tijd én alle velden van die reeks staan op
+**één rij** (met wrap bij te weinig breedte), zodat merkelijk meer reeksen
+zichtbaar zijn zonder te scrollen. Dezelfde Reskip-knop per deelnemer blijft
+behouden; enkel de layout wijzigt, niet de onderliggende data of acties.
+
 **Lege velden (niet-freestyle).** Bij PDF-import kan een veld voor één
 specifieke reeks volledig leeg blijven — niets ingevuld in het schema op dat
 tijdstip/veld. Zonder verdere maatregel is zo'n veld onzichtbaar: er bestaat
