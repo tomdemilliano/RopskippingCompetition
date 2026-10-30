@@ -341,6 +341,11 @@ const s = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  reeksEmptyLabel: {
+    fontStyle: 'italic',
+    color: color.faintest,
+    flex: '1 1 auto',
+  },
   reeksClubName: {
     color: color.muted,
     fontSize: '0.7rem',
@@ -533,8 +538,8 @@ export default function CompetitionDetail({
 
   const selectedBlock = sortedBlocks.find(b => b.id === selectedBlockId) ?? null;
   const blockEntries = useMemo(
-    () => resolveBlockEntries(selectedBlock, sortedBlocks, participants),
-    [selectedBlock, sortedBlocks, participants]
+    () => resolveBlockEntries(selectedBlock, sortedBlocks, participants, events),
+    [selectedBlock, sortedBlocks, participants, events]
   );
 
   // Blok markeren als afgewerkt: gewoon de status wijzigen, geen cascade
@@ -911,25 +916,32 @@ export default function CompetitionDetail({
           <div style={s.reeksScroll}>
             {blockEntries.seriesNrs.map(nr => {
               const rows = blockEntries.entriesBySeriesNr.get(nr);
+              const reeksTime = rows.find(p => !p._isEmpty)?._entry.scheduledTime || '--:--';
               return (
                 <div key={nr} style={s.reeksGroup}>
                   <div style={s.reeksGroupHeader}>
-                    Reeks {nr} · {rows[0]?._entry.scheduledTime || '--:--'}
+                    Reeks {nr} · {reeksTime}
                   </div>
                   {rows.map(p => (
-                    <div key={p.id} style={s.reeksParticipantRow}>
+                    <div key={p.id ?? `empty-${nr}-${p._entry.fieldNr}`} style={s.reeksParticipantRow}>
                       <span style={s.reeksFieldNr}>{p._entry.fieldNr}</span>
-                      <span style={s.reeksParticipantName} title={p.name}>{p.name}</span>
-                      <span style={s.reeksClubName} title={getClub(p.clubId)?.name}>
-                        {getClub(p.clubId)?.name ?? '—'}
-                      </span>
-                      <button
-                        style={s.actionBtn(color.primary)}
-                        title="Reskip — verplaats naar een ander tijdslot"
-                        onClick={() => onEditParticipant(p, selectedBlock.eventId)}
-                      >
-                        <Repeat size={14} />
-                      </button>
+                      {p._isEmpty ? (
+                        <span style={s.reeksEmptyLabel}>— leeg —</span>
+                      ) : (
+                        <>
+                          <span style={s.reeksParticipantName} title={p.name}>{p.name}</span>
+                          <span style={s.reeksClubName} title={getClub(p.clubId)?.name}>
+                            {getClub(p.clubId)?.name ?? '—'}
+                          </span>
+                          <button
+                            style={s.actionBtn(color.primary)}
+                            title="Reskip — verplaats naar een ander tijdslot"
+                            onClick={() => onEditParticipant(p, selectedBlock.eventId)}
+                          >
+                            <Repeat size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>

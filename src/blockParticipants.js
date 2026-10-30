@@ -19,20 +19,29 @@
  * — enkel de onderliggende tijdvenster-berekening is hier apart, puur
  * getrokken.
  *
+ * Vult daarnaast, voor niet-freestyle onderdelen, elke reeks aan met lege
+ * velden (zie fieldLayout.js) — zo blijft een veld dat bij PDF-import voor
+ * precies deze reeks leeg bleef toch zichtbaar in het overzicht.
+ *
  * Puur berekening — geen Firestore-toegang, geen React.
  */
 
 import { timeToMinutes } from './timeUtils';
+import { maxFieldNr, padFieldList } from './fieldLayout';
 
 /**
  * @param {Object|null} block        het aangeklikte blok (enkel zinvol voor type === 'heats')
  * @param {Array} sortedBlocks       alle blokken van de wedstrijd, op order
  * @param {Array} participants       alle deelnemers van de wedstrijd
+ * @param {Array} events             alle events (voor scoringType — freestyle krijgt geen padding)
  * @returns {{ seriesNrs: number[], entriesBySeriesNr: Map<number, Array> }}
  *   entriesBySeriesNr bevat deelnemers met een `_entry`-veld (de entry voor
- *   dit event), gesorteerd per reeks op fieldNr.
+ *   dit event), gesorteerd per reeks op fieldNr. Voor niet-freestyle
+ *   onderdelen aangevuld tot het hoogste veldnummer dat ergens in het
+ *   onderdeel voorkomt — zie fieldLayout.js — met `{ _isEmpty: true, _entry:
+ *   { fieldNr } }`-placeholders voor lege velden.
  */
-export function resolveBlockEntries(block, sortedBlocks, participants) {
+export function resolveBlockEntries(block, sortedBlocks, participants, events) {
   if (!block || block.type !== 'heats' || !block.eventId) {
     return { seriesNrs: [], entriesBySeriesNr: new Map() };
   }
@@ -57,14 +66,27 @@ export function resolveBlockEntries(block, sortedBlocks, participants) {
       })
     : allEventParticipants;
 
-  const entriesBySeriesNr = new Map();
+  const bySeriesNr = new Map();
   for (const p of scoped) {
     const nr = p._entry.seriesNr;
-    if (!entriesBySeriesNr.has(nr)) entriesBySeriesNr.set(nr, []);
-    entriesBySeriesNr.get(nr).push(p);
+    if (!bySeriesNr.has(nr)) bySeriesNr.set(nr, []);
+    bySeriesNr.get(nr).push(p);
   }
-  for (const list of entriesBySeriesNr.values()) {
-    list.sort((a, b) => String(a._entry.fieldNr).localeCompare(String(b._entry.fieldNr)));
+
+  const isFreestyle = events?.find(e => e.id === block.eventId)?.scoringType === 'freestyle';
+  const entriesBySeriesNr = new Map();
+  if (isFreestyle) {
+    // Freestyle kent geen "leeg veld" — elke reeks is precies 1 deelnemer.
+    for (const [nr, list] of bySeriesNr) {
+      entriesBySeriesNr.set(nr, [...list].sort((a, b) =>
+        String(a._entry.fieldNr).localeCompare(String(b._entry.fieldNr))
+      ));
+    }
+  } else {
+    const max = maxFieldNr(allEventParticipants);
+    for (const [nr, list] of bySeriesNr) {
+      entriesBySeriesNr.set(nr, padFieldList(list, max));
+    }
   }
 
   const seriesNrs = [...entriesBySeriesNr.keys()].sort((a, b) => a - b);

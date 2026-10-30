@@ -18,6 +18,7 @@ import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { MESSAGE_ICON_MAP } from './MessageManager';
 import { timeToMinutes } from '../timeUtils';
+import { maxFieldNr, padFieldList } from '../fieldLayout';
 
 const BREAK_ICONS = { proefjury: Activity };
 
@@ -40,17 +41,13 @@ function calcExpectedTime(scheduledTime, timeDiff) {
 /**
  * Veldenlijst voor één reeks van een speed-event (fieldNr 1..max), aangevuld
  * met lege velden — gedeeld door de "nu bezig"-lijst en de twee plekken in
- * nextList die telkens één reeks moeten weergeven.
+ * nextList die telkens één reeks moeten weergeven. `max` wordt bewust over
+ * ALLE meegegeven deelnemers berekend (het hele onderdeel), niet enkel de
+ * gevraagde reeks — zie fieldLayout.js.
  */
 function buildFieldList(seriesNr, eventParticipants) {
   const raw = eventParticipants.filter(p => p._entry.seriesNr === seriesNr);
-  const max = Math.max(...raw.map(p => parseInt(p._entry.fieldNr) || 0), 0);
-  const list = [];
-  for (let v = 1; v <= max; v++) {
-    const s = raw.find(p => parseInt(p._entry.fieldNr) === v);
-    list.push(s ?? { _isEmpty: true, _entry: { fieldNr: v } });
-  }
-  return list;
+  return padFieldList(raw, maxFieldNr(eventParticipants));
 }
 
 /** Afwijking t.o.v. het geplande uur — enkel zichtbaar vanaf > 2 minuten. */
