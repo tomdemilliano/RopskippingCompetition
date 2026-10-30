@@ -729,6 +729,37 @@ zonder badge, want beide behandelen `null` al als "geen afwijking". Vanaf de
 eerste afgewerkte reeks loopt de afwijking weer gewoon mee, ook doorheen
 latere pauzes.
 
+**Dagtijdlijn-kolom en gestapelde pauzeblokken (DisplayView).** Het grote
+scherm bestaat nu uit drie kolommen i.p.v. twee:
+- **Links (nieuw, vast 240px breed)** — de volledige dagtijdlijn
+  (`sortedAllBlocks`, alle blokken op `order`): elk blok met zijn
+  `scheduledTime`, visueel gemarkeerd als afgewerkt (gedimd + vinkje),
+  actief (gemarkeerde rand/achtergrond) of nog te komen (neutraal). Een
+  `useEffect` op `currentBlock?.id` scrollt dit paneel automatisch naar het
+  actieve blok (`scrollIntoView` op een element met id
+  `dagtijdlijn-block-${block.id}`) zodra de lijst langer is dan de
+  beschikbare hoogte.
+- **Midden ("Nu bezig", 28% breed, was 30%)** — ongewijzigd voor een
+  heats-blok; voor een niet-heats blok toont dit nu niet langer enkel het
+  huidige blok, maar een **verticaal gestapelde reeks**
+  (`breakSequence`, hieronder) van alle opeenvolgende niet-heats blokken
+  vanaf het huidige, mét hun starttijd, tot en met — als sluitstuk — naam en
+  starttijd van het eerstvolgende heats-blok. Elk item deelt de
+  beschikbare hoogte gelijk (`flex: 1` binnen een `flex: 1`-kolom): icoon-
+  en tekstgrootte schalen mee met het aantal items
+  (`breakSequence.length`) zodat alles op het scherm past zonder te
+  overlopen, i.p.v. een vaste, grote opmaak die bij 3+ opeenvolgende
+  informatieve blokken onderaan zou afsnijden.
+- **Rechts ("Volgende", flex 1)** — ongewijzigd.
+
+`breakSequence` (pure `useMemo`, enkel actief wanneer `isBreakBlock`): loopt
+vanaf `currentBlock` door `sortedAllBlocks` en verzamelt elk blok tot en met
+het eerste heats-blok dat tegenkomt (dat laatste enkel als "wat komt
+hierna"-info, niet als iets dat zelf geactiveerd wordt). Bevat de
+competitie geen heats-blok meer na dit punt (bv. een afsluitend
+prijsuitreiking-blok als allerlaatste), dan loopt de reeks gewoon door tot
+het einde van de dagtijdlijn.
+
 ### Blok-gedreven navigatie in LiveView
 
 `LiveView` volgt de dagtijdlijn actief, niet enkel bij het tonen van een
