@@ -25,6 +25,7 @@ import { useAppContext } from '../../../AppContext';
 import { modalStyles as s } from './modalStyles';
 import { color, radius } from '../../../theme';
 import { parseCompetitionPdf } from '../../../pdfImport';
+import { assignSeriesNumbersForBlocks } from '../../../pdfSchedule';
 
 const s2 = {
   dropZone: {
@@ -106,8 +107,8 @@ const s2 = {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildBlockState(section) {
-  return section.blocks.map((b, i) => ({
+function buildBlockState(blocks) {
+  return blocks.map((b, i) => ({
     ...b,
     key: i,
     included: true,
@@ -135,15 +136,30 @@ export default function PdfImportModal({ competitionId, onClose }) {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState('');
   const [parsed, setParsed] = useState(null);
-  const [sectionIdx, setSectionIdx] = useState(null);
+  const [selectedSectionIdxs, setSelectedSectionIdxs] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [clubResolutions, setClubResolutions] = useState({});
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
-  const goToReview = (secIdx) => {
-    setSectionIdx(secIdx);
-    setBlocks(buildBlockState(parsed.sections[secIdx]));
+  const toggleSection = (i) => {
+    setSelectedSectionIdxs(prev =>
+      prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort((a, b) => a - b)
+    );
+  };
+
+  // Voegt alle geselecteerde dagdeel-secties samen tot één dagtijdlijn, in de
+  // volgorde waarin ze in de PDF staan (niet de aanvinkvolgorde) — zodat het
+  // resultaat chronologisch klopt ook als de gebruiker ze door elkaar aanvinkt.
+  // De reeksnummering wordt daarna OPNIEUW berekend over de samengevoegde set
+  // (zie assignSeriesNumbersForBlocks): elke sectie werd tijdens het parsen
+  // apart genummerd, dus zonder herberekening zouden twee secties die
+  // toevallig hetzelfde onderdeel bevatten (bv. "Speed" bij zowel 13-15 jaar
+  // als 16+) allebei met reeks 1 beginnen en botsen.
+  const goToReview = () => {
+    const mergedBlocks = selectedSectionIdxs.flatMap(i => parsed.sections[i].blocks);
+    assignSeriesNumbersForBlocks(mergedBlocks);
+    setBlocks(buildBlockState(mergedBlocks));
     setStep(2);
   };
 
@@ -160,10 +176,11 @@ export default function PdfImportModal({ competitionId, onClose }) {
       if (result.sections.length === 0) {
         setParseError('Geen wedstrijdschema herkend in dit PDF-bestand.');
       } else if (result.sections.length === 1) {
-        setSectionIdx(0);
-        setBlocks(buildBlockState(result.sections[0]));
+        setSelectedSectionIdxs([0]);
+        setBlocks(buildBlockState(result.sections[0].blocks));
         setStep(2);
       } else {
+        setSelectedSectionIdxs([]);
         setStep(1);
       }
     } catch (err) {
@@ -341,23 +358,31 @@ export default function PdfImportModal({ competitionId, onClose }) {
             </>
           )}
 
-          {/* ── Stap 1: dagdeel kiezen ── */}
+          {/* ── Stap 1: dagdeel(s) kiezen ── */}
           {step === 1 && parsed && (
             <>
               <p style={{ fontSize: '0.85rem', color: color.body, marginTop: 0 }}>
-                Dit PDF-bestand bevat meerdere dagdelen. Kies welk dagdeel bij
-                <strong> deze </strong> wedstrijd hoort — de rest wordt genegeerd.
+                Dit PDF-bestand bevat meerdere dagdelen — dit schema wordt manueel opgemaakt
+                en kan daardoor per keer net iets anders ingedeeld zijn. Vink aan welke
+                dagdelen bij <strong>deze</strong> wedstrijd horen; je kan er meerdere kiezen.
+                Ze worden samen als één dagtijdlijn geïmporteerd, in de volgorde van de PDF.
               </p>
               {parsed.sections.map((section, i) => {
                 const heatsCount = section.blocks.filter(b => b.kind === 'heats').length;
                 const entryCount = section.blocks
                   .filter(b => b.kind === 'heats')
                   .reduce((sum, b) => sum + b.rawEntries.length, 0);
+                const checked = selectedSectionIdxs.includes(i);
                 return (
-                  <div key={i} style={s2.sectionCard(false)} onClick={() => goToReview(i)}>
-                    <div style={{ fontWeight: 800, color: color.inkSoft }}>{section.subtitle}</div>
-                    <div style={{ fontSize: '0.78rem', color: color.muted, marginTop: '2px' }}>
-                      {heatsCount} onderdeel-blokken · {entryCount} deelnemers
+                  <div key={i} style={s2.sectionCard(checked)} onClick={() => toggleSection(i)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleSection(i)} onClick={e => e.stopPropagation()} />
+                      <div>
+                        <div style={{ fontWeight: 800, color: color.inkSoft }}>{section.subtitle}</div>
+                        <div style={{ fontSize: '0.78rem', color: color.muted, marginTop: '2px' }}>
+                          {heatsCount} onderdeel-blokken · {entryCount} deelnemers
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -375,6 +400,11 @@ export default function PdfImportModal({ competitionId, onClose }) {
                   </div>
                   {parsed.warnings.map((w, i) => <div key={i}>{w}</div>)}
                 </div>
+              )}
+              {parsed.sections.length > 1 && (
+                <p style={{ fontSize: '0.78rem', color: color.muted, marginTop: 0 }}>
+                  Samengevoegd uit: {selectedSectionIdxs.map(i => parsed.sections[i].subtitle).join(' + ')}
+                </p>
               )}
               <p style={{ fontSize: '0.8rem', color: color.muted, marginTop: 0 }}>
                 {totalEntryCount} deelnemers gevonden. Rood-gemarkeerde rijen zijn automatisch
@@ -574,7 +604,16 @@ export default function PdfImportModal({ competitionId, onClose }) {
             <button style={s.btnSecondary} onClick={onClose}>Annuleren</button>
           )}
           {step === 1 && (
-            <button style={s.btnSecondary} onClick={() => setStep(0)}>← Terug</button>
+            <>
+              <button style={s.btnSecondary} onClick={() => setStep(0)}>← Terug</button>
+              <button
+                style={s.btnPrimary}
+                onClick={goToReview}
+                disabled={selectedSectionIdxs.length === 0}
+              >
+                Volgende →
+              </button>
+            </>
           )}
           {step === 2 && (
             <>
