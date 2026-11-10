@@ -821,6 +821,42 @@ zonder badge, want beide behandelen `null` al als "geen afwijking". Vanaf de
 eerste afgewerkte reeks loopt de afwijking weer gewoon mee, ook doorheen
 latere pauzes.
 
+**`officialEvent` volgt de dagtijdlijn, niet de abstracte onderdelen-
+volgorde.** `officialEvent` bepaalt welk onderdeel het grote scherm als
+"officieel actief" toont (en dus ook `eventParticipants`/`seriesNrs`/
+`officialSeriesNr`, die er allemaal van afhangen). Dit werd ooit louter
+berekend als "het eerste onderdeel uit `sortedEvents` (de abstracte
+onderdelen-volgorde, bv. op `sortOrder` uit seedData.js) dat nog niet in
+`finishedEvents` staat" — dat klopt enkel zolang een wedstrijd haar
+onderdelen in diezelfde abstracte volgorde plant (Speed/Endurance vóór
+Freestyle, wat bij de eerste geteste schema's toevallig altijd zo was). Een
+PDF die Freestyles vóór Speed plant (een geldige, manueel opgemaakte
+volgorde) brak dit: `officialEvent` bleef "Speed" tonen (eerste in
+`sortedEvents`, nog niet afgewerkt) terwijl de dagtijdlijn, en dus de
+speaker, allang met Freestyles bezig was.
+
+`officialEvent` volgt daarom nu de ECHTE dagtijdlijn: eerst `currentBlock`
+(zie hieronder, het eerste nog niet afgewerkte blok), of — is dat een
+pauze/briefing/proefjury/... (`isBreakBlock`) — het eerstvolgende heats-blok
+erna (`currentOrNextHeatsBlock`, dezelfde "kijk vooruit tot het eerste
+heats-blok"-logica als `breakSequence` hieronder). Enkel wanneer dat niets
+oplevert (geen dagtijdlijn ingesteld, bv. een wedstrijd zonder PDF-import, of
+een blok dat naar een intussen verwijderd onderdeel verwijst) valt het terug
+op de oude, op `sortedEvents` gebaseerde aanpak. Dezelfde volgorde-afhanke-
+lijkheid zat ook in `nextList`'s "zoek het volgende onderdeel met
+deelnemers"-stap (nadat alle reeksen van het huidige onderdeel klaar zijn):
+die doorliep vroeger `sortedEvents` vanaf de positie van `officialEvent`,
+en loopt nu `sortedAllBlocks` af vanaf `currentOrNextHeatsBlock`, op zoek
+naar het eerstvolgende heats-blok met een ANDER `eventId` dat deelnemers
+heeft — zelfde principe, consequent toegepast.
+
+`LiveView.jsx` had dit probleem niet: `activeEventId` volgt daar al langer
+`currentBlock.eventId` rechtstreeks (zie "Blok-gedreven navigatie in
+LiveView" verderop), met `sortedEvents` ook daar enkel als allerlaatste
+terugval. `DisplayView` had zijn eigen, onafhankelijk berekende
+`officialEvent` die dat patroon nooit had overgenomen — vandaar dat enkel
+het grote scherm hier last van had, niet het speakerscherm.
+
 **Dagtijdlijn-kolom en gestapelde pauzeblokken (DisplayView).** Het grote
 scherm bestaat nu uit drie kolommen i.p.v. twee:
 - **Links (nieuw, vast 240px breed)** — de volledige dagtijdlijn
