@@ -515,6 +515,30 @@ samengevoegde lijst, zodat de reeksnummering klopt alsof het altijd al één
 sectie was. `assignSeriesNumbers(sections)` (gebruikt tijdens het parsen zelf)
 is er simpelweg een dunne laag bovenop: dezelfde functie per sectie aanroepen.
 
+**Niet-gekoppelde blokken blijven sectie-gescheiden.** Een heats-blok waarvan
+het onderdeel niet automatisch herkend werd (`matchedEvent === null`) valt in
+`assignSeriesNumbersForBlocks` terug op een `__unmatched__:...`-sleutel i.p.v.
+`matchedEvent.id`. Die sleutel bevat bewust ook `block.sectionId` (een
+oplopend volgnummer dat elke sectie bij het parsen krijgt, zie `ensureSection`
+hierboven) náást `block.eventName`, niet enkel het laatste. Reden: een pagina
+waarvan de enige onderdeelnaam-regel toevallig identiek is aan (en dus
+"opgeslokt" wordt door) de dagdeel-titel zelf — zoals "Triple Unders" en elke
+Freestyles-pagina in een BK-schema, die geen aparte onderdeelnaam-regel na de
+titel hebben zoals Speedproeven dat wel heeft ("Speed 30 seconden") — krijgt
+daardoor `eventName === null`, STIL, zonder warning. Met enkel `eventName` in
+de sleutel zouden twee zulke niet-gekoppelde blokken uit VERSCHILLENDE,
+door de gebruiker samengevoegde secties (bv. "Freestyles 16+" en "Triple
+Unders", beiden `eventName === null`) na het samenvoegen ten onrechte als
+ÉÉN onderdeel behandeld worden. Omdat die gedeelde pot dan typisch ook een
+freestyle-blok bevat (`categoryLabel` gezet), viel de `isFreestyle`-check
+voor de hele pot op "freestyle" — met als gevolg dat élke deelnemer zijn eigen
+`seriesNr` kreeg in plaats van gegroepeerd te worden per tijdstip, ook de
+deelnemers van het eigenlijk-speed-onderdeel (Triple Unders) die daar niet
+bij hoorden. `sectionId` houdt blokken uit verschillende secties altijd apart,
+terwijl meerdere fysieke blokken van hetzelfde niet-gekoppelde onderdeel
+BINNEN één sectie (bv. een freestyle-blok onderbroken door een pauze) nog wel
+correct blijven samengroeperen — die delen immers dezelfde `sectionId`.
+
 ### PdfImportModal — stappen
 
 Hergebruikt zoveel mogelijk van het bestaande CSV-stramien (`ImportModal`):

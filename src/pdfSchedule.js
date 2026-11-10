@@ -200,10 +200,11 @@ export function parseSchedule(pages, events) {
   let openHeatsBlock = null;
   let order = 0;
   let expectSubtitle = false;
+  let sectionSeq = 0;
 
   const ensureSection = (subtitle) => {
     if (!currentSection || currentSection.subtitle !== subtitle) {
-      currentSection = { subtitle, blocks: [] };
+      currentSection = { subtitle, blocks: [], id: sectionSeq++ };
       sections.push(currentSection);
       order = 0;
       currentEventName = null;
@@ -225,6 +226,12 @@ export function parseSchedule(pages, events) {
         kind: 'heats',
         eventName: currentEventName,
         matchedEvent: currentEvent,
+        // Scopet de "niet-gekoppeld"-hergroepering in assignSeriesNumbersForBlocks
+        // tot DEZE sectie — zie de uitleg daar: zonder dit zouden twee
+        // niet-aan-een-onderdeel-gekoppelde blokken uit VERSCHILLENDE secties
+        // (vaak allebei eventName === null) na het samenvoegen van dagdelen
+        // (PdfImportModal) ten onrechte als hetzelfde onderdeel behandeld worden.
+        sectionId: currentSection.id,
         scheduledTime,
         order: order++,
         rawEntries: [],
@@ -394,13 +401,24 @@ function looksLikeEventNameCandidate(text) {
  * blijven hernummeren vanaf 1, wat na het samenvoegen tot botsende seriesNr's
  * voor hetzelfde onderdeel zou leiden.
  *
+ * Een blok zonder gekoppeld onderdeel (b.matchedEvent === null — bv. omdat de
+ * onderdeelnaam-regel samenviel met de dagdeel-titel en dus "opgeslokt" werd,
+ * zie TITLE_RE hierboven) valt terug op `block.sectionId` + `block.eventName`
+ * i.p.v. enkel `eventName`: zonder die sectiescoping zouden twee ONGEKOPPELDE
+ * blokken uit VERSCHILLENDE, door de gebruiker samengevoegde secties (beiden
+ * met `eventName === null`) na het samenvoegen ten onrechte als hetzelfde
+ * onderdeel behandeld worden — met als zichtbaar gevolg dat zodra die pot ook
+ * één freestyle-blok bevat (categoryLabel gezet), de hele pot als freestyle
+ * genummerd wordt: elke deelnemer krijgt dan zijn eigen seriesNr in plaats van
+ * gegroepeerd te worden per tijdstip.
+ *
  * @param {Array<Object>} blocks
  */
 export function assignSeriesNumbersForBlocks(blocks) {
   const byEventKey = new Map();
   for (const block of blocks) {
     if (block.kind !== 'heats') continue;
-    const key = block.matchedEvent?.id ?? `__unmatched__:${block.eventName}`;
+    const key = block.matchedEvent?.id ?? `__unmatched__:${block.sectionId}:${block.eventName}`;
     if (!byEventKey.has(key)) byEventKey.set(key, []);
     byEventKey.get(key).push(block);
   }
