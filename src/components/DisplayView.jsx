@@ -103,10 +103,50 @@ export default function DisplayView({ onClose }) {
 
   const sortedEvents = getSortedEvents(activeCompetition);
 
-  // Officieel actief event = eerste event dat nog niet in finishedEvents staat
-  const officialEvent = useMemo(() =>
-    sortedEvents.find(ev => !finishedEvents.includes(ev.id)) ?? sortedEvents[0] ?? null,
-  [sortedEvents, finishedEvents]);
+  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
+  // Vóór officialEvent/nextList nodig: welk onderdeel "officieel actief" is,
+  // moet de ECHTE dagtijdlijn-volgorde volgen (zie hieronder), niet de
+  // abstracte onderdelen-volgorde (sortedEvents) — die twee kunnen verschillen
+  // zodra een wedstrijd onderdelen in een andere volgorde plant dan
+  // gebruikelijk (bv. Freestyles vóór Speed/Endurance i.p.v. erna).
+  const sortedAllBlocks = useMemo(() =>
+    [...blocks].sort((a, b) => a.order - b.order),
+  [blocks]);
+  const currentBlock = useMemo(() =>
+    sortedAllBlocks.find(b => b.status !== 'afgewerkt') ?? null,
+  [sortedAllBlocks]);
+
+  // Het huidige blok zelf, of — als het een pauze/briefing/proefjury/... is —
+  // het eerstvolgende heats-blok erna (zie breakSequence hieronder, dezelfde
+  // "kijk vooruit tot het eerste heats-blok"-logica): zolang de wedstrijd in
+  // zo'n informatief blok zit, is DAT onderdeel het onderdeel waar de
+  // dagtijdlijn zo meteen naartoe gaat, en dus wat het grote scherm als
+  // "officieel actief" moet tonen — niet het eerste onderdeel uit de
+  // abstracte onderdelen-volgorde.
+  const currentOrNextHeatsBlock = useMemo(() => {
+    if (!currentBlock) return null;
+    if (currentBlock.type === 'heats') return currentBlock;
+    const startIdx = sortedAllBlocks.findIndex(b => b.id === currentBlock.id);
+    if (startIdx === -1) return null;
+    for (let i = startIdx; i < sortedAllBlocks.length; i++) {
+      if (sortedAllBlocks[i].type === 'heats') return sortedAllBlocks[i];
+    }
+    return null;
+  }, [currentBlock, sortedAllBlocks]);
+
+  // Officieel actief event: het onderdeel van currentOrNextHeatsBlock (de
+  // echte dagtijdlijn) — met de oude, op sortedEvents gebaseerde aanpak enkel
+  // als terugval (geen dagtijdlijn ingesteld, of het blok verwijst naar een
+  // intussen verwijderd onderdeel).
+  const officialEvent = useMemo(() => {
+    const blockEvent = currentOrNextHeatsBlock
+      ? events.find(ev => ev.id === currentOrNextHeatsBlock.eventId)
+      : null;
+    return blockEvent
+      ?? sortedEvents.find(ev => !finishedEvents.includes(ev.id))
+      ?? sortedEvents[0]
+      ?? null;
+  }, [currentOrNextHeatsBlock, events, sortedEvents, finishedEvents]);
 
   const isFreestyle = officialEvent?.scoringType === 'freestyle';
 
@@ -138,15 +178,6 @@ export default function DisplayView({ onClose }) {
 
   const totalSeries = seriesNrs.length;
 
-  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
-  // Vóór nextList nodig: zolang dit een pauze/briefing/proefjury/... is, is
-  // officialSeriesNr nog niet echt gestart (zie nextList hieronder).
-  const sortedAllBlocks = useMemo(() =>
-    [...blocks].sort((a, b) => a.order - b.order),
-  [blocks]);
-  const currentBlock = useMemo(() =>
-    sortedAllBlocks.find(b => b.status !== 'afgewerkt') ?? null,
-  [sortedAllBlocks]);
   const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
 
   // Reeks van opeenvolgende niet-heats blokken vanaf het huidige blok, tot en
@@ -253,10 +284,21 @@ export default function DisplayView({ onClose }) {
       };
     }
 
-    // Zoek volgend event met deelnemers
-    const currentEventIdx = sortedEvents.findIndex(e => e.id === officialEvent.id);
-    for (let i = currentEventIdx + 1; i < sortedEvents.length; i++) {
-      const nextEv   = sortedEvents[i];
+    // Zoek volgend event met deelnemers — via de ECHTE dagtijdlijn-volgorde
+    // (sortedAllBlocks), niet de abstracte onderdelen-volgorde (sortedEvents):
+    // anders klopt "volgende" niet zodra een wedstrijd onderdelen in een
+    // andere volgorde plant dan gebruikelijk (zie officialEvent hierboven).
+    const currentBlockIdx = currentOrNextHeatsBlock
+      ? sortedAllBlocks.findIndex(b => b.id === currentOrNextHeatsBlock.id)
+      : -1;
+    const seenEventIds = new Set([officialEvent.id]);
+    for (let i = currentBlockIdx + 1; i < sortedAllBlocks.length; i++) {
+      const b = sortedAllBlocks[i];
+      if (b.type !== 'heats' || seenEventIds.has(b.eventId)) continue;
+      seenEventIds.add(b.eventId);
+      const nextEv = events.find(e => e.id === b.eventId);
+      if (!nextEv) continue;
+
       const nextFreestyle = nextEv.scoringType === 'freestyle';
       const nextParts = participants
         .filter(p => p.entries.some(e => e.eventId === nextEv.id && !e.isScratched))
@@ -281,7 +323,7 @@ export default function DisplayView({ onClose }) {
     }
 
     return empty;
-  }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedEvents, participants, isFreestyle, totalSeries, isBreakBlock]);
+  }, [officialEvent, officialSeriesNr, seriesNrs, eventParticipants, sortedAllBlocks, currentOrNextHeatsBlock, events, participants, isFreestyle, totalSeries, isBreakBlock]);
 
   // Bij speed (meerdere deelnemers/velden per reeks) delen alle rijen van
   // displayList dezelfde reekstijd — die hoort dan ook maar één keer getoond
