@@ -610,6 +610,20 @@ live aantal per status (`filterCounts`, berekend over de volledige
 `participants`-lijst, los van de zoekterm) zodat de wedstrijdbeheerder in één
 oogopslag de actuele stand ziet.
 
+**Filteren per onderdeel.** Deelnemers melden zich niet allemaal op hetzelfde
+moment aan — vlak vóór een onderdeel wil de wedstrijdbeheerder specifiek
+kunnen zien wie daarvoor al aangemeld is en wie nog niet, los van de rest van
+de wedstrijd. De keuzelijst naast de zoekbalk (`filterEventId`, standaard
+"Alle onderdelen") beperkt de deelnemerstabel tot wie een niet-geschrapte
+inschrijving heeft voor het gekozen onderdeel (`matchesEventFilter`) —
+combineerbaar met de bestaande status-filterknoppen en de zoekterm (alle drie
+AND-gecombineerd in `filteredParticipants`). Een reeds vóór dát onderdeel
+geschrapte inschrijving telt bewust niet mee: wie daar toch al forfait voor
+gaf, hoeft de beheerder niet meer te verwachten. `filterCounts` wordt om
+dezelfde reden ook over dezelfde onderdeel-beperkte deelnemersset berekend
+(niet over de volledige wedstrijd), zodat de aantallen op de filterknoppen
+altijd "voor dit onderdeel" betekenen zodra er een gekozen is.
+
 ---
 
 ## Dagtijdlijn (`blocks`)
