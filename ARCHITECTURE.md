@@ -422,7 +422,22 @@ wedstrijdfase, bv. "Individuele wedstrijd" of "Voorronde Individueel |
 prefix), gevolgd door een dagdeel-titel (bv. "B-niveau 13-15 jaar (...)") —
 een wissel van die titel opent een nieuwe **sectie**. Eén PDF kan dus
 meerdere dagdelen/wedstrijden bevatten; `PdfImportModal` laat de gebruiker
-kiezen welke sectie bij de geopende wedstrijd hoort zodra er meer dan één is.
+kiezen welke secties bij de geopende wedstrijd horen zodra er meer dan één is
+(zie "Meerdere dagdelen samenvoegen" hieronder — bewust een meervoudige
+keuze, geen enkelvoudige).
+
+Deze sectiegrens is een **heuristiek**, geen betrouwbare wedstrijd-grens: ze
+reageert op élke wissel van de titelregel na "Individueel", ook als die wissel
+eigenlijk gewoon de volgende leeftijdscategorie/discipline binnen DEZELFDE
+wedstrijdddag aankondigt (bv. "Speedproeven 13-15 jaar" → "Freestyles 13-15
+jaar" → "Speedproeven 16+" bij een PDF waarvan elke pagina start met dezelfde
+kopregel "BK Individueel" + datum, gevolgd door de paginaspecifieke
+onderdeel-kop). Omdat dit schema manueel per wedstrijd wordt opgemaakt en dus
+niet altijd exact dezelfde structuur volgt, wordt deze heuristiek bewust niet
+"slimmer" gemaakt (bv. enkel op een echte datumwissel reageren) — dat zou in
+een ander, net iets anders opgemaakt schema weer verkeerd kunnen gokken. De
+oplossing ligt aan de gebruikerskant: zelf aanduiden welke secties werkelijk
+bij elkaar horen.
 
 Binnen een sectie:
 - Een onderdeelnaam-regel (bv. "Speed Sprint (30 seconden)") opent een nieuw
@@ -475,12 +490,38 @@ overlappend met de tekst-bounding-box. Betrouwbaar gebleken tegen een echt
 Gymfed-schema, maar niet 100% gegarandeerd — daarom altijd zichtbaar en
 aanpasbaar (checkbox per rij) in de nakijkstap, nooit stilzwijgend toegepast.
 
+### Meerdere dagdelen samenvoegen
+
+Stap 1 toont elke sectie als een aanvinkbare kaart (checkbox), niet als een
+enkelvoudige keuze — de gebruiker kan er meerdere selecteren wanneer de PDF
+("manueel opgemaakt, kan dus per keer net iets anders ingedeeld zijn") een
+echte, ononderbroken wedstrijddag heeft opgesplitst in meerdere secties (zie
+hierboven). `goToReview()` voegt de geselecteerde secties samen **in hun
+originele volgorde binnen de PDF** (niet de aanvinkvolgorde) tot één platte
+lijst blokken, bouwt daarmee de dagtijdlijn voor stap 2, en moet daarbij de
+reeksnummering **opnieuw** berekenen:
+
+Elke sectie werd tijdens het parsen (`assignSeriesNumbers` in pdfSchedule.js)
+apart genummerd, startend bij `seriesNr: 1` per onderdeel. Events zijn generiek
+(`events`-collectie bevat geen leeftijdsvariant — "Speed" matcht zowel "Speed
+30 seconden" bij 13-15 jaar als bij 16+), dus twee secties die toevallig
+hetzelfde onderdeel bevatten zouden zonder herberekening **allebei met reeks 1
+beginnen voor datzelfde `eventId`** — een botsing, want een reeks wordt uniek
+geïdentificeerd door `eventId` + `seriesNr`. Daarom exporteert pdfSchedule.js
+`assignSeriesNumbersForBlocks(blocks)` — exact dezelfde groepeer-en-nummer-
+logica, maar toepasbaar op een willekeurige platte blokkenlijst in plaats van
+enkel op de blokken van één sectie. `goToReview()` roept dit opnieuw aan op de
+samengevoegde lijst, zodat de reeksnummering klopt alsof het altijd al één
+sectie was. `assignSeriesNumbers(sections)` (gebruikt tijdens het parsen zelf)
+is er simpelweg een dunne laag bovenop: dezelfde functie per sectie aanroepen.
+
 ### PdfImportModal — stappen
 
 Hergebruikt zoveel mogelijk van het bestaande CSV-stramien (`ImportModal`):
 
 0. **Upload** — PDF kiezen, meteen client-side geparseerd (geen backend nodig)
-1. **Dagdeel kiezen** — enkel getoond bij meerdere secties in de PDF
+1. **Dagdeel(en) kiezen** — enkel getoond bij meerdere secties in de PDF; zie
+   "Meerdere dagdelen samenvoegen" hierboven
 2. **Nakijken** — elk blok tonen in schema-volgorde; onderdeel-blokken koppelen
    aan een bestaand `events`-document (verplicht), bloktype van pauze/label-
    blokken corrigeren, geschrapt-checkbox per deelnemer bevestigen/aanpassen,

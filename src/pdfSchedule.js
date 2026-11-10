@@ -382,50 +382,61 @@ function looksLikeEventNameCandidate(text) {
 }
 
 /**
- * Kent seriesNr toe binnen elke sectie, per (onderdeel × categorie):
+ * Kent seriesNr toe aan een platte lijst blokken, per (onderdeel × categorie):
  *   - speed:      groepeer op scheduledTime, chronologisch genummerd
  *   - freestyle:  groepeer op categoryLabel, elke deelnemer een eigen
  *                 doorlopend nummer, chronologisch binnen die categorie
  * Loopt over alle fysieke blokken van hetzelfde onderdeel heen (zie
- * bestandskop) — nooit gereset per blok.
+ * bestandskop) — nooit gereset per blok. Geëxporteerd zodat PdfImportModal.jsx
+ * dit ook kan toepassen op een door de gebruiker samengevoegde selectie van
+ * meerdere dagdeel-secties (zie "Meerdere dagdelen samenvoegen" in
+ * ARCHITECTURE.md) — ZONDER deze functie zou elke sectie haar eigen reeksen
+ * blijven hernummeren vanaf 1, wat na het samenvoegen tot botsende seriesNr's
+ * voor hetzelfde onderdeel zou leiden.
+ *
+ * @param {Array<Object>} blocks
  */
+export function assignSeriesNumbersForBlocks(blocks) {
+  const byEventKey = new Map();
+  for (const block of blocks) {
+    if (block.kind !== 'heats') continue;
+    const key = block.matchedEvent?.id ?? `__unmatched__:${block.eventName}`;
+    if (!byEventKey.has(key)) byEventKey.set(key, []);
+    byEventKey.get(key).push(block);
+  }
+
+  for (const grouped of byEventKey.values()) {
+    const allEntries = grouped.flatMap(b => b.rawEntries);
+    const isFreestyle = allEntries.some(e => e.categoryLabel);
+
+    if (isFreestyle) {
+      // Elke deelnemer is zijn eigen reeks (solo-optreden). seriesNr loopt
+      // GLOBAAL door over alle categorieën/kolommen (A/B) heen binnen dit
+      // onderdeel — nooit per categorie herstart. Categorieën lopen
+      // parallel (kolom A/B tegelijk beoordeeld), dus chronologisch
+      // sorteren op tijdstip geeft de volgorde zoals het schema ze opsomt;
+      // categoryLabel blijft bewaard voor latere podium-groepering, maar
+      // stuurt de reeksnummering zelf niet aan — anders zouden twee
+      // gelijktijdige categorieën dezelfde seriesNr delen en zou de reeks-
+      // afleiding (eventId + seriesNr) ze foutief samenvoegen tot één reeks.
+      allEntries.sort((a, b) => timeToMinutes(a.scheduledTime) - timeToMinutes(b.scheduledTime));
+      allEntries.forEach((e, i) => { e.seriesNr = i + 1; });
+    } else {
+      const byTime = new Map();
+      for (const e of allEntries) {
+        if (!byTime.has(e.scheduledTime)) byTime.set(e.scheduledTime, []);
+        byTime.get(e.scheduledTime).push(e);
+      }
+      const times = [...byTime.keys()].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
+      times.forEach((t, i) => {
+        for (const e of byTime.get(t)) e.seriesNr = i + 1;
+      });
+    }
+  }
+}
+
 function assignSeriesNumbers(sections) {
   for (const section of sections) {
-    const byEventKey = new Map();
-    for (const block of section.blocks) {
-      if (block.kind !== 'heats') continue;
-      const key = block.matchedEvent?.id ?? `__unmatched__:${block.eventName}`;
-      if (!byEventKey.has(key)) byEventKey.set(key, []);
-      byEventKey.get(key).push(block);
-    }
-
-    for (const blocks of byEventKey.values()) {
-      const allEntries = blocks.flatMap(b => b.rawEntries);
-      const isFreestyle = allEntries.some(e => e.categoryLabel);
-
-      if (isFreestyle) {
-        // Elke deelnemer is zijn eigen reeks (solo-optreden). seriesNr loopt
-        // GLOBAAL door over alle categorieën/kolommen (A/B) heen binnen dit
-        // onderdeel — nooit per categorie herstart. Categorieën lopen
-        // parallel (kolom A/B tegelijk beoordeeld), dus chronologisch
-        // sorteren op tijdstip geeft de volgorde zoals het schema ze opsomt;
-        // categoryLabel blijft bewaard voor latere podium-groepering, maar
-        // stuurt de reeksnummering zelf niet aan — anders zouden twee
-        // gelijktijdige categorieën dezelfde seriesNr delen en zou de reeks-
-        // afleiding (eventId + seriesNr) ze foutief samenvoegen tot één reeks.
-        allEntries.sort((a, b) => timeToMinutes(a.scheduledTime) - timeToMinutes(b.scheduledTime));
-        allEntries.forEach((e, i) => { e.seriesNr = i + 1; });
-      } else {
-        const byTime = new Map();
-        for (const e of allEntries) {
-          if (!byTime.has(e.scheduledTime)) byTime.set(e.scheduledTime, []);
-          byTime.get(e.scheduledTime).push(e);
-        }
-        const times = [...byTime.keys()].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
-        times.forEach((t, i) => {
-          for (const e of byTime.get(t)) e.seriesNr = i + 1;
-        });
-      }
-    }
+    assignSeriesNumbersForBlocks(section.blocks);
   }
 }
