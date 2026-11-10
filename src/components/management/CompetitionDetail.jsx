@@ -509,6 +509,15 @@ const s = {
     fontSize: '0.85rem',
     color: color.inkSoft,
   },
+  eventFilterSelect: {
+    border: `1px solid ${color.border}`,
+    borderRadius: radius.sm,
+    padding: '0.5rem 0.65rem',
+    fontSize: '0.8rem',
+    color: color.inkSoft,
+    background: color.surface,
+    maxWidth: '220px',
+  },
   tableWrap: {
     flex: 1,
     overflowY: 'auto',
@@ -611,8 +620,9 @@ export default function CompetitionDetail({
   // reeksdeelnemers, volle hoogte) | 'deelnemers' (volle hoogte)
   const [detailTab, setDetailTab] = useState('algemeen');
 
-  const [filterStatus, setFilterStatus] = useState('alle');
-  const [searchTerm,   setSearchTerm]   = useState('');
+  const [filterStatus,  setFilterStatus]  = useState('alle');
+  const [filterEventId, setFilterEventId] = useState('');
+  const [searchTerm,    setSearchTerm]    = useState('');
 
   const [newBlockType,    setNewBlockType]    = useState('pauze');
   const [newBlockEventId, setNewBlockEventId] = useState('');
@@ -722,6 +732,15 @@ export default function CompetitionDetail({
     [competition, getSortedEvents]
   );
 
+  // Heeft deze deelnemer een niet-geschrapte inschrijving voor het
+  // geselecteerde onderdeel? Leeg filterEventId = geen beperking (alle
+  // onderdelen). Een reeds voor dát onderdeel geschrapte inschrijving telt
+  // bewust niet mee — wie voor dit onderdeel toch al forfait gaf, hoeft de
+  // speaker niet meer te verwachten, dus die vervuilt de aanwezigheidscheck
+  // per onderdeel niet.
+  const matchesEventFilter = (p) =>
+    !filterEventId || p.entries.some(e => e.eventId === filterEventId && !e.isScratched);
+
   // Deelnemers gefilterd en gesorteerd
   const filteredParticipants = useMemo(() => {
     return participants
@@ -730,28 +749,31 @@ export default function CompetitionDetail({
         const matchesSearch =
           p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (getClub(p.clubId)?.name ?? '').toLowerCase().includes(searchTerm.toLowerCase());
+        if (!matchesSearch || !matchesEventFilter(p)) return false;
 
-        if (filterStatus === 'aangemeld')     return matchesSearch && p.isPresent && !fullyScratched;
-        if (filterStatus === 'niet-aangemeld') return matchesSearch && !p.isPresent && !fullyScratched;
-        if (filterStatus === 'geschrapt')     return matchesSearch && fullyScratched;
-        return matchesSearch;
+        if (filterStatus === 'aangemeld')      return p.isPresent && !fullyScratched;
+        if (filterStatus === 'niet-aangemeld') return !p.isPresent && !fullyScratched;
+        if (filterStatus === 'geschrapt')      return fullyScratched;
+        return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [participants, filterStatus, searchTerm, isFullyScratched, getClub]);
+  }, [participants, filterStatus, filterEventId, searchTerm, isFullyScratched, getClub]);
 
-  // Aantal deelnemers per status — los van de zoek-/filterkeuze, zodat de
+  // Aantal deelnemers per status — los van de zoekterm, zodat de
   // filterknoppen altijd de volledige stand van zaken tonen (live, want
-  // participants komt uit een Firestore-listener). searchTerm blijft dus
-  // bewust buiten deze telling.
+  // participants komt uit een Firestore-listener). Wel beperkt tot het
+  // geselecteerde onderdeel (filterEventId), zodat de tellingen kloppen met
+  // "wie moet ik voor dit onderdeel verwachten" i.p.v. de hele wedstrijd.
   const filterCounts = useMemo(() => {
-    const counts = { alle: participants.length, aangemeld: 0, 'niet-aangemeld': 0, geschrapt: 0 };
-    for (const p of participants) {
+    const scoped = participants.filter(matchesEventFilter);
+    const counts = { alle: scoped.length, aangemeld: 0, 'niet-aangemeld': 0, geschrapt: 0 };
+    for (const p of scoped) {
       if (isFullyScratched(p)) counts.geschrapt++;
       else if (p.isPresent) counts.aangemeld++;
       else counts['niet-aangemeld']++;
     }
     return counts;
-  }, [participants, isFullyScratched]);
+  }, [participants, filterEventId, isFullyScratched]);
 
   // Aantal deelnemers per event (actief)
   const participantCountByEvent = useMemo(() => {
@@ -1259,6 +1281,17 @@ export default function CompetitionDetail({
                 onChange={e => setSearchTerm(e.target.value)}
               />
             </div>
+            <select
+              style={s.eventFilterSelect}
+              value={filterEventId}
+              onChange={e => setFilterEventId(e.target.value)}
+              title="Filter op aanwezigheid per wedstrijdonderdeel"
+            >
+              <option value="">Alle onderdelen</option>
+              {sortedEvents.map(ev => (
+                <option key={ev.id} value={ev.id}>{ev.name}</option>
+              ))}
+            </select>
             <Button variant="secondary" size="sm" icon={<UserPlus size={14} />} onClick={onAddParticipant}>
               Nieuwe deelnemer
             </Button>
