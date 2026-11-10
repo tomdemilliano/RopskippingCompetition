@@ -185,10 +185,12 @@ const s = {
     gap: '5px',
   },
 
-  // Speed velden grid
+  // Speed velden grid — altijd 1 kolom, op volgorde van veldnummer: een
+  // 2-koloms indeling liet de speaker al eens 1,3,5,... lezen i.p.v. 1,2,3,...
+  // (grid vult rijgewijs, dus kolom 2 bevat de even veldnummers).
   fieldsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
+    gridTemplateColumns: '1fr',
     gap: '0.5rem',
     width: 'fit-content',
     margin: '0 auto',
