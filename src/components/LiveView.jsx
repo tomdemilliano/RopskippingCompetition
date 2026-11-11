@@ -177,29 +177,23 @@ const s = {
     gap: '5px',
   },
 
-  // Speed velden lijst — één compacte rij per veld (naam + club op dezelfde
-  // regel, zoals DisplayView's "Volgende"-vak), i.p.v. een kaart van 60px
-  // hoog per veld: bij 7+ velden (bv. Triple Unders met 10) viel het scherm
+  // Speed velden lijst — één compacte rij per veld, op volgorde van
+  // veldnummer: bij 7+ velden (bv. Triple Unders met 10) viel het scherm
   // anders vol en moest de speaker scrollen om de laatste velden te zien.
-  // Altijd 1 kolom, op volgorde van veldnummer (zie fieldRow hieronder).
-  fieldsGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.3rem',
+  // Een echte tabel i.p.v. losse flex-rijen: zo staat de clubkolom altijd op
+  // dezelfde x-positie, ongeacht de lengte van de naam ervoor — net als de
+  // "Volgende"-tabel in DisplayView.
+  fieldsTable: {
     width: 'fit-content',
     minWidth: '380px',
     margin: '0 auto',
+    borderCollapse: 'separate',
+    borderSpacing: '0 0.3rem',
   },
-  fieldRow: (hasSkipper, done) => ({
-    background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
-    padding: '0.4rem 0.75rem',
-    borderRadius: '8px',
-    border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    opacity: done ? 0.6 : 1,
-  }),
+  fieldNrCell: {
+    padding: '0 0.6rem 0 0',
+    verticalAlign: 'middle',
+  },
   fieldNrBadge: (hasSkipper, done) => ({
     background: hasSkipper ? (done ? color.faint : color.primary) : color.faintest,
     color: color.surface,
@@ -211,6 +205,32 @@ const s = {
     justifyContent: 'center',
     fontWeight: 700,
     flexShrink: 0,
+  }),
+  fieldNameCell: (hasSkipper, done) => ({
+    verticalAlign: 'middle',
+    padding: '0.4rem 1rem 0.4rem 0.75rem',
+    background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
+    border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
+    borderRight: 'none',
+    borderRadius: '8px 0 0 8px',
+    fontWeight: 800,
+    fontSize: '1rem',
+    fontStyle: hasSkipper ? 'normal' : 'italic',
+    color: hasSkipper ? color.inkSoft : color.faintest,
+    whiteSpace: 'nowrap',
+    opacity: done ? 0.6 : 1,
+  }),
+  fieldClubCell: (hasSkipper, done) => ({
+    verticalAlign: 'middle',
+    padding: '0.4rem 0.75rem',
+    background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
+    border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
+    borderLeft: 'none',
+    borderRadius: '0 8px 8px 0',
+    fontSize: '0.85rem',
+    color: color.faint,
+    whiteSpace: 'nowrap',
+    opacity: done ? 0.6 : 1,
   }),
 
   // Freestyle layout
@@ -263,19 +283,6 @@ const s = {
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
-  },
-  // Wedstrijdnaam — eigen kopbalk bovenaan het speakerscherm (enkel hier,
-  // los van de gedeelde app-header in App.jsx), zodat ze altijd zichtbaar
-  // blijft (ook tijdens een pauzescherm en op de Podium/Boodschap-tabs)
-  // i.p.v. enkel los boven de navigatiekaart op de Reeksen-tab te staan.
-  pageHeader: {
-    padding: '0.6rem 1.5rem',
-    background: color.surface,
-    borderBottom: `1px solid ${color.border}`,
-    flexShrink: 0,
-    fontSize: '0.85rem',
-    fontWeight: 800,
-    color: color.inkSoft,
   },
   mainTabsBar: {
     display: 'flex',
@@ -829,38 +836,33 @@ export default function LiveView() {
               </div>
             </div>
 
-            {/* ── Speed: velden lijst (compact, 1 regel per veld) ── */}
+            {/* ── Speed: velden tabel (compact, 1 rij per veld, clubnaam als
+                eigen kolom) ── */}
             {!isFreestyle && (
-              <div style={s.fieldsGrid}>
-                {[...Array(maxFieldNr || 0)].map((_, i) => {
-                  const fieldNr  = i + 1;
-                  const skipper  = currentSeriesParticipants.find(
-                    p => parseInt(p._entry.fieldNr) === fieldNr
-                  );
-                  const club = skipper ? getClub(skipper.clubId) : null;
-                  return (
-                    <div key={fieldNr} style={s.fieldRow(!!skipper, isSeriesDone)}>
-                      <div style={s.fieldNrBadge(!!skipper, isSeriesDone)}>{fieldNr}</div>
-                      <div style={{
-                        flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                      }}>
-                        <span style={{
-                          fontWeight: 800, fontSize: '1rem',
-                          fontStyle: skipper ? 'normal' : 'italic',
-                          color: skipper ? color.inkSoft : color.faintest,
-                        }}>
+              <table style={s.fieldsTable}>
+                <tbody>
+                  {[...Array(maxFieldNr || 0)].map((_, i) => {
+                    const fieldNr  = i + 1;
+                    const skipper  = currentSeriesParticipants.find(
+                      p => parseInt(p._entry.fieldNr) === fieldNr
+                    );
+                    const club = skipper ? getClub(skipper.clubId) : null;
+                    return (
+                      <tr key={fieldNr}>
+                        <td style={s.fieldNrCell}>
+                          <div style={s.fieldNrBadge(!!skipper, isSeriesDone)}>{fieldNr}</div>
+                        </td>
+                        <td style={s.fieldNameCell(!!skipper, isSeriesDone)}>
                           {skipper?.name ?? '---'}
-                        </span>
-                        {club && (
-                          <span style={{ fontSize: '0.8rem', color: color.faint, marginLeft: '0.6rem' }}>
-                            ({club.name})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                        </td>
+                        <td style={s.fieldClubCell(!!skipper, isSeriesDone)}>
+                          {club?.name ?? ''}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
 
             {/* ── Freestyle: huidige + volgende ── */}
@@ -986,9 +988,6 @@ export default function LiveView() {
 
   return (
     <div style={s.pageWrap}>
-      {/* ── Wedstrijdnaam ── */}
-      <div style={s.pageHeader}>{activeCompetition.name}</div>
-
       {/* ── Hoofdtabs ── */}
       <div style={s.mainTabsBar}>
         <button style={s.mainTab(liveTab === 'reeksen')} onClick={() => setLiveTab('reeksen')}>
