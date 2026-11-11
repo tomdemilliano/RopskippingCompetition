@@ -23,6 +23,7 @@ import { resolveBlockEntries } from '../../blockParticipants';
 import { BLOCK_ICON_OPTIONS, resolveBlockIconKey, getBlockIcon } from '../../blockIcons';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
+import ConfirmModal from '../ui/ConfirmModal';
 import PodiumManager from '../PodiumManager';
 import MessageManager from '../MessageManager';
 
@@ -639,6 +640,12 @@ export default function CompetitionDetail({
   // reeksdeelnemers, volle hoogte) | 'deelnemers' (volle hoogte)
   const [detailTab, setDetailTab] = useState('algemeen');
 
+  // Bevestigingsmodals voor onomkeerbare acties (verwijderen, beëindigen) —
+  // i.p.v. direct uitvoeren bij klik, zodat een misklik geen wedstrijd meer
+  // kan verwijderen of per ongeluk afsluiten.
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEndConfirm,    setShowEndConfirm]    = useState(false);
+
   const [filterStatus,  setFilterStatus]  = useState('alle');
   const [filterEventId, setFilterEventId] = useState('');
   const [searchTerm,    setSearchTerm]    = useState('');
@@ -819,9 +826,14 @@ export default function CompetitionDetail({
     await saveEventOrder(competition.id, order);
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm(`Weet je zeker dat je "${competition.name}" wilt verwijderen?`)) return;
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
     await deleteCompetition(competition.id);
+  };
+
+  const confirmEnd = async () => {
+    setShowEndConfirm(false);
+    await endCompetition(competition.id);
   };
 
   const handleStart = async () => {
@@ -887,7 +899,7 @@ export default function CompetitionDetail({
               <button style={s.iconBtn(false)} title="Bewerken" onClick={onEdit}>
                 <Edit2 size={15} />
               </button>
-              <button style={s.iconBtn(true)} title="Verwijderen" onClick={handleDelete}>
+              <button style={s.iconBtn(true)} title="Verwijderen" onClick={() => setShowDeleteConfirm(true)}>
                 <Trash2 size={15} />
               </button>
             </>
@@ -898,7 +910,7 @@ export default function CompetitionDetail({
               <Button variant="outlineDanger" size="sm" icon={<Ghost size={15} />} onClick={() => stopCompetitionLive(competition.id)}>
                 Stop live
               </Button>
-              <Button variant="danger" size="sm" icon={<Square size={14} />} onClick={() => endCompetition(competition.id)}>
+              <Button variant="danger" size="sm" icon={<Square size={14} />} onClick={() => setShowEndConfirm(true)}>
                 Beëindig
               </Button>
             </>
@@ -1423,6 +1435,28 @@ export default function CompetitionDetail({
       <div style={s.tabScroll}>
         <MessageManager competitionId={competition.id} />
       </div>
+      )}
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Wedstrijd verwijderen?"
+          message={`"${competition.name}" wordt definitief verwijderd, inclusief alle deelnemers, reeksen en de dagtijdlijn. Dit kan niet ongedaan gemaakt worden.`}
+          confirmLabel="Verwijderen"
+          danger
+          onConfirm={confirmDelete}
+          onClose={() => setShowDeleteConfirm(false)}
+        />
+      )}
+
+      {showEndConfirm && (
+        <ConfirmModal
+          title="Wedstrijd beëindigen?"
+          message="De wedstrijd wordt afgesloten en kan daarna niet meer bewerkt worden. Weet je zeker dat alle reeksen klaar zijn?"
+          confirmLabel="Beëindig"
+          danger
+          onConfirm={confirmEnd}
+          onClose={() => setShowEndConfirm(false)}
+        />
       )}
     </div>
   );
