@@ -9,7 +9,7 @@
  * Klikken op een kaart navigeert naar CompetitionDetail.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Plus, Calendar, MapPin, Trophy, ChevronRight,
   Trash2, Edit2, Radio, Flag,
@@ -18,6 +18,7 @@ import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
+import ConfirmModal from '../ui/ConfirmModal';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -192,6 +193,10 @@ export default function CompetitionsOverview({
     deleteCompetition,
   } = useAppContext();
 
+  // Wedstrijd die wacht op bevestiging via ConfirmModal — niet meteen
+  // verwijderen bij klik, zodat een misklik geen wedstrijd meer kan wissen.
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   // Sorteer alle wedstrijden op datum oplopend (geen datum → achteraan)
   const sorted = useMemo(() =>
     [...competitions].sort((a, b) => {
@@ -214,9 +219,14 @@ export default function CompetitionsOverview({
     return compType?.eventIds?.length ?? 0;
   };
 
-  const handleDelete = async (e, competition) => {
+  const handleDelete = (e, competition) => {
     e.stopPropagation();
-    if (!window.confirm(`Weet je zeker dat je "${competition.name}" wilt verwijderen?`)) return;
+    setDeleteTarget(competition);
+  };
+
+  const confirmDelete = async () => {
+    const competition = deleteTarget;
+    setDeleteTarget(null);
     await deleteCompetition(competition.id);
   };
 
@@ -330,6 +340,17 @@ export default function CompetitionsOverview({
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Wedstrijd verwijderen?"
+          message={`"${deleteTarget.name}" wordt definitief verwijderd, inclusief alle deelnemers, reeksen en de dagtijdlijn. Dit kan niet ongedaan gemaakt worden.`}
+          confirmLabel="Verwijderen"
+          danger
+          onConfirm={confirmDelete}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }
