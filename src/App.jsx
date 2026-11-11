@@ -22,7 +22,7 @@ import React, { useState, useEffect } from 'react';
 import { Ghost, LogOut, ShieldOff, Home } from 'lucide-react';
 import {
   HashRouter, Routes, Route, Navigate,
-  Outlet, useNavigate,
+  Outlet, useNavigate, useLocation,
 } from 'react-router-dom';
 
 import { AppProvider, useAppContext } from './AppContext';
@@ -48,6 +48,7 @@ const styles = {
     fontFamily: font.body,
   },
   header: {
+    position: 'relative',
     height: '60px',
     background: color.surface,
     display: 'flex',
@@ -56,6 +57,23 @@ const styles = {
     padding: '0 1.5rem',
     borderBottom: `1px solid ${color.border}`,
     flexShrink: 0,
+  },
+  // Wedstrijdnaam, centraal in de app-header — enkel op de speakerview
+  // (zie ShellLayout). Absoluut gepositioneerd t.o.v. de header, zodat ze
+  // écht centraal blijft staan ongeacht de breedte van logo/klok/gebruiker
+  // links en rechts ervan.
+  headerCenterTitle: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+    fontWeight: 800,
+    fontSize: '0.95rem',
+    color: color.inkSoft,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '40%',
   },
   homeLink: {
     display: 'flex',
@@ -130,7 +148,8 @@ const styles = {
 
 function ShellLayout() {
   const navigate = useNavigate();
-  const { userProfile, logout } = useAppContext();
+  const location = useLocation();
+  const { userProfile, logout, activeCompetition } = useAppContext();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -142,6 +161,11 @@ function ShellLayout() {
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
 
+  // Wedstrijdnaam centraal in de header — enkel op de speakerview, zodat
+  // LiveView zelf geen aparte kopregel meer nodig heeft voor de naam en die
+  // ruimte aan content kan geven (zie LiveView.jsx).
+  const isSpeakerRoute = location.pathname === '/speaker';
+
   return (
     <div style={styles.wrapper}>
       <header style={styles.header}>
@@ -151,6 +175,10 @@ function ShellLayout() {
             SKIP<span style={{ color: color.primary }}>FLOW</span>
           </div>
         </button>
+
+        {isSpeakerRoute && activeCompetition && (
+          <div style={styles.headerCenterTitle}>{activeCompetition.name}</div>
+        )}
 
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <div style={styles.clock}>{timeStr}</div>
