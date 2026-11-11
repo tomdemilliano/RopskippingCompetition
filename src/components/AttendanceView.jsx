@@ -89,18 +89,23 @@ const s = {
     gap: '1rem',
     flexWrap: 'wrap',
   },
-  backBtn: {
+  titleRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
-    background: 'none',
-    border: 'none',
-    color: color.primary,
-    fontWeight: 700,
-    fontSize: '0.85rem',
+    gap: '0.6rem',
+  },
+  backIconBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '28px',
+    height: '28px',
+    flexShrink: 0,
+    borderRadius: radius.sm,
+    border: `1px solid ${color.border}`,
+    background: color.surface,
+    color: color.muted,
     cursor: 'pointer',
-    padding: 0,
-    marginBottom: '2px',
   },
   compTitle: {
     fontWeight: 800,
@@ -432,9 +437,9 @@ export default function AttendanceView() {
   return (
     <div style={s.wrapper}>
       <div style={s.topBar}>
-        <div>
-          <button style={s.backBtn} onClick={() => setSelectedCompId(null)}>
-            <ChevronLeft size={15} /> Andere wedstrijd
+        <div style={s.titleRow}>
+          <button style={s.backIconBtn} onClick={() => setSelectedCompId(null)} title="Andere wedstrijd">
+            <ChevronLeft size={18} />
           </button>
           <div style={s.compTitle}>{selectedCompetition.name}</div>
         </div>

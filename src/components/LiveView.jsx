@@ -87,14 +87,6 @@ const s = {
     flexDirection: 'column',
     gap: '1.5rem',
   },
-  compLabel: {
-    textAlign: 'center',
-    fontSize: '0.7rem',
-    fontWeight: 900,
-    color: color.faint,
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase',
-  },
   navCard: {
     background: color.surface,
     borderRadius: '12px',
@@ -185,34 +177,35 @@ const s = {
     gap: '5px',
   },
 
-  // Speed velden grid — altijd 1 kolom, op volgorde van veldnummer: een
-  // 2-koloms indeling liet de speaker al eens 1,3,5,... lezen i.p.v. 1,2,3,...
-  // (grid vult rijgewijs, dus kolom 2 bevat de even veldnummers).
+  // Speed velden lijst — één compacte rij per veld (naam + club op dezelfde
+  // regel, zoals DisplayView's "Volgende"-vak), i.p.v. een kaart van 60px
+  // hoog per veld: bij 7+ velden (bv. Triple Unders met 10) viel het scherm
+  // anders vol en moest de speaker scrollen om de laatste velden te zien.
+  // Altijd 1 kolom, op volgorde van veldnummer (zie fieldRow hieronder).
   fieldsGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr',
-    gap: '0.5rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
     width: 'fit-content',
+    minWidth: '380px',
     margin: '0 auto',
   },
-  fieldCard: (hasSkipper, done) => ({
+  fieldRow: (hasSkipper, done) => ({
     background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
-    padding: '0.6rem 1rem',
-    borderRadius: '10px',
+    padding: '0.4rem 0.75rem',
+    borderRadius: '8px',
     border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
     display: 'flex',
     alignItems: 'center',
-    gap: '1rem',
-    height: '60px',
-    minWidth: '320px',
+    gap: '0.75rem',
     opacity: done ? 0.6 : 1,
   }),
   fieldNrBadge: (hasSkipper, done) => ({
     background: hasSkipper ? (done ? color.faint : color.primary) : color.faintest,
     color: color.surface,
-    width: '32px',
-    height: '32px',
-    borderRadius: '8px',
+    width: '28px',
+    height: '28px',
+    borderRadius: '7px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -270,6 +263,19 @@ const s = {
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
+  },
+  // Wedstrijdnaam — eigen kopbalk bovenaan het speakerscherm (enkel hier,
+  // los van de gedeelde app-header in App.jsx), zodat ze altijd zichtbaar
+  // blijft (ook tijdens een pauzescherm en op de Podium/Boodschap-tabs)
+  // i.p.v. enkel los boven de navigatiekaart op de Reeksen-tab te staan.
+  pageHeader: {
+    padding: '0.6rem 1.5rem',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
+    flexShrink: 0,
+    fontSize: '0.85rem',
+    fontWeight: 800,
+    color: color.inkSoft,
   },
   mainTabsBar: {
     display: 'flex',
@@ -764,8 +770,6 @@ export default function LiveView() {
           </div>
         ) : (
           <>
-            <div style={s.compLabel}>{activeCompetition.name}</div>
-
             {/* Navigatiekaart */}
             <div style={s.navCard}>
               <div style={s.navRow}>
@@ -825,7 +829,7 @@ export default function LiveView() {
               </div>
             </div>
 
-            {/* ── Speed: velden grid ── */}
+            {/* ── Speed: velden lijst (compact, 1 regel per veld) ── */}
             {!isFreestyle && (
               <div style={s.fieldsGrid}>
                 {[...Array(maxFieldNr || 0)].map((_, i) => {
@@ -835,19 +839,23 @@ export default function LiveView() {
                   );
                   const club = skipper ? getClub(skipper.clubId) : null;
                   return (
-                    <div key={fieldNr} style={s.fieldCard(!!skipper, isSeriesDone)}>
+                    <div key={fieldNr} style={s.fieldRow(!!skipper, isSeriesDone)}>
                       <div style={s.fieldNrBadge(!!skipper, isSeriesDone)}>{fieldNr}</div>
-                      <div style={{ flex: 1, overflow: 'hidden' }}>
-                        <div style={{
+                      <div style={{
+                        flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                      }}>
+                        <span style={{
                           fontWeight: 800, fontSize: '1rem',
+                          fontStyle: skipper ? 'normal' : 'italic',
                           color: skipper ? color.inkSoft : color.faintest,
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>
                           {skipper?.name ?? '---'}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: color.faint }}>
-                          {club?.name ?? ''}
-                        </div>
+                        </span>
+                        {club && (
+                          <span style={{ fontSize: '0.8rem', color: color.faint, marginLeft: '0.6rem' }}>
+                            ({club.name})
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -978,6 +986,9 @@ export default function LiveView() {
 
   return (
     <div style={s.pageWrap}>
+      {/* ── Wedstrijdnaam ── */}
+      <div style={s.pageHeader}>{activeCompetition.name}</div>
+
       {/* ── Hoofdtabs ── */}
       <div style={s.mainTabsBar}>
         <button style={s.mainTab(liveTab === 'reeksen')} onClick={() => setLiveTab('reeksen')}>
