@@ -13,7 +13,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
-  Search, RotateCcw, UserMinus, Upload, ChevronUp, ChevronDown,
+  Search, RotateCcw, UserMinus, Upload, ChevronUp, ChevronDown, ChevronLeft,
   Plus, ListTodo, Flag, Trophy, Megaphone, Repeat, X, Info,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
@@ -61,6 +61,24 @@ const s = {
     alignItems: 'baseline',
     gap: '0.6rem',
     flexWrap: 'wrap',
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+  },
+  backIconBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '30px',
+    height: '30px',
+    flexShrink: 0,
+    borderRadius: radius.sm,
+    border: `1px solid ${color.border}`,
+    background: color.surface,
+    color: color.muted,
+    cursor: 'pointer',
   },
   compName: {
     fontSize: '1.05rem',
@@ -583,6 +601,7 @@ const s = {
  */
 export default function CompetitionDetail({
   competitionId,
+  onBack,
   onEdit,
   onImport,
   onImportPdf,
@@ -838,16 +857,23 @@ export default function CompetitionDetail({
     <div style={s.content}>
       {/* ── Header (compact) ── */}
       <div style={s.header}>
-        <div>
-          <div style={s.headerTop}>
-            <div style={s.compName}>
-              {competition.name}
-              {isLive && <Badge tone="solidDanger">LIVE</Badge>}
-            </div>
-            <div style={s.compMeta}>
-              {compTypeName}
-              {competition.location && ` · ${competition.location}`}
-              {competition.date && ` · ${competition.date}`}
+        <div style={s.headerLeft}>
+          {onBack && (
+            <button style={s.backIconBtn} onClick={onBack} title="Alle wedstrijden">
+              <ChevronLeft size={18} />
+            </button>
+          )}
+          <div>
+            <div style={s.headerTop}>
+              <div style={s.compName}>
+                {competition.name}
+                {isLive && <Badge tone="solidDanger">LIVE</Badge>}
+              </div>
+              <div style={s.compMeta}>
+                {compTypeName}
+                {competition.location && ` · ${competition.location}`}
+                {competition.date && ` · ${competition.date}`}
+              </div>
             </div>
           </div>
         </div>

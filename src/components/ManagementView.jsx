@@ -11,7 +11,7 @@
  */
 
 import React, { useState } from 'react';
-import { ChevronLeft, Trophy, Users, Building2 } from 'lucide-react';
+import { Trophy, Users, Building2 } from 'lucide-react';
 import { color, radius } from '../theme';
 
 import CompetitionsOverview  from './management/CompetitionsOverview';
@@ -35,28 +35,6 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-  },
-  // Broodkruimel-balk bovenaan het detailscherm
-  breadcrumb: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '0.7rem 1.75rem',
-    background: color.surface,
-    borderBottom: `1px solid ${color.border}`,
-    flexShrink: 0,
-  },
-  backBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    background: 'none',
-    border: 'none',
-    color: color.primary,
-    fontWeight: 700,
-    fontSize: '0.82rem',
-    cursor: 'pointer',
-    padding: '4px 0',
   },
   detailWrapper: {
     flex: 1,
@@ -173,32 +151,24 @@ export default function ManagementView() {
         />
       )}
 
-      {/* ── DETAIL ── */}
+      {/* ── DETAIL (vult de volledige hoogte — de terugknop naar het
+          overzicht staat nu links naast de wedstrijdnaam in CompetitionDetail's
+          eigen header, geen aparte broodkruimel-rij meer) ── */}
       {section === 'wedstrijden' && view === 'detail' && selectedCompId && (
-        <>
-          {/* Broodkruimel */}
-          <div style={s.breadcrumb}>
-            <button style={s.backBtn} onClick={handleBack}>
-              <ChevronLeft size={15} />
-              Alle wedstrijden
-            </button>
-          </div>
-
-          {/* Detail (vult de rest van de hoogte) */}
-          <div style={s.detailWrapper}>
-            <CompetitionDetail
-              competitionId={selectedCompId}
-              onEdit={handleEditFromDetail}
-              onImport={(eventId) => setImportEventId(eventId)}
-              onImportPdf={() => setShowPdfImport(true)}
-              onEditParticipant={(p, eventId) => {
-                setEditParticipant(p);
-                setEditParticipantFocusEventId(eventId ?? null);
-              }}
-              onAddParticipant={() => setShowAddParticipant(true)}
-            />
-          </div>
-        </>
+        <div style={s.detailWrapper}>
+          <CompetitionDetail
+            competitionId={selectedCompId}
+            onBack={handleBack}
+            onEdit={handleEditFromDetail}
+            onImport={(eventId) => setImportEventId(eventId)}
+            onImportPdf={() => setShowPdfImport(true)}
+            onEditParticipant={(p, eventId) => {
+              setEditParticipant(p);
+              setEditParticipantFocusEventId(eventId ?? null);
+            }}
+            onAddParticipant={() => setShowAddParticipant(true)}
+          />
+        </div>
       )}
 
       {/* ── MODALS ── */}
