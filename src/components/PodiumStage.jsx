@@ -93,17 +93,41 @@ function isPlaceRevealed(place, revealStage) {
 
 /**
  * @param {Object} props
- * @param {{name:string, places:Array}} props.podium
+ * @param {{name:string, places:Array, kind?:string, titleText?:string}} props.podium
  * @param {string} props.eventName
  * @param {Array} props.participants   volledige deelnemerslijst van de wedstrijd
  * @param {function} props.getClub
- * @param {number} [props.revealStage] 0-3, standaard volledig onthuld
+ * @param {number} [props.revealStage] 0-3, standaard volledig onthuld (genegeerd
+ *                                      voor een tussenscherm — dat toont zijn
+ *                                      tekst altijd meteen volledig)
  * @param {'full'|'mini'} [props.size]
  */
 export default function PodiumStage({
   podium, eventName, participants, getClub, revealStage = 3, size = 'full',
 }) {
   const d = SIZES[size] ?? SIZES.full;
+
+  // Tussenscherm — gewoon een titeltekst, gecentreerd in hetzelfde vak als
+  // een podium zou innemen. Geen plaatsen, geen gefaseerde onthulling: zodra
+  // de speaker het aanklikt, staat de volledige tekst er meteen.
+  if (podium?.kind === 'tussenscherm') {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '100%', minHeight: size === 'full' ? '30vh' : '3.5rem',
+        textAlign: 'center', padding: size === 'full' ? '0 2rem' : '0 0.5rem',
+        boxSizing: 'border-box',
+      }}>
+        <span style={{
+          fontSize: size === 'full' ? '3.2rem' : '0.85rem',
+          fontWeight: 900, color: color.stageInk, fontFamily: font.body,
+          lineHeight: 1.25,
+        }}>
+          {podium.titleText || 'Tussenscherm'}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div style={{

@@ -1137,13 +1137,23 @@ export const blockFactory = {
 /**
  * @typedef {Object} Podium
  * @property {string} id
- * @property {string} eventId    ref → events/{id}
- * @property {string} name       vrije tekst, bv. "Meisjes 13-15j"
- * @property {number} order      volgorde binnen de hele podiumceremonie
- * @property {PodiumPlace[]} places  altijd exact 3 (plaats 1, 2, 3)
+ * @property {'podium'|'tussenscherm'} kind  standaard "podium" (leeg/ontbrekend
+ *                                            in oudere documenten valt terug op
+ *                                            "podium") — "tussenscherm" is een
+ *                                            losse titelpagina tussen podia in,
+ *                                            zie "Tussenschermen" in ARCHITECTURE.md
+ * @property {string} eventId    ref → events/{id} (leeg bij een tussenscherm)
+ * @property {string} name       vrije tekst, bv. "Meisjes 13-15j" (leeg bij een tussenscherm)
+ * @property {string} titleText  titeltekst, enkel gebruikt bij kind "tussenscherm"
+ * @property {number} order      volgorde binnen de hele podiumceremonie — een
+ *                                tussenscherm deelt dezelfde reeks, dus kan
+ *                                vrij tussen podia geplaatst worden
+ * @property {PodiumPlace[]} places  altijd exact 3 (plaats 1, 2, 3) — ongebruikt
+ *                                    bij een tussenscherm
  * @property {boolean} isBelgianChampionship  toont een wapperende Belgische
  *                                             vlag als achtergrond i.p.v. de
  *                                             standaardachtergrond op PodiumView
+ *                                             (ongebruikt bij een tussenscherm)
  * @property {string} createdAt
  */
 
@@ -1160,16 +1170,18 @@ const podiumConverter = {
     const d = snapshot.data();
     return {
       id:                     snapshot.id,
+      kind:                   d.kind                    ?? 'podium',
       eventId:                d.eventId                ?? '',
       name:                   d.name                    ?? '',
+      titleText:              d.titleText               ?? '',
       order:                  d.order                   ?? 0,
       places:                 normalizePlaces(d.places),
       isBelgianChampionship:  d.isBelgianChampionship   ?? false,
       createdAt:              d.createdAt               ?? '',
     };
   },
-  toFirestore({ eventId, name, order = 0, places = [], isBelgianChampionship = false }) {
-    return { eventId, name, order, places: normalizePlaces(places), isBelgianChampionship };
+  toFirestore({ kind = 'podium', eventId = '', name = '', titleText = '', order = 0, places = [], isBelgianChampionship = false }) {
+    return { kind, eventId, name, titleText, order, places: normalizePlaces(places), isBelgianChampionship };
   },
 };
 
@@ -1190,9 +1202,9 @@ export const podiumFactory = {
   },
 
   /**
-   * Maak een nieuw podium aan voor een onderdeel.
+   * Maak een nieuw podium of tussenscherm aan.
    * @param {string} competitionId
-   * @param {{ eventId: string, name: string, order?: number }} data
+   * @param {{ kind?: 'podium'|'tussenscherm', eventId?: string, name?: string, titleText?: string, order?: number }} data
    * @returns {Promise<string>} nieuw id
    */
   async create(competitionId, data) {
