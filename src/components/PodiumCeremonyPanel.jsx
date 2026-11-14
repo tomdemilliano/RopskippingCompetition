@@ -215,15 +215,19 @@ export default function PodiumCeremonyPanel() {
       {/* ── Podia op ceremonie-volgorde ── */}
       <div style={s.left}>
         <div style={s.leftHeader}>Podia (volgorde)</div>
-        {podiums.map((p, i) => (
-          <div key={p.id} style={s.podiumRow(p.id === podiumState.activePodiumId)} onClick={() => selectPodium(p.id)}>
-            <span style={s.podiumOrder}>{i + 1}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={s.podiumRowName(p.id === podiumState.activePodiumId)} title={p.name}>{p.name}</div>
-              <div style={s.podiumRowMeta}>{eventName(p.eventId)}</div>
+        {podiums.map((p, i) => {
+          const isTitleScreen = p.kind === 'tussenscherm';
+          const label = isTitleScreen ? (p.titleText || '— tussenscherm —') : p.name;
+          return (
+            <div key={p.id} style={s.podiumRow(p.id === podiumState.activePodiumId)} onClick={() => selectPodium(p.id)}>
+              <span style={s.podiumOrder}>{i + 1}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={s.podiumRowName(p.id === podiumState.activePodiumId)} title={label}>{label}</div>
+                <div style={s.podiumRowMeta}>{isTitleScreen ? 'Tussenscherm' : eventName(p.eventId)}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {podiums.length === 0 && (
           <div style={{ padding: '1.25rem', fontSize: '0.8rem', color: color.faint, fontStyle: 'italic' }}>
             Nog geen podia — maak ze hier of in Beheer aan.
@@ -244,7 +248,9 @@ export default function PodiumCeremonyPanel() {
               <button style={s.navBtn(idx <= 0)} disabled={idx <= 0} onClick={goPrev}>
                 <ChevronLeft size={20} />
               </button>
-              <div style={s.navLabel}>Podium {idx + 1} / {podiums.length}</div>
+              <div style={s.navLabel}>
+                {activePodium.kind === 'tussenscherm' ? 'Tussenscherm' : 'Podium'} {idx + 1} / {podiums.length}
+              </div>
               <button style={s.navBtn(idx >= podiums.length - 1)} disabled={idx >= podiums.length - 1} onClick={goNext}>
                 <ChevronRight size={20} />
               </button>
@@ -264,34 +270,40 @@ export default function PodiumCeremonyPanel() {
               />
             </div>
 
-            <div style={s.stageRow}>
-              {[1, 2, 3].map(stage => (
-                <button
-                  key={stage}
-                  style={s.stageBtn((podiumState.revealStage ?? 0) >= stage)}
-                  onClick={() => setStage(stage)}
-                >
-                  {STAGE_LABEL[stage]}
-                </button>
-              ))}
-            </div>
+            {/* Gefaseerde onthulling bestaat enkel bij een echt podium — een
+                tussenscherm toont zijn tekst meteen volledig zodra gekozen. */}
+            {activePodium.kind !== 'tussenscherm' && (
+              <>
+                <div style={s.stageRow}>
+                  {[1, 2, 3].map(stage => (
+                    <button
+                      key={stage}
+                      style={s.stageBtn((podiumState.revealStage ?? 0) >= stage)}
+                      onClick={() => setStage(stage)}
+                    >
+                      {STAGE_LABEL[stage]}
+                    </button>
+                  ))}
+                </div>
 
-            <div style={s.actionsRow}>
-              <Button
-                variant="secondary" size="sm" icon={<RotateCcw size={14} />}
-                onClick={revealReset}
-                disabled={(podiumState.revealStage ?? 0) === 0}
-              >
-                Reset onthulling
-              </Button>
-              <Button
-                variant="primary" size="sm" icon={<ChevronRight size={14} />}
-                onClick={revealNext}
-                disabled={(podiumState.revealStage ?? 0) >= 3}
-              >
-                Volgende onthulling
-              </Button>
-            </div>
+                <div style={s.actionsRow}>
+                  <Button
+                    variant="secondary" size="sm" icon={<RotateCcw size={14} />}
+                    onClick={revealReset}
+                    disabled={(podiumState.revealStage ?? 0) === 0}
+                  >
+                    Reset onthulling
+                  </Button>
+                  <Button
+                    variant="primary" size="sm" icon={<ChevronRight size={14} />}
+                    onClick={revealNext}
+                    disabled={(podiumState.revealStage ?? 0) >= 3}
+                  >
+                    Volgende onthulling
+                  </Button>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

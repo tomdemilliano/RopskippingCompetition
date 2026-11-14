@@ -17,7 +17,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Trophy, Plus, Trash2, ChevronUp, ChevronDown, Pencil, Check, X, Flag,
+  Trophy, Plus, Trash2, ChevronUp, ChevronDown, Pencil, Check, X, Flag, Type,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius } from '../theme';
@@ -224,12 +224,13 @@ export default function PodiumManager({ competitionId }) {
     loadPodiums(competitionId ?? null);
   }, [competitionId, loadPodiums]);
 
-  const [newEventId, setNewEventId] = useState('');
-  const [newName,    setNewName]    = useState('');
-  const [newIsBK,    setNewIsBK]    = useState(false);
-  const [expandedId, setExpandedId] = useState(null);
-  const [editingId,  setEditingId]  = useState(null);
-  const [editName,   setEditName]   = useState('');
+  const [newEventId,  setNewEventId]  = useState('');
+  const [newName,     setNewName]     = useState('');
+  const [newIsBK,     setNewIsBK]     = useState(false);
+  const [newTitleText, setNewTitleText] = useState('');
+  const [expandedId,  setExpandedId]  = useState(null);
+  const [editingId,   setEditingId]   = useState(null);
+  const [editName,    setEditName]    = useState('');
 
   const eventName = (eventId) =>
     sortedEvents.find(ev => ev.id === eventId)?.name ?? '— onbekend onderdeel —';
@@ -241,6 +242,7 @@ export default function PodiumManager({ competitionId }) {
     if (!newEventId || !newName.trim()) return;
     const maxOrder = podiums.reduce((m, p) => Math.max(m, p.order), 0);
     await createPodium(competitionId, {
+      kind:    'podium',
       eventId: newEventId,
       name:    newName.trim(),
       order:   maxOrder + 1,
@@ -249,6 +251,19 @@ export default function PodiumManager({ competitionId }) {
     });
     setNewName('');
     setNewIsBK(false);
+  };
+
+  // Tussenscherm — een losse titelpagina, overal tussen de podia te plaatsen
+  // (zelfde `order`-reeks, geen eigen onderdeel/laureaten/plaatsen nodig).
+  const handleCreateTitleScreen = async () => {
+    if (!newTitleText.trim()) return;
+    const maxOrder = podiums.reduce((m, p) => Math.max(m, p.order), 0);
+    await createPodium(competitionId, {
+      kind:      'tussenscherm',
+      titleText: newTitleText.trim(),
+      order:     maxOrder + 1,
+    });
+    setNewTitleText('');
   };
 
   const toggleBelgianChampionship = (podium) => {
@@ -268,19 +283,21 @@ export default function PodiumManager({ competitionId }) {
   };
 
   const handleDelete = async (podium) => {
-    if (!window.confirm(`Podium "${podium.name}" verwijderen?`)) return;
+    const label = podium.kind === 'tussenscherm' ? (podium.titleText || 'Tussenscherm') : podium.name;
+    if (!window.confirm(`"${label}" verwijderen?`)) return;
     await deletePodium(competitionId, podium.id);
   };
 
   const startRename = (podium) => {
     setEditingId(podium.id);
-    setEditName(podium.name);
+    setEditName(podium.kind === 'tussenscherm' ? podium.titleText : podium.name);
   };
 
   const saveRename = async (podium) => {
     const trimmed = editName.trim();
-    if (trimmed && trimmed !== podium.name) {
-      await updatePodium(competitionId, podium.id, { name: trimmed });
+    const field = podium.kind === 'tussenscherm' ? 'titleText' : 'name';
+    if (trimmed && trimmed !== podium[field]) {
+      await updatePodium(competitionId, podium.id, { [field]: trimmed });
     }
     setEditingId(null);
   };
@@ -333,12 +350,100 @@ export default function PodiumManager({ competitionId }) {
         </Button>
       </div>
 
+      {/* ── Nieuw tussenscherm — losse titelpagina, overal tussen de podia
+          te plaatsen (zelfde volgorde-lijst hieronder) ── */}
+      <div style={s.addRow}>
+        <input
+          style={s.addInput}
+          placeholder="Titeltekst tussenscherm (bv. 'Prijsuitreiking Freestyles')"
+          value={newTitleText}
+          onChange={e => setNewTitleText(e.target.value)}
+        />
+        <Button
+          variant="secondary" size="sm" icon={<Type size={14} />}
+          onClick={handleCreateTitleScreen}
+          disabled={!newTitleText.trim()}
+        >
+          Tussenscherm
+        </Button>
+      </div>
+
       {/* ── Podiumlijst ── */}
       {podiums.length === 0 ? (
         <div style={s.empty}>Nog geen podia aangemaakt voor deze wedstrijd.</div>
       ) : (
         <div style={s.list}>
           {podiums.map((podium, idx) => {
+            // Tussenscherm — simpelere kaart: geen onderdeel, laureaten,
+            // plaatsen of BK-vlag, enkel de titeltekst. Deelt wel dezelfde
+            // volgorde-knoppen, zodat het overal tussen de podia past.
+            if (podium.kind === 'tussenscherm') {
+              return (
+                <div key={podium.id} style={s.card}>
+                  <div style={s.cardHeader}>
+                    <div style={s.orderBtns}>
+                      <button
+                        style={s.orderBtn(idx === 0)}
+                        disabled={idx === 0}
+                        title="Naar boven"
+                        onClick={() => handleMove(podium.id, 'up')}
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        style={s.orderBtn(idx === podiums.length - 1)}
+                        disabled={idx === podiums.length - 1}
+                        title="Naar beneden"
+                        onClick={() => handleMove(podium.id, 'down')}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
+
+                    <Type size={18} color={color.muted} style={{ flexShrink: 0 }} />
+
+                    <div style={{ ...s.cardMain, cursor: 'default' }}>
+                      {editingId === podium.id ? (
+                        <input
+                          autoFocus
+                          style={s.renameInput}
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveRename(podium);
+                            if (e.key === 'Escape') setEditingId(null);
+                          }}
+                        />
+                      ) : (
+                        <div style={s.cardName} title={podium.titleText}>
+                          {podium.titleText || '— geen titeltekst —'}
+                        </div>
+                      )}
+                      <div style={s.cardMeta}>Tussenscherm</div>
+                    </div>
+
+                    {editingId === podium.id ? (
+                      <>
+                        <button style={s.iconBtn(false)} title="Opslaan" onClick={() => saveRename(podium)}>
+                          <Check size={15} />
+                        </button>
+                        <button style={s.iconBtn(false)} title="Annuleren" onClick={() => setEditingId(null)}>
+                          <X size={15} />
+                        </button>
+                      </>
+                    ) : (
+                      <button style={s.iconBtn(false)} title="Hernoemen" onClick={() => startRename(podium)}>
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    <button style={s.iconBtn(true)} title="Verwijderen" onClick={() => handleDelete(podium)}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
             const expanded = expandedId === podium.id;
             const filledCount = podium.places.filter(pl => pl.participantIds.length > 0).length;
             const evParticipants = eventParticipants(podium.eventId);

@@ -176,9 +176,11 @@ createdAt
 
 **`podium/{id}`** (subcollectie van competition — zie "Podium & prijsuitreiking")
 ```
-eventId → events, name (vrije tekst, door de gebruiker bepaald), order (globaal,
-niet per onderdeel), places[3] ({place: 1|2|3, participantIds[]}),
-isBelgianChampionship (boolean), createdAt
+kind ("podium" | "tussenscherm", standaard "podium"), eventId → events,
+name (vrije tekst, door de gebruiker bepaald), titleText (enkel bij
+kind "tussenscherm"), order (globaal, niet per onderdeel),
+places[3] ({place: 1|2|3, participantIds[]}), isBelgianChampionship (boolean),
+createdAt
 ```
 
 **`message/{id}`** (subcollectie van competition — zie "Boodschap groot scherm")
@@ -1048,6 +1050,44 @@ gewoon meerdere deelnemers kan bevatten.
 gescopeerd per onderdeel — zo kan de wedstrijdbeheerder/speaker de podia van
 verschillende onderdelen vrij door elkaar ordenen tot de exacte
 ceremonie-volgorde waarin ze afgeroepen worden.
+
+### Tussenschermen
+
+Naast echte podia kan de `podiums`-collectie ook een **tussenscherm** bevatten
+— een losse titelpagina (bv. "Prijsuitreiking Freestyles" als aankondiging
+vóór een reeks podia) zonder onderdeel, laureaten of plaatsen. Bewust **geen**
+aparte collectie: een tussenscherm moet overal tussen de podia geplaatst
+kunnen worden en door de speaker op exact dezelfde manier doorlopen worden
+(vorige/volgende, of rechtstreeks kiezen) — dat vraagt om dezelfde globale
+`order`-reeks en dezelfde `activePodiumId`-aanwijzer in `podiumState`, dus
+hergebruikt een tussenscherm gewoon het bestaande `podium`-document met twee
+extra velden:
+
+```
+kind       "podium" (standaard, ook bij oudere documenten zonder dit veld)
+           | "tussenscherm"
+titleText  titeltekst, enkel gebruikt bij kind "tussenscherm"
+```
+
+Bij `kind === "tussenscherm"` blijven `eventId`/`name`/`places`/
+`isBelgianChampionship` gewoon op hun lege standaardwaarde staan — niet
+verboden, gewoon ongebruikt. `PodiumManager.jsx` heeft er daarom een eigen,
+kortere kaart voor (titeltekst + hernoemen + verwijderen + dezelfde
+volgorde-knoppen, maar geen onderdeel-koppeling, laureaten-UI of BK-vlag).
+`PodiumCeremonyPanel.jsx` toont ze gewoon tussen de podia in de volgorde-lijst
+(label "Tussenscherm" i.p.v. de onderdeelnaam) en kiest ze op exact dezelfde
+manier (`selectPodium` kent geen onderscheid naar `kind`) — enkel de
+onthullings-knoppen (3e/2e/1e plaats, reset/volgende) zijn verborgen zodra
+het actieve item een tussenscherm is, want die gefaseerde onthulling bestaat
+niet voor een titelpagina: zodra de speaker hem selecteert, staat de
+volledige tekst er meteen op het grote scherm.
+
+`PodiumStage.jsx` (het ene presentatiecomponent, hergebruikt voor zowel de
+mini-voorvertoning als het grote scherm — zie hieronder) krijgt daarvoor een
+vroege branch op `podium.kind === "tussenscherm"`: in plaats van de 3
+podiumzuilen toont het dan gewoon `titleText`, gecentreerd in hetzelfde vak.
+`PodiumView.jsx` zelf heeft geen wijziging nodig — het geeft `activePodium`
+gewoon door aan `PodiumStage`, ongeacht het soort.
 
 ### Componenten
 
