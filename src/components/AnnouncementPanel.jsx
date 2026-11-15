@@ -318,14 +318,14 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
             </button>
 
             {announcement.audioUrl && !isStale && (
-              <>
-                <button style={s.btnPrimary} onClick={handlePlay}>
-                  <PlayCircle size={14} /> Afspelen
-                </button>
-                <button style={s.btnGhost} onClick={handleStop} title="Stop en terug naar het begin">
-                  <Square size={13} /> Stop
-                </button>
-              </>
+              <button style={s.btnPrimary} onClick={handlePlay}>
+                <PlayCircle size={14} /> Afspelen
+              </button>
+            )}
+            {announcement.audioUrl && (
+              <button style={s.btnGhost} onClick={handleStop} title="Stop en terug naar het begin">
+                <Square size={13} /> Stop
+              </button>
             )}
 
             <button style={s.btnGhost} onClick={handlePlayFixedClip}>
