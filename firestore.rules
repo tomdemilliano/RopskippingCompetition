@@ -79,6 +79,9 @@ service cloud.firestore {
         match /messages/{messageId} {
           allow read, write: if isSignedIn();
         }
+        match /announcements/{announcementId} {
+          allow read, write: if isSignedIn();
+        }
       }
     }
   }
