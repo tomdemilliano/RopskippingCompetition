@@ -881,9 +881,22 @@ export function AppProvider({ children }) {
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error ?? 'TTS-fout.');
 
-      const sampleRateMatch = /rate=(\d+)/.exec(body.mimeType ?? '');
-      const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
-      const wavBlob = pcmToWav(base64ToBytes(body.audioBase64), { sampleRate });
+      // Sommige Gemini TTS-modellen geven al een volledige WAV-container
+      // terug (eigen header + afsluitend metadata-blokje) i.p.v. ruwe PCM —
+      // die nogmaals in onze eigen pcmToWav()-header wrappen zou het
+      // afsluitende metadata-blokje als audiosamples laten meespelen (hoorbaar
+      // als een korte, luide ruis op het einde). mimeType vertelt ons welk
+      // van beide we kregen.
+      const mimeType = body.mimeType ?? '';
+      const isAlreadyWav = mimeType.toLowerCase().includes('wav');
+      let wavBlob;
+      if (isAlreadyWav) {
+        wavBlob = new Blob([base64ToBytes(body.audioBase64)], { type: 'audio/wav' });
+      } else {
+        const sampleRateMatch = /rate=(\d+)/.exec(mimeType);
+        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+        wavBlob = pcmToWav(base64ToBytes(body.audioBase64), { sampleRate });
+      }
 
       await announcementFactory.uploadAudio(competitionId, announcement.id, announcement.textVersion, wavBlob);
     } catch (err) {

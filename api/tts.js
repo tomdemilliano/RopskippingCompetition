@@ -29,18 +29,17 @@ const GEMINI_MODEL = 'gemini-3.8-flash-tts';
 // importeert bewust niets uit src/, blijft een zelfstandig, smal deployable
 // stuk. Wordt enkel gebruikt als de client (onverwacht) niets meestuurt.
 //
-// Kort gehouden als stijlaanwijzing ("Zeg ...:"), niet als uitgebreide
-// system-instructie — Gemini TTS-modellen ondersteunen GEEN apart
-// systemInstruction-veld (eerder geprobeerd, gaf 400 "Developer instruction
-// is not enabled for this model"). Google's eigen documentatie gebruikt
-// precies dit patroon ("Say cheerfully: Have a wonderful day!") — enkel een
-// korte, directe stijlaanwijzing gevolgd door een dubbele punt, in dezelfde
-// contents-tekst, wordt door het model herkend en NIET mee uitgesproken. Een
-// lange, uitleggende alinea (de vorige versie) werd wél gewoon voorgelezen.
+// Derde poging voor stijlsturing bij dit model: Gemini zelf documenteert
+// expliciet dat gemini-3.8-flash-tts de tekst als EEN LETTERLIJK UIT TE
+// SPREKEN TRANSCRIPT behandelt — zowel een apart systemInstruction-veld
+// (gaf 400 "Developer instruction is not enabled for this model") als een
+// "Zeg <stijl>: <tekst>"-prefix in dezelfde tekst (werkte bij oudere
+// TTS-modellen, maar wordt bij 3.8 gewoon mee uitgesproken) zijn dus geen
+// optie. De voor 3.8 gedocumenteerde methode is een apart `speech_metadata`-
+// veld op het content-part, naast `text` — zie handler hieronder.
 const DEFAULT_VOICE_NAME = 'Enceladus';
 const DEFAULT_SYSTEM_INSTRUCTION =
-  'Zeg op een vlotte, natuurlijke en opgewekte manier, met een Vlaams ' +
-  'accent (geen Nederlands accent)';
+  'vlot, natuurlijk en opgewekt, met een Vlaams accent (geen Nederlands accent)';
 const DEFAULT_TEMPERATURE = 0.0;
 
 export default async function handler(req, res) {
@@ -67,14 +66,12 @@ export default async function handler(req, res) {
   }
 
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-  // "Zeg <stijl>: <tekst>" — Google's eigen gedocumenteerde patroon voor
-  // stijl/accent/pace-sturing bij Gemini TTS (geen apart instructieveld
-  // ondersteund). De stijlaanwijzing wordt door het getrainde model
-  // herkend en losgeknipt van wat effectief uitgesproken wordt, MITS ze
-  // kort en direct blijft (zie DEFAULT_SYSTEM_INSTRUCTION hierboven).
-  const stylePrefix = systemInstruction.trim().replace(/:\s*$/, '');
+  // `speech_metadata.style` op het content-part (naast `text`, niet erin
+  // geplakt) — Google's voor gemini-3.8-flash-tts gedocumenteerde manier om
+  // stijl/accent/pace te sturen zonder dat de tekst zelf wordt aangepast of
+  // de instructie wordt voorgelezen.
   const payload = {
-    contents: [{ parts: [{ text: `${stylePrefix}: ${text}` }] }],
+    contents: [{ parts: [{ text, speech_metadata: { style: systemInstruction } }] }],
     generationConfig: {
       responseModalities: ['AUDIO'],
       temperature,

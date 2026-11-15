@@ -537,17 +537,16 @@ export function sortedEntries(participant) {
  * (echt API-veld) en `temperature` (bestaat al in de payload, stuurt
  * expressiviteit) zijn "instellingen" in de klassieke zin.
  *
- * `systemInstruction` is GEEN apart Gemini-veld — TTS-modellen ondersteunen
- * dat niet (geeft 400 "Developer instruction is not enabled for this
- * model"). Het wordt in api/tts.js vóór de tekst geplakt volgens Google's
- * eigen gedocumenteerde patroon "Zeg <stijl>: <tekst>" — moet daarom KORT en
- * direct blijven (geen lange, uitleggende alinea: die wordt gewoon mee
- * voorgelezen i.p.v. als stijlaanwijzing herkend).
+ * `systemInstruction` is GEEN apart Gemini-veld — gemini-3.8-flash-tts
+ * behandelt de tekst als een letterlijk uit te spreken transcript, dus noch
+ * een apart `systemInstruction`-veld (gaf 400 "Developer instruction is not
+ * enabled for this model") noch een "Zeg <stijl>: <tekst>"-prefix in
+ * dezelfde tekst (werd gewoon mee voorgelezen) werkt hier. In `api/tts.js`
+ * gaat deze tekst daarom in een apart `speech_metadata.style`-veld op het
+ * content-part — zie dat bestand voor de volledige uitleg.
  */
 export const DEFAULT_ANNOUNCEMENT_SETTINGS = {
-  systemInstruction:
-    'Zeg op een vlotte, natuurlijke en opgewekte manier, met een Vlaams ' +
-    'accent (geen Nederlands accent)',
+  systemInstruction: 'vlot, natuurlijk en opgewekt, met een Vlaams accent (geen Nederlands accent)',
   voiceName: 'Enceladus',
   temperature: 0.0,
   textVariations: DEFAULT_TEXT_VARIATIONS,

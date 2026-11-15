@@ -1388,26 +1388,40 @@ orkestratie blijft client-side in `AppContext.jsx`. `src/pcmToWav.js` zet de
 ruwe PCM-respons om in een afspeelbare WAV-`Blob` (handmatige 44-byte
 RIFF/WAVE-header via `DataView`, geïnspireerd op de oude Apps Script-versie).
 
-**Gemini TTS-modellen ondersteunen GEEN apart `systemInstruction`-veld** —
-dat gaf in de praktijk `400 "Developer instruction is not enabled for this
-model"`. `systemInstruction` (ondanks de naam, een instelling uit
-`settings/announcements`, geen echt Gemini-veld meer) wordt daarom vóór de
-tekst geplakt in dezelfde `contents`-part, volgens Google's eigen
-gedocumenteerde patroon: **`"Zeg <stijl>: <tekst>"`** — een KORTE, directe
-stijlaanwijzing gevolgd door een dubbele punt, die het getrainde model
-herkent en zelf niet uitspreekt (vgl. Google's eigen voorbeeld "Say
-cheerfully: Have a wonderful day!"). Een eerdere versie probeerde dit via
-een apart `systemInstruction`-veld (werkte niet — bovenstaande 400-fout) én
-daarvoor via een lange, uitleggende alinea in dezelfde tekst geplakt (werkte
-ook niet — die werd gewoon mee voorgelezen, te lang/complex om als
-stijlaanwijzing herkend te worden). Accent en spreeksnelheid hebben bij
-Gemini TTS **geen apart API-veld** (geen bevestigde `nl-BE`-taalcode, geen
-`speakingRate`-parameter — door Google gedocumenteerd gedrag): die worden
-daarom via de bewoording van deze korte stijlzin gevraagd (bv. "Zeg op een
-vlotte manier met een Vlaams accent"). `temperature` is wél een echt,
-bestaand `generationConfig`-veld en stuurt expressiviteit/variatie —
-vandaar de enige twee werkelijke "API-instellingen" die beheerbaar zijn:
-`voiceName` en `temperature`.
+**`gemini-3.8-flash-tts` behandelt de tekst als een letterlijk uit te spreken
+transcript — stijl gaat via een apart `speech_metadata`-veld, niet via de
+tekst zelf.** Dit kostte twee mislukte pogingen om uit te zoeken:
+1. Een apart Gemini `systemInstruction`-veld — gaf `400 "Developer
+   instruction is not enabled for this model"` (TTS-modellen ondersteunen
+   dat veld niet).
+2. Een `"Zeg <stijl>: <tekst>"`-prefix in dezelfde `contents`-tekst (het
+   patroon uit Google's oudere voorbeelden, "Say cheerfully: Have a
+   wonderful day!") — werd bij `gemini-3.8-flash-tts` gewoon mee
+   uitgesproken; Google documenteert voor deze modelgeneratie expliciet dat
+   zulke in-tekst-instructies niet meer herkend worden.
+
+De huidige, voor 3.8-modellen gedocumenteerde aanpak: op het content-part
+een apart `speech_metadata`-veld naast `text`, bv.
+`{ text: "...", speech_metadata: { style: "vlot en opgewekt, met een Vlaams accent" } }`
+— puur metadata, komt dus nooit in de audio terecht. Accent en
+spreeksnelheid hebben bij Gemini TTS nog steeds **geen apart API-veld**
+(geen bevestigde `nl-BE`-taalcode, geen `speakingRate`-parameter): die
+worden via de bewoording van deze `style`-tekst gevraagd — nu een korte
+stijl**omschrijving** (bv. "vlot, natuurlijk en opgewekt, met een Vlaams
+accent"), geen volledige instructiezin meer (dat hoort niet meer bij dit
+veld). `temperature` is wél een echt, bestaand `generationConfig`-veld en
+stuurt expressiviteit/variatie — vandaar de enige twee werkelijke
+"API-instellingen" die beheerbaar zijn: `voiceName` en `temperature`.
+
+**Dubbele WAV-wrapping vermeden.** Sommige Gemini TTS-respons geeft al een
+volledige WAV-container terug (eigen header + afsluitend metadata-blokje)
+i.p.v. ruwe PCM — `generateAnnouncementAudio` (AppContext.jsx) herkent dit
+aan `mimeType` en gebruikt de bytes dan rechtstreeks i.p.v. ze nogmaals in
+`pcmToWav()`'s eigen header te wrappen (dat liet het afsluitende
+metadata-blokje als audiosamples meespelen — hoorbaar als een korte, luide
+ruis op het einde). `pcmToWav()` knipt bovendien een eventuele onvolledige
+laatste sample weg (lengte geen veelvoud van de framegrootte), wat anders
+ook als een korte ruisklik kan afspelen.
 
 ### Componenten en opslag
 

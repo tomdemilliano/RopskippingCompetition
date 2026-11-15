@@ -141,14 +141,13 @@ export default function AnnouncementSettings() {
       <div style={s.card}>
         <div style={s.cardTitle}>Voorleesinstructie &amp; stem</div>
 
-        <label style={s.label}>Voorleesinstructie</label>
+        <label style={s.label}>Voorleesinstructie (stijl)</label>
         <div style={s.hint}>
-          Stuurt toon, accent en spreeksnelheid van de omroeper. Gemini TTS
-          ondersteunt géén apart instructieveld — deze tekst wordt vóór elke
-          aankondiging geplakt volgens Google's patroon "Zeg &lt;stijl&gt;: &lt;tekst&gt;".
-          Houd dit daarom KORT en direct (één zin, geen dubbele punt op het
-          einde) — een lange, uitleggende alinea wordt niet herkend als
-          stijlaanwijzing en gewoon mee voorgelezen.
+          Stuurt toon, accent en spreeksnelheid van de omroeper — een korte
+          stijlomschrijving, geen volledige zin met een werkwoord (bv. "vlot
+          en opgewekt, met een Vlaams accent", niet "Spreek vlot en opgewekt
+          met een Vlaams accent."). Wordt apart van de voor te lezen tekst
+          meegestuurd, komt dus zelf nooit in de audio terecht.
         </div>
         <textarea
           style={s.textarea}

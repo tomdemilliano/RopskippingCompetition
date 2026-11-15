@@ -19,10 +19,14 @@
  * @returns {Blob} afspeelbare WAV-blob (`audio/wav`)
  */
 export function pcmToWav(pcmBytes, { sampleRate = 24000, numChannels = 1, bitsPerSample = 16 } = {}) {
-  const pcm = pcmBytes instanceof Uint8Array ? pcmBytes : new Uint8Array(pcmBytes);
+  const raw = pcmBytes instanceof Uint8Array ? pcmBytes : new Uint8Array(pcmBytes);
   const bytesPerSample = bitsPerSample / 8;
   const blockAlign = numChannels * bytesPerSample;
   const byteRate = sampleRate * blockAlign;
+  // Een onvolledige laatste sample (lengte geen veelvoud van blockAlign) kan
+  // als een korte ruisklik afspelen — knip die weg i.p.v. mee te schrijven.
+  const usableLength = Math.floor(raw.length / blockAlign) * blockAlign;
+  const pcm = raw.subarray(0, usableLength);
   const dataSize = pcm.length;
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
