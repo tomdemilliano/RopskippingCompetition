@@ -328,15 +328,16 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
         </button>
       </div>
 
-      {/* Audio voor de aankondiging zelf — ketent automatisch door naar het
-          vaste tweede fragment zodra ze afgelopen is. */}
+      {/* Audio voor de aankondiging zelf — speelt NOOIT automatisch door naar
+          het vaste tweede fragment: de speaker triggert dat altijd zelf
+          (via de "Skippers klaar?"-knop hieronder, of de snelknop in
+          LiveView.jsx's navigatievak). */}
       <audio
         ref={audioRef}
         src={announcement?.audioUrl || undefined}
-        onEnded={handlePlayFixedClip}
         style={{ display: 'none' }}
       />
-      {/* Vast, niet-gegenereerd tweede fragment — ook los herhaalbaar. */}
+      {/* Vast, niet-gegenereerd tweede fragment — enkel handmatig af te spelen. */}
       <audio ref={fixedAudioRef} src={FIXED_CLIP_URL} style={{ display: 'none' }} />
     </div>
   );

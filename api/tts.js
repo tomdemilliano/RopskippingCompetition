@@ -1,12 +1,15 @@
 /**
  * api/tts.js — SkipFlow
  *
- * Vercel serverless function: POST /api/tts, body { text, voiceName? }.
- * Enige doel: de Gemini TTS-aanroep server-side doen zodat GEMINI_API_KEY
- * nooit in clientcode terechtkomt (CLAUDE.md: deze app heeft verder geen
- * backend). Doet verder niets — geen Firestore, geen Storage, geen kennis
- * van competitionId/announcementId/caching. Alle orkestratie blijft
- * client-side in AppContext.jsx.
+ * Vercel serverless function: POST /api/tts, body
+ * { text, voiceName?, systemInstruction?, temperature? }. Enige doel: de
+ * Gemini TTS-aanroep server-side doen zodat GEMINI_API_KEY nooit in
+ * clientcode terechtkomt (CLAUDE.md: deze app heeft verder geen backend).
+ * Doet verder niets — geen Firestore, geen Storage, geen kennis van
+ * competitionId/announcementId/caching. Alle orkestratie (incl. het ophalen
+ * van de effectieve instellingen uit settings/announcements) blijft
+ * client-side in AppContext.jsx; deze functie krijgt ze gewoon aangeleverd
+ * en valt enkel terug op onderstaande DEFAULT_* als de client niets meestuurt.
  *
  * Zie "Aankondigingen (TTS)" in ARCHITECTURE.md.
  */
@@ -20,9 +23,17 @@
 // snellere gemini-3.8-flash-lite-tts, is gericht op hoog-volume/real-time
 // gebruik). Zie https://ai.google.dev/gemini-api/docs/deprecations.
 const GEMINI_MODEL = 'gemini-3.8-flash-tts';
+
+// Lokale fallback-kopie van settings/announcements' standaardwaarden (zie
+// DEFAULT_ANNOUNCEMENT_SETTINGS in src/dbSchema.js) — deze server-functie
+// importeert bewust niets uit src/, blijft een zelfstandig, smal deployable
+// stuk. Wordt enkel gebruikt als de client (onverwacht) niets meestuurt.
 const DEFAULT_VOICE_NAME = 'Enceladus';
-const SYSTEM_INSTRUCTION_PREFIX =
-  'Je bent omroeper op een Vlaamse ropeskipping wedstrijd en kondigt de deelnemers op een vlotte wijze aan met een heldere en opgewekte stem: ';
+const DEFAULT_SYSTEM_INSTRUCTION =
+  'Je bent een omroeper op een Vlaamse ropeskipping wedstrijd. Spreek met ' +
+  'een Vlaams accent (geen Nederlands accent), op een vlotte, natuurlijke ' +
+  'en opgewekte manier, met een heldere stem.';
+const DEFAULT_TEMPERATURE = 0.0;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -30,7 +41,12 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { text, voiceName = DEFAULT_VOICE_NAME } = req.body ?? {};
+  const {
+    text,
+    voiceName = DEFAULT_VOICE_NAME,
+    systemInstruction = DEFAULT_SYSTEM_INSTRUCTION,
+    temperature = DEFAULT_TEMPERATURE,
+  } = req.body ?? {};
   if (!text || typeof text !== 'string') {
     res.status(400).json({ error: '"text" is verplicht.' });
     return;
@@ -44,13 +60,17 @@ export default async function handler(req, res) {
 
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
   const payload = {
-    contents: [{ parts: [{ text: SYSTEM_INSTRUCTION_PREFIX + text }] }],
+    // Apart veld i.p.v. in de content-tekst geplakt — anders leest het model
+    // de instructie zelf mee voor. Accent/spreeksnelheid hebben geen eigen
+    // API-veld bij Gemini TTS en worden daarom via de bewoording van deze
+    // instructie gestuurd (zie ARCHITECTURE.md).
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    contents: [{ parts: [{ text }] }],
     generationConfig: {
       responseModalities: ['AUDIO'],
-      temperature: 0.0,
+      temperature,
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName } },
-        languageCode: 'nl-NL',
       },
     },
   };

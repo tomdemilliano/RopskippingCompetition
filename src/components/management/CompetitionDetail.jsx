@@ -14,7 +14,7 @@ import {
   Edit2, Trash2, Play, Square, Ghost, Check,
   CheckCircle, Users, UserPlus, UserCheck, UserX,
   Search, RotateCcw, UserMinus, Upload, ChevronUp, ChevronDown, ChevronLeft,
-  Plus, ListTodo, Flag, Trophy, Megaphone, Repeat, X, Info,
+  Plus, ListTodo, Flag, Trophy, Megaphone, Repeat, X, Info, Volume2,
 } from 'lucide-react';
 import { useAppContext } from '../../AppContext';
 import { color, radius, shadow } from '../../theme';
@@ -26,6 +26,7 @@ import Badge from '../ui/Badge';
 import ConfirmModal from '../ui/ConfirmModal';
 import PodiumManager from '../PodiumManager';
 import MessageManager from '../MessageManager';
+import AnnouncementManager from '../AnnouncementManager';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -944,6 +945,11 @@ export default function CompetitionDetail({
         <button style={s.tab(detailTab === 'boodschap')} onClick={() => setDetailTab('boodschap')}>
           <Megaphone size={14} /> Boodschap
         </button>
+        {competition.isAnnouncementsEnabled && (
+          <button style={s.tab(detailTab === 'aankondigingen')} onClick={() => setDetailTab('aankondigingen')}>
+            <Volume2 size={14} /> Aankondigingen
+          </button>
+        )}
       </div>
 
       {/* ── Tab: Wedstrijd (onderdelen + programma) ── */}
@@ -1434,6 +1440,14 @@ export default function CompetitionDetail({
       {detailTab === 'boodschap' && (
       <div style={s.tabScroll}>
         <MessageManager competitionId={competition.id} />
+      </div>
+      )}
+
+      {/* ── Tab: Aankondigingen (TTS) — enkel zichtbaar als de feature-toggle
+          voor deze wedstrijd aan staat (zie tabsBar hierboven) ── */}
+      {detailTab === 'aankondigingen' && competition.isAnnouncementsEnabled && (
+      <div style={s.tabScroll}>
+        <AnnouncementManager competitionId={competition.id} />
       </div>
       )}
 

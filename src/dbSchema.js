@@ -11,7 +11,8 @@
  *   4. Factories      — lees/schrijf-operaties per entiteit
  *
  * Collecties:
- *   settings/competition          singleton — actieve wedstrijd pointer
+ *   settings/competition           singleton — actieve wedstrijd pointer
+ *   settings/announcements         singleton — globale TTS-aankondigingsinstellingen
  *   users/{uid}                   gebruikers + rechten (doc-id = Firebase Auth uid)
  *   competitionTypes/{id}         wedstrijdtypes met standaard events
  *   events/{id}                   beschikbare onderdelen (globaal)
@@ -52,6 +53,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { DEFAULT_TEXT_VARIATIONS } from './announcementText';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. INITIALISATIE
@@ -100,6 +102,8 @@ const paths = {
   // Settings (singleton docs)
   settingsCompetition: () =>
     doc(getDb(), 'artifacts', getAppId(), 'public', 'data', 'settings', 'competition'),
+  settingsAnnouncements: () =>
+    doc(getDb(), 'artifacts', getAppId(), 'public', 'data', 'settings', 'announcements'),
 
   // Users — doc-id is de Firebase Auth uid
   users: () =>
@@ -526,6 +530,26 @@ export function sortedEntries(participant) {
 
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 
+/**
+ * Standaardwaarden voor settings/announcements — gebruikt zowel als
+ * fallback zolang dat document nog niet bestaat, als voor de "Herstel
+ * standaardwaarden"-knop in AnnouncementSettings.jsx. Enkel `voiceName`
+ * (echt API-veld) en `temperature` (bestaat al in de payload, stuurt
+ * expressiviteit) zijn "instellingen" in de klassieke zin — accent en
+ * spreeksnelheid hebben geen apart API-veld bij Gemini TTS en worden daarom
+ * via de tekst van `systemInstruction` zelf gestuurd (zie "Aankondigingen
+ * (TTS)" in ARCHITECTURE.md).
+ */
+export const DEFAULT_ANNOUNCEMENT_SETTINGS = {
+  systemInstruction:
+    'Je bent een omroeper op een Vlaamse ropeskipping wedstrijd. Spreek met ' +
+    'een Vlaams accent (geen Nederlands accent), op een vlotte, natuurlijke ' +
+    'en opgewekte manier, met een heldere stem.',
+  voiceName: 'Enceladus',
+  temperature: 0.0,
+  textVariations: DEFAULT_TEXT_VARIATIONS,
+};
+
 export const settingsFactory = {
   /**
    * Luister naar de actieve wedstrijd pointer.
@@ -543,6 +567,25 @@ export const settingsFactory = {
     return setDoc(paths.settingsCompetition(), {
       activeCompetitionId: competitionId,
     });
+  },
+
+  /**
+   * Luister naar de globale TTS-aankondigingsinstellingen (niet per
+   * wedstrijd — zie ManagementView.jsx's "Aankondigingen"-sectie).
+   * @param {function} callback  cb(AnnouncementSettings)
+   * @returns {function} unsubscribe
+   */
+  subscribeAnnouncementSettings(callback) {
+    return onSnapshot(paths.settingsAnnouncements(), (snap) => {
+      callback(snap.exists()
+        ? { ...DEFAULT_ANNOUNCEMENT_SETTINGS, ...snap.data() }
+        : DEFAULT_ANNOUNCEMENT_SETTINGS);
+    });
+  },
+
+  /** Sla de globale TTS-aankondigingsinstellingen op (volledige overschrijving). */
+  setAnnouncementSettings(data) {
+    return setDoc(paths.settingsAnnouncements(), data);
   },
 };
 

@@ -11,13 +11,14 @@
  */
 
 import React, { useState } from 'react';
-import { Trophy, Users, Building2 } from 'lucide-react';
+import { Trophy, Users, Building2, Volume2 } from 'lucide-react';
 import { color, radius } from '../theme';
 
 import CompetitionsOverview  from './management/CompetitionsOverview';
 import CompetitionDetail     from './management/CompetitionDetail';
 import UserManagement        from './management/UserManagement';
 import ClubManagement        from './management/ClubManagement';
+import AnnouncementSettings  from './management/AnnouncementSettings';
 import AddCompetitionModal   from './management/modals/AddCompetitionModal';
 import EditCompetitionModal  from './management/modals/EditCompetitionModal';
 import EditParticipantModal  from './management/modals/EditParticipantModal';
@@ -135,12 +136,16 @@ export default function ManagementView() {
             <button style={s.sectionTab(section === 'gebruikers')} onClick={() => setSection('gebruikers')}>
               <Users size={14} /> Gebruikers
             </button>
+            <button style={s.sectionTab(section === 'aankondigingen')} onClick={() => setSection('aankondigingen')}>
+              <Volume2 size={14} /> Aankondigingen
+            </button>
           </div>
         </div>
       )}
 
       {section === 'gebruikers' && <UserManagement />}
       {section === 'clubs' && <ClubManagement />}
+      {section === 'aankondigingen' && <AnnouncementSettings />}
 
       {/* ── OVERZICHT ── */}
       {section === 'wedstrijden' && view === 'overview' && (

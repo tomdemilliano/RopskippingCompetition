@@ -12,7 +12,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock,
-  ListTodo, Trophy, Settings, Megaphone,
+  ListTodo, Trophy, Settings, Megaphone, Volume2, Flag,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
@@ -347,6 +347,10 @@ const s = {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Zelfde vast, niet-gegenereerd fragment als AnnouncementPanel.jsx — hier
+// opnieuw gedefinieerd i.p.v. een gedeelde module voor één stringconstante.
+const FIXED_CLIP_URL = '/audio/skippers-klaar-jury-klaar.wav';
+
 function calcExpectedTime(scheduledTime, timeDiff) {
   if (!scheduledTime || !timeDiff || Math.abs(timeDiff) <= 2) return scheduledTime;
   try {
@@ -380,6 +384,7 @@ export default function LiveView() {
     blockTypeLabels,
     setBlockStatus,
     loadAnnouncements,
+    announcements,
     preloadUpcomingAnnouncementAudio,
   } = useAppContext();
 
@@ -578,6 +583,17 @@ export default function LiveView() {
   const currentSeriesParticipants = useMemo(() =>
     eventParticipants.filter(p => p._entry.seriesNr === activeSeriesNr),
   [eventParticipants, activeSeriesNr]);
+
+  // Aankondiging van de actieve reeks — voor de snelknoppen in het
+  // navigatievak hieronder. Eigen, lokale <audio>-elementen (zie onder),
+  // los van AnnouncementPanel's eigen afspeelstate.
+  const currentAnnouncement = announcements.find(
+    a => a.eventId === activeEventId && a.seriesNr === activeSeriesNr
+  );
+  const isCurrentAnnouncementStale = !!currentAnnouncement
+    && currentAnnouncement.audioTextVersion !== currentAnnouncement.textVersion;
+  const announcementAudioRef = useRef(null);
+  const fixedClipAudioRef = useRef(null);
 
   // Geplande tijd van de actieve reeks
   const plannedTime = currentSeriesParticipants[0]?._entry.scheduledTime ?? null;
@@ -834,6 +850,31 @@ export default function LiveView() {
 
               {/* Voltooiknop of voltooiindicator */}
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
+                {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
+                  <>
+                    <button
+                      style={s.navBtn(!currentAnnouncement?.audioUrl || isCurrentAnnouncementStale)}
+                      disabled={!currentAnnouncement?.audioUrl || isCurrentAnnouncementStale}
+                      onClick={() => announcementAudioRef.current?.play()}
+                      title="Aankondiging afspelen"
+                    >
+                      <Volume2 size={18} />
+                    </button>
+                    <button
+                      style={s.navBtn(false)}
+                      onClick={() => fixedClipAudioRef.current?.play()}
+                      title='"Skippers klaar, jury klaar?" afspelen'
+                    >
+                      <Flag size={18} />
+                    </button>
+                    <audio
+                      ref={announcementAudioRef}
+                      src={currentAnnouncement?.audioUrl || undefined}
+                      style={{ display: 'none' }}
+                    />
+                    <audio ref={fixedClipAudioRef} src={FIXED_CLIP_URL} style={{ display: 'none' }} />
+                  </>
+                )}
                 {isSeriesDone ? (
                   <>
                     <div style={s.doneTag}>

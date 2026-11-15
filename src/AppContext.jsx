@@ -43,6 +43,7 @@ import {
   podiumFactory,
   messageFactory,
   announcementFactory,
+  DEFAULT_ANNOUNCEMENT_SETTINGS,
   BLOCK_TYPE_LABELS,
   userFactory,
 } from './dbSchema';
@@ -146,6 +147,9 @@ export function AppProvider({ children }) {
   // finishedEvents/finishedSeries leven op het competition-document zelf
   // (zie dbSchema.js) en worden hieronder afgeleid van activeCompetition.
 
+  // ── Globale TTS-aankondigingsinstellingen (niet per wedstrijd) ───────────
+  const [announcementSettings, setAnnouncementSettings] = useState(DEFAULT_ANNOUNCEMENT_SETTINGS);
+
   // ── Deelnemers (per wedstrijd geladen) ───────────────────────────────────
   const [participants, setParticipants]               = useState([]);
   const [participantsCompId, setParticipantsCompId]   = useState(null);
@@ -231,6 +235,7 @@ export function AppProvider({ children }) {
       settingsFactory.subscribeCompetition(({ activeCompetitionId: id }) => {
         setActiveCompetitionId(id ?? null);
       }),
+      settingsFactory.subscribeAnnouncementSettings(setAnnouncementSettings),
     ];
 
     return () => unsubs.forEach(u => u());
@@ -462,6 +467,30 @@ export function AppProvider({ children }) {
 
     return { ready, total: upcoming.length };
   }, [blocks, events, participants, announcements, competitions]);
+
+  /**
+   * Hoeveel reeksen van elk speed-onderdeel al een aankondigingstekst
+   * hebben — voor het overzicht in AnnouncementManager.jsx (de
+   * bulkgeneratie-tab in CompetitionDetail). Puur leesgedrag, werkt op de
+   * voor de huidige wedstrijd geladen blocks/participants/announcements
+   * (zie loadBlocks/loadParticipants/loadAnnouncements).
+   * @returns {Array<{ eventId: string, eventName: string, withText: number, total: number }>}
+   */
+  const getAnnouncementTextCoverage = useCallback(() => {
+    const sequence = buildSpeedReeksSequence(blocks, events, participants);
+    const byEvent = new Map();
+
+    for (const r of sequence) {
+      const entry = byEvent.get(r.eventId) ?? { eventId: r.eventId, eventName: r.event?.name ?? '', withText: 0, total: 0 };
+      entry.total += 1;
+      if (announcements.some(a => a.eventId === r.eventId && a.seriesNr === r.seriesNr)) {
+        entry.withText += 1;
+      }
+      byEvent.set(r.eventId, entry);
+    }
+
+    return [...byEvent.values()];
+  }, [blocks, events, participants, announcements]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // ACTIONS — auth & gebruikers
@@ -768,6 +797,11 @@ export function AppProvider({ children }) {
   // ACTIONS — aankondigingen (TTS)
   // ─────────────────────────────────────────────────────────────────────────
 
+  /** Sla de globale TTS-aankondigingsinstellingen op (zie AnnouncementSettings.jsx). */
+  const updateAnnouncementSettings = useCallback((data) => {
+    return settingsFactory.setAnnouncementSettings(data);
+  }, []);
+
   /**
    * Genereer in één batch de aankondigingstekst voor elke speed/endurance/
    * triple-under-reeks die nog GEEN document heeft. Bestaande documenten
@@ -786,11 +820,12 @@ export function AppProvider({ children }) {
           event: r.event, seriesNr: r.seriesNr, totalSeriesForEvent: r.totalSeriesForEvent,
           seriesParticipants: r.seriesParticipants, maxFieldNr: r.maxFieldNr,
           getClub, sortedAllBlocks: r.sortedAllBlocks, events,
+          textVariations: announcementSettings.textVariations,
         }),
       }));
 
     if (items.length > 0) await announcementFactory.bulkCreate(competitionId, items);
-  }, [blocks, events, participants, announcements, getClub]);
+  }, [blocks, events, participants, announcements, getClub, announcementSettings]);
 
   /**
    * Genereer de tekst voor exact één reeks — bestaat er nog geen document
@@ -807,6 +842,7 @@ export function AppProvider({ children }) {
       event: r.event, seriesNr: r.seriesNr, totalSeriesForEvent: r.totalSeriesForEvent,
       seriesParticipants: r.seriesParticipants, maxFieldNr: r.maxFieldNr,
       getClub, sortedAllBlocks: r.sortedAllBlocks, events,
+      textVariations: announcementSettings.textVariations,
     });
 
     const existing = announcements.find(a => a.eventId === eventId && a.seriesNr === seriesNr);
@@ -815,7 +851,7 @@ export function AppProvider({ children }) {
     } else {
       await announcementFactory.bulkCreate(competitionId, [{ eventId, seriesNr, text }]);
     }
-  }, [blocks, events, participants, announcements, getClub]);
+  }, [blocks, events, participants, announcements, getClub, announcementSettings]);
 
   /** Handmatige correctie van de speaker — hoogt textVersion op (audio wordt zo als verouderd herkend). */
   const updateAnnouncementText = useCallback((competitionId, announcementId, text) => {
@@ -835,7 +871,12 @@ export function AppProvider({ children }) {
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: announcement.text }),
+        body: JSON.stringify({
+          text: announcement.text,
+          voiceName: announcementSettings.voiceName,
+          systemInstruction: announcementSettings.systemInstruction,
+          temperature: announcementSettings.temperature,
+        }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error ?? 'TTS-fout.');
@@ -849,7 +890,7 @@ export function AppProvider({ children }) {
       await announcementFactory.markGenerationFailed(competitionId, announcement.id);
       throw err;
     }
-  }, []);
+  }, [announcementSettings]);
 
   /**
    * Vult de audio-preloadbuffer van de eerstvolgende `windowSize` nog niet
@@ -950,6 +991,8 @@ export function AppProvider({ children }) {
     announcements,
     announcementsCompId,
     loadAnnouncements,
+    announcementSettings,
+    defaultAnnouncementSettings: DEFAULT_ANNOUNCEMENT_SETTINGS,
 
     // Settings
     activeCompetitionId,
@@ -965,6 +1008,7 @@ export function AppProvider({ children }) {
     isFullyScratched,
     blockTypeLabels: BLOCK_TYPE_LABELS,
     getAnnouncementPreloadStatus,
+    getAnnouncementTextCoverage,
 
     // Actions — wedstrijden
     createCompetition,
@@ -1014,6 +1058,7 @@ export function AppProvider({ children }) {
     setActiveMessage,
 
     // Actions — aankondigingen (TTS)
+    updateAnnouncementSettings,
     generateAnnouncementTexts,
     generateAnnouncementTextForReeks,
     updateAnnouncementText,

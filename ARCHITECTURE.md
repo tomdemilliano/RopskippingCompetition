@@ -1314,6 +1314,15 @@ per-wedstrijd feature-toggle, standaard uit.
   - `status` — `"tekst-klaar"` \| `"audio-klaar"` \| `"genereren-mislukt"`,
     een gemaksveld voor de UI, altijd herleidbaar uit de andere velden (zelfde
     soort keuze als `block.status`)
+- **`settings/announcements`** — nieuw, GLOBAAL singleton-document (niet per
+  wedstrijd — net als `settings/competition`), beheerd via
+  `AnnouncementSettings.jsx` (ManagementView → "Aankondigingen"). Geen
+  converter, net als `settingsCompetition`: plain object, `setDoc`
+  (volledige overschrijving), met `DEFAULT_ANNOUNCEMENT_SETTINGS` (in
+  `dbSchema.js`) als fallback zolang het document nog niet bestaat. Velden:
+  `systemInstruction` (de voorleesinstructie), `voiceName`, `temperature`
+  (0–1, stuurt expressiviteit — enige twee ECHTE Gemini-TTS-parameters),
+  `textVariations` (zie hieronder).
 
 ### Naamextractie (`announcementNames.js`)
 
@@ -1344,12 +1353,19 @@ te veronderstellen. Contextcategorieën: `first-of-competition` (reeks 1 van
 het eerste speed-type heats-blok), `second-reeks` (reeks 2 daarvan),
 `after-transition` (reeks 1 van een onderdeel na een ander onderdeel in de
 tijdlijn), `last-of-block` (laatste reeks van een onderdeel), anders
-`generic` (willekeurige keuze uit een zinnetjespool). Elke categorie heeft
-een eigen introzin, geparametriseerd op `event.name` (geen apart
+`generic` (willekeurige keuze uit een zinnetjespool). De introzin per
+categorie komt niet langer hardcoded uit deze module, maar uit
+`settings/announcements.textVariations` (beheerbaar via
+`AnnouncementSettings.jsx`) — `DEFAULT_TEXT_VARIATIONS` in dit bestand is
+enkel nog de standaardwaarde/fallback. Placeholders in die teksten:
+`{onderdeel}` (→ `event.name`) en `{vorigOnderdeel}` (→ het vorige
+onderdeel, enkel bij een overgang) — bewust Nederlandse, voor de beherende
+gebruiker leesbare tokens, geen technische identifiers (geen apart
 "voorleesnaam"-veld per onderdeel zoals bij clubs nodig — de onderdeelnamen
 "Speed"/"Endurance"/"Triple under" zijn al spreektaal-vriendelijk). De
 veldenlijst gebruikt `fieldLayout.js#padFieldList` voor lege velden ("Veld N
-blijft leeg") en plaatst "en " enkel vóór de allerlaatste regel.
+blijft leeg") en plaatst "en " enkel vóór de allerlaatste regel — dat
+formaat blijft wél hardcoded (structurele opmaak, geen "variatie").
 
 ### De Vercel-functie (`api/tts.js`)
 
@@ -1357,17 +1373,32 @@ blijft leeg") en plaatst "en " enkel vóór de allerlaatste regel.
 backend, alles praat rechtstreeks met Firestore/Storage vanuit de browser.
 Een Gemini-API-key mag nooit in clientcode staan, dus is er één smalle
 serverless function nodig enkel om die te verbergen: `POST /api/tts`, body
-`{ text, voiceName? }`, leest `GEMINI_API_KEY` uit `process.env` (Vercel-
-omgevingsvariabele — **moet handmatig ingesteld worden in de Vercel-
-projectinstellingen**), roept Gemini's `gemini-3.8-flash-tts`
-`generateContent` aan met de gevalideerde system-instructie ("Je bent
-omroeper op een Vlaamse ropeskipping wedstrijd en kondigt de deelnemers op
-een vlotte wijze aan met een heldere en opgewekte stem: ") en geeft
+`{ text, voiceName?, systemInstruction?, temperature? }` — `voiceName`/
+`systemInstruction`/`temperature` komen van de client mee (uit
+`AppContext.jsx#announcementSettings`, zelf afkomstig van
+`settings/announcements`); ontbreken ze, dan valt deze functie terug op haar
+eigen lokale `DEFAULT_*`-constanten (bewust een eigen kopie — deze functie
+importeert niets uit `src/`, blijft een zelfstandig deployable stuk). Leest
+`GEMINI_API_KEY` uit `process.env` (Vercel-omgevingsvariabele — **moet
+handmatig ingesteld worden in de Vercel-projectinstellingen**), roept
+Gemini's `gemini-3.8-flash-tts` `generateContent` aan en geeft
 `{ audioBase64, mimeType }` terug. Doet verder niets — geen Firestore, geen
 Storage, geen kennis van `competitionId`/`announcementId`, geen caching: alle
 orkestratie blijft client-side in `AppContext.jsx`. `src/pcmToWav.js` zet de
 ruwe PCM-respons om in een afspeelbare WAV-`Blob` (handmatige 44-byte
 RIFF/WAVE-header via `DataView`, geïnspireerd op de oude Apps Script-versie).
+
+**`systemInstruction` is een apart Gemini-veld (naast `contents`), niet in
+de voor te lezen tekst geplakt.** Een eerdere versie plakte de instructie
+vóór de tekst in dezelfde `contents`-part — Gemini las die dan letterlijk
+mee voor. Accent en spreeksnelheid hebben bij Gemini TTS **geen apart
+API-veld** (geen bevestigde `nl-BE`-taalcode, geen `speakingRate`-parameter
+— dit is door Google gedocumenteerd gedrag, niet een beperking van deze
+implementatie): die worden daarom via de bewoording van `systemInstruction`
+zelf gevraagd (bv. "Spreek met een Vlaams accent"). `temperature` is wél een
+echt, bestaand `generationConfig`-veld en stuurt expressiviteit/variatie —
+vandaar de enige twee werkelijke "API-instellingen" die beheerbaar zijn:
+`voiceName` en `temperature`.
 
 ### Componenten en opslag
 
@@ -1375,12 +1406,34 @@ RIFF/WAVE-header via `DataView`, geïnspireerd op de oude Apps Script-versie).
   van de huidige reeks, enkel gerenderd wanneer zowel `!isFreestyle` als
   `activeCompetition.isAnnouncementsEnabled` kloppen. Toont/bewerkt de tekst
   (opslaan bij blur, niet bij elke toetsaanslag), een "verouderd"-badge
-  zodra `audioTextVersion !== textVersion`, een afspeelknop die bij
-  `onEnded` automatisch doorschakelt naar het vaste tweede fragment
-  (`public/audio/skippers-klaar-jury-klaar.wav` — **door de gebruiker zelf
-  aan te leveren**, Vite serveert `public/` op de root), een losse
-  herhaalknop voor enkel dat tweede fragment, een "buffer: N/M klaar"-badge
-  en een knop om audio voor het hele onderdeel in één keer te genereren.
+  zodra `audioTextVersion !== textVersion`, een afspeelknop, een losse
+  herhaalknop voor het vaste tweede fragment
+  (`public/audio/skippers-klaar-jury-klaar.wav`, Vite serveert `public/` op
+  de root), een "buffer: N/M klaar"-badge en een knop om audio voor het hele
+  onderdeel in één keer te genereren. **Het vaste tweede fragment speelt
+  nooit automatisch** na de aankondiging — enkel via een expliciete
+  speaker-actie (deze herhaalknop, of de snelknop in LiveView's
+  navigatievak hieronder).
+- **`LiveView.jsx`'s navigatievak** — twee snelknoppen (`Volume2`/`Flag`),
+  links van de "Volgende"-knop, enkel zichtbaar onder dezelfde voorwaarde
+  als `AnnouncementPanel`. Laten de speaker de aankondiging en het vaste
+  fragment direct afspelen zonder naar `AnnouncementPanel` te moeten
+  scrollen — eigen, lokale `<audio>`-elementen, los van die van
+  `AnnouncementPanel` (geen gedeelde afspeelstate nodig).
+- **`AnnouncementManager.jsx`** — nieuwe tab "Aankondigingen" in
+  `CompetitionDetail.jsx` (wedstrijdbeheer), **enkel zichtbaar wanneer
+  `competition.isAnnouncementsEnabled` aan staat** (de eerste conditioneel
+  getoonde tab in dat bestand). Knop "Genereer alle ontbrekende teksten"
+  (`generateAnnouncementTexts`) + per speed-onderdeel een
+  tekst-dekkingsoverzicht (`getAnnouncementTextCoverage`) met een
+  "Genereer audio voor dit onderdeel"-knop (bestaande
+  `generateAnnouncementAudioForBlock`).
+- **`AnnouncementSettings.jsx`** — nieuwe sectie "Aankondigingen" in
+  `ManagementView.jsx` (globaal beheer, niet per wedstrijd). Formulier voor
+  `systemInstruction`/`voiceName`/`temperature`/`textVariations`, met een
+  "Herstel standaardwaarden"-knop. Erft automatisch de bestaande
+  beheerder-only-gate van de hele `/beheer`-route (`RequireAdmin` in
+  `App.jsx`) — geen aparte permissiecode nodig.
 - **Storage** — `competitions/{competitionId}/announcements/{announcementId}.wav`,
   vast pad per document (overschrijft bij regenereren, net als clublogo's).
   Upload gebeurt via `announcementFactory.uploadAudio()` in `dbSchema.js`
@@ -1422,9 +1475,11 @@ i.p.v. telkens maar 1 reeks:
   **geen** document heeft. Bestaande documenten (ook handmatig aangepaste)
   worden nooit aangeraakt.
 - **`generateAnnouncementTextForReeks(competitionId, eventId, seriesNr)`** —
-  dezelfde berekening voor exact één reeks, voor de "Tekst genereren"-knop
-  in `AnnouncementPanel` wanneer er voor de huidige reeks nog geen document
-  bestaat.
+  dezelfde berekening voor exact één reeks: bestaat er nog geen document,
+  dan wordt er één aangemaakt ("Tekst genereren"-knop); bestaat er al één
+  (de speaker klikt expliciet "Tekst opnieuw genereren"), dan wordt het
+  overschreven via `announcementFactory.regenerateText` i.p.v. een
+  duplicaat aan te maken.
 - **`updateAnnouncementText(competitionId, announcementId, text)`** — de
   handmatige correctie van de speaker; hoogt `textVersion` op zodat een
   bestaande audio automatisch als verouderd herkend wordt.
@@ -1433,12 +1488,21 @@ i.p.v. telkens maar 1 reeks:
 
 Staat `competition.isAnnouncementsEnabled` uit, dan mag er nergens iets van
 zichtbaar of actief zijn. Plekken die dit respecteren:
-- `LiveView.jsx` — `AnnouncementPanel` wordt enkel gerenderd, en
-  `preloadUpcomingAnnouncementAudio` enkel aangeroepen, wanneer de toggle aan
-  staat (naast `!isFreestyle`).
+- `LiveView.jsx` — `AnnouncementPanel` én de twee snelknoppen in het
+  navigatievak worden enkel gerenderd, en `preloadUpcomingAnnouncementAudio`
+  enkel aangeroepen, wanneer de toggle aan staat (naast `!isFreestyle`).
+- `CompetitionDetail.jsx` — de "Aankondigingen"-tab (`AnnouncementManager`)
+  verschijnt enkel in de tabbalk, en de bijhorende tabbody is bovendien ook
+  zelf nog eens op de toggle gecontroleerd (dubbele guard).
 - Alle schrijfacties (`generateAnnouncementTexts`, audio genereren, …)
   bestaan enkel als AppContext-functies — zonder een UI-knop die ze aanroept
   (hierboven), gebeurt er nooit iets vanzelf.
+
+**Uitzondering, bewust**: `AnnouncementSettings.jsx` (globaal beheer van
+instructie/stem/temperature/tekstvariaties) is NIET aan deze toggle
+gekoppeld — het is wedstrijdonafhankelijke configuratie, geen TTS-activiteit
+voor een specifieke wedstrijd, en blijft dus altijd bereikbaar voor een
+beheerder (net als `ClubManagement`/`UserManagement`).
 
 ---
 

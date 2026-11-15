@@ -23,35 +23,58 @@ import { extractFirstName, resolveClubAnnounceName } from './announcementNames';
 import { padFieldList } from './fieldLayout';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ZINNETJESPOOL — variatie in de intro, context-afhankelijk
+// ZINNETJESPOOL — variatie in de intro, context-afhankelijk, beheerbaar via
+// de "Aankondigingen"-sectie in ManagementView (AnnouncementSettings.jsx) en
+// opgeslagen in settings/announcements (zie dbSchema.js). Deze module bevat
+// enkel de STANDAARDWAARDEN (ook gebruikt als fallback zolang dat document
+// nog niet bestaat) en de substitutielogica.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GENERIC_INTROS = [
-  'We gaan verder met ',
-  'En dan is het ',
-  'Vervolgens is het ',
-  'We gaan door met ',
-  'De volgende reeks is ',
-  'Dan nu ',
-  'We vervolgen met ',
-];
+/**
+ * Standaard tekstvariaties — zelfde teksten als de oorspronkelijke, hardcoded
+ * versie, nu extern beheerbaar. Plaatshouders (`{onderdeel}`,
+ * `{vorigOnderdeel}`) zijn bewust Nederlandse, voor de beherende gebruiker
+ * leesbare tokens — dit is tekstinhoud die een niet-technische beheerder
+ * bewerkt, geen code-identifier.
+ */
+export const DEFAULT_TEXT_VARIATIONS = {
+  generic: [
+    'We gaan verder met ',
+    'En dan is het ',
+    'Vervolgens is het ',
+    'We gaan door met ',
+    'De volgende reeks is ',
+    'Dan nu ',
+    'We vervolgen met ',
+  ],
+  firstOfCompetition: 'We beginnen met {onderdeel} en starten met ',
+  secondReeks: 'zo... dat was de eerste reeks, we gaan verder met ',
+  afterTransition:
+    'Dat was de laatste reeks van {vorigOnderdeel}, we gaan onmiddellijk ' +
+    'verder met {onderdeel} en we starten met ',
+  lastOfBlock: 'en dan de laatste reeks van {onderdeel} met ',
+};
 
-function pickGenericIntro() {
-  return GENERIC_INTROS[Math.floor(Math.random() * GENERIC_INTROS.length)];
+function fillTemplate(template, context) {
+  return template
+    .replaceAll('{onderdeel}', context.eventName ?? '')
+    .replaceAll('{vorigOnderdeel}', context.prevEventName ?? '');
 }
 
-function buildIntro(context) {
+function buildIntro(context, textVariations) {
   switch (context.kind) {
     case 'first-of-competition':
-      return `We beginnen met ${context.eventName} en starten met `;
+      return fillTemplate(textVariations.firstOfCompetition, context);
     case 'second-reeks':
-      return 'zo... dat was de eerste reeks, we gaan verder met ';
+      return textVariations.secondReeks;
     case 'after-transition':
-      return `Dat was de laatste reeks van ${context.prevEventName}, we gaan onmiddellijk verder met ${context.eventName} en we starten met `;
+      return fillTemplate(textVariations.afterTransition, context);
     case 'last-of-block':
-      return `en dan de laatste reeks van ${context.eventName} met `;
-    default:
-      return pickGenericIntro();
+      return fillTemplate(textVariations.lastOfBlock, context);
+    default: {
+      const pool = textVariations.generic;
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
   }
 }
 
@@ -155,14 +178,16 @@ function buildFieldLines(paddedList, getClub) {
  * @param {function} params.getClub          (clubId) => Club|null
  * @param {Array} params.sortedAllBlocks     alle blokken van de wedstrijd, op order
  * @param {Array} params.events              alle CompetitionEvents
+ * @param {Object} params.textVariations     zie DEFAULT_TEXT_VARIATIONS hierboven —
+ *   komt uit settings/announcements (AppContext.jsx#announcementSettings)
  * @returns {string}
  */
 export function buildAnnouncementText({
   event, seriesNr, totalSeriesForEvent = null, seriesParticipants, maxFieldNr,
-  getClub, sortedAllBlocks, events,
+  getClub, sortedAllBlocks, events, textVariations = DEFAULT_TEXT_VARIATIONS,
 }) {
   const context = resolveReeksContext({ event, seriesNr, totalSeriesForEvent, sortedAllBlocks, events });
-  const intro = buildIntro(context);
+  const intro = buildIntro(context, textVariations);
 
   const paddedList = padFieldList(seriesParticipants, maxFieldNr);
   const lines = buildFieldLines(paddedList, getClub);
