@@ -23,6 +23,7 @@ import { resolveBlockIconKey, getBlockIcon } from '../blockIcons';
 import PodiumManager from './PodiumManager';
 import PodiumCeremonyPanel from './PodiumCeremonyPanel';
 import MessageManager from './MessageManager';
+import AnnouncementPanel from './AnnouncementPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -378,15 +379,19 @@ export default function LiveView() {
     loadBlocks,
     blockTypeLabels,
     setBlockStatus,
+    loadAnnouncements,
+    preloadUpcomingAnnouncementAudio,
   } = useAppContext();
 
-  // Deelnemers en dagtijdlijn laden voor de actieve wedstrijd — nodig omdat
-  // dit scherm rechtstreeks via zijn eigen route geopend kan worden, zonder
-  // eerst via Beheer te zijn gepasseerd (dat laadt ze anders zelf al).
+  // Deelnemers, dagtijdlijn en aankondigingen laden voor de actieve wedstrijd
+  // — nodig omdat dit scherm rechtstreeks via zijn eigen route geopend kan
+  // worden, zonder eerst via Beheer te zijn gepasseerd (dat laadt ze anders
+  // zelf al).
   useEffect(() => {
     loadParticipants(activeCompetition?.id ?? null);
     loadBlocks(activeCompetition?.id ?? null);
-  }, [activeCompetition?.id, loadParticipants, loadBlocks]);
+    loadAnnouncements(activeCompetition?.id ?? null);
+  }, [activeCompetition?.id, loadParticipants, loadBlocks, loadAnnouncements]);
 
   // Dagtijdlijn, op volgorde. Huidig blok = eerste blok dat nog niet
   // afgewerkt is — dit bepaalt zowel de pauzeschermen als, hieronder, welk
@@ -402,6 +407,15 @@ export default function LiveView() {
     const idx = sortedBlocks.findIndex(b => b.id === currentBlock.id);
     return idx >= 0 ? (sortedBlocks[idx + 1] ?? null) : null;
   }, [sortedBlocks, currentBlock]);
+
+  // Vult de audio-preloadbuffer al aan zodra een blok currentBlock wordt —
+  // nog vóór de speaker de eerste reeks ervan gestart heeft (fire-and-forget,
+  // net als de aanroep in handleFinishSeries hieronder).
+  useEffect(() => {
+    if (activeCompetition?.isAnnouncementsEnabled && currentBlock) {
+      preloadUpcomingAnnouncementAudio(activeCompetition.id);
+    }
+  }, [currentBlock?.id, activeCompetition?.id, activeCompetition?.isAnnouncementsEnabled]);
 
   // Welk blok het rechterpaneel toont: standaard het echte huidige blok
   // (currentBlock), maar de speaker kan via het linkerpaneel een ANDER blok
@@ -611,6 +625,12 @@ export default function LiveView() {
     // het huidige, eventueel afgebakende tijdvenster.
     const isLastInEvent = activeSeriesNr === allSeriesNrs[allSeriesNrs.length - 1];
     await finishSeries(activeEventId, activeSeriesNr, isLastInEvent);
+
+    // Fire-and-forget: vult de preload-buffer verder aan tot zijn volle
+    // venstergrootte, los van de UI-navigatie hieronder.
+    if (activeCompetition?.isAnnouncementsEnabled) {
+      preloadUpcomingAnnouncementAudio(activeCompetition.id);
+    }
 
     if (!isLastSeries) {
       setActiveSeriesNr(seriesNrs[seriesIdx + 1]);
@@ -863,6 +883,17 @@ export default function LiveView() {
                   })}
                 </tbody>
               </table>
+            )}
+
+            {/* ── Automatische aankondiging (TTS) — enkel speed/endurance/
+                triple-under, enkel wanneer de feature-toggle voor deze
+                wedstrijd aan staat (zie EditCompetitionModal.jsx). ── */}
+            {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
+              <AnnouncementPanel
+                competitionId={activeCompetition.id}
+                eventId={activeEventId}
+                seriesNr={activeSeriesNr}
+              />
             )}
 
             {/* ── Freestyle: huidige + volgende ── */}

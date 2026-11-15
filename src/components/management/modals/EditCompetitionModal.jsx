@@ -16,6 +16,7 @@ export default function EditCompetitionModal({ competitionId, onClose }) {
     date:     competition?.date     ?? '',
     location: competition?.location ?? '',
     typeId:   competition?.typeId   ?? '',
+    isAnnouncementsEnabled: competition?.isAnnouncementsEnabled ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -83,6 +84,21 @@ export default function EditCompetitionModal({ competitionId, onClose }) {
               />
             </div>
           </div>
+
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', marginTop: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={form.isAnnouncementsEnabled}
+              onChange={e => set('isAnnouncementsEnabled', e.target.checked)}
+              style={{ marginTop: '2px' }}
+            />
+            <span>
+              <span style={{ ...s.label, marginBottom: '2px' }}>Automatische aankondigingen (speed/endurance)</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                Genereert vooraf tekst en audio voor de omroeper — enkel voor niet-freestyle onderdelen.
+              </span>
+            </span>
+          </label>
 
           {error && <div style={s.errorMsg}>{error}</div>}
         </div>

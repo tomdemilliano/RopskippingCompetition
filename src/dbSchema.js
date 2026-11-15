@@ -21,6 +21,7 @@
  *   competitions/{id}/blocks/{id}         dagtijdlijn: blok → onderdeel (optioneel) → reeks
  *   competitions/{id}/podiums/{id}        podia per onderdeel + laureaten
  *   competitions/{id}/messages/{id}       voorbereide boodschappen voor het grote scherm
+ *   competitions/{id}/announcements/{id} TTS-aankondigingstekst + audio per reeks
  *
  * Voortgang van een live wedstrijd (finishedEvents/finishedSeries) leeft op
  * het competition-document zelf, niet in een los singleton — zo verliest
@@ -194,6 +195,22 @@ const paths = {
       'artifacts', getAppId(), 'public', 'data',
       'competitions', competitionId, 'messages', messageId
     ),
+
+  // Announcements (subcollectie onder competition) — vooraf gegenereerde
+  // TTS-aankondigingen per reeks (zie "Aankondigingen (TTS)" in ARCHITECTURE.md)
+  announcements: (competitionId) =>
+    collection(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'announcements'
+    ),
+
+  announcement: (competitionId, announcementId) =>
+    doc(
+      getDb(),
+      'artifacts', getAppId(), 'public', 'data',
+      'competitions', competitionId, 'announcements', announcementId
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -287,6 +304,9 @@ const eventConverter = {
  * @property {string} id
  * @property {string} name
  * @property {string} shortName
+ * @property {string} announceAsName  optioneel — hoe de omroeper deze club
+ *                                      uitspreekt (bv. een afkorting of een
+ *                                      fonetische respelling); leeg = gebruik `name`
  * @property {string} city
  * @property {string} country
  * @property {string} logoStoragePath
@@ -300,6 +320,7 @@ const clubConverter = {
       id:               snapshot.id,
       name:             d.name             ?? '',
       shortName:        d.shortName        ?? '',
+      announceAsName:   d.announceAsName   ?? '',
       city:             d.city             ?? '',
       country:          d.country          ?? 'BE',
       logoStoragePath:  d.logoStoragePath  ?? '',
@@ -307,8 +328,8 @@ const clubConverter = {
       createdAt:        d.createdAt        ?? '',
     };
   },
-  toFirestore({ name, shortName, city, country, logoStoragePath, logoUrl }) {
-    return { name, shortName, city, country, logoStoragePath, logoUrl };
+  toFirestore({ name, shortName, announceAsName = '', city, country, logoStoragePath, logoUrl }) {
+    return { name, shortName, announceAsName, city, country, logoStoragePath, logoUrl };
   },
 };
 
@@ -323,6 +344,10 @@ const clubConverter = {
  * @property {Object.<string, number>} eventOrder   overschrijft defaultEventOrder
  * @property {string[]} finishedEvents            eventIds volledig afgewerkt
  * @property {Object.<string, number[]>} finishedSeries   seriesNrs afgewerkt per eventId
+ * @property {boolean} isAnnouncementsEnabled  feature-toggle — automatische TTS-
+ *                                              aankondigingen (speed/endurance), standaard uit.
+ *                                              Staat deze uit, dan mag er nergens in de app iets
+ *                                              van die functionaliteit zichtbaar/actief zijn.
  * @property {string} createdAt
  */
 const competitionConverter = {
@@ -340,11 +365,12 @@ const competitionConverter = {
       finishedSeries:   d.finishedSeries   ?? {},
       podiumState:      d.podiumState      ?? { activePodiumId: null, revealStage: 0 },
       activeMessageId:  d.activeMessageId  ?? null,
+      isAnnouncementsEnabled: d.isAnnouncementsEnabled ?? false,
       createdAt:        d.createdAt        ?? '',
     };
   },
-  toFirestore({ name, date, location, typeId, status, eventOrder, finishedEvents = [], finishedSeries = {}, podiumState = { activePodiumId: null, revealStage: 0 }, activeMessageId = null }) {
-    return { name, date, location, typeId, status, eventOrder, finishedEvents, finishedSeries, podiumState, activeMessageId };
+  toFirestore({ name, date, location, typeId, status, eventOrder, finishedEvents = [], finishedSeries = {}, podiumState = { activePodiumId: null, revealStage: 0 }, activeMessageId = null, isAnnouncementsEnabled = false }) {
+    return { name, date, location, typeId, status, eventOrder, finishedEvents, finishedSeries, podiumState, activeMessageId, isAnnouncementsEnabled };
   },
 };
 
@@ -673,15 +699,16 @@ export const clubFactory = {
 
   /**
    * Maak een nieuwe club aan.
-   * @param {{ name: string, shortName: string, city?: string, country?: string }} data
+   * @param {{ name: string, shortName: string, announceAsName?: string, city?: string, country?: string }} data
    * @returns {Promise<string>} nieuw clubId
    */
-  async create({ name, shortName, city = '', country = 'BE' }) {
+  async create({ name, shortName, announceAsName = '', city = '', country = 'BE' }) {
     const ref = await addDoc(
       paths.clubs(),
       clubConverter.toFirestore({
         name,
         shortName,
+        announceAsName,
         city,
         country,
         logoStoragePath: '',
@@ -1311,6 +1338,162 @@ export const messageFactory = {
    */
   delete(competitionId, messageId) {
     return deleteDoc(paths.message(competitionId, messageId));
+  },
+};
+
+// ── ANNOUNCEMENTS ────────────────────────────────────────────────────────────
+// Vooraf gegenereerde TTS-aankondigingen per reeks (speed/endurance/triple
+// under — zie announcementText.js voor de tekstopbouw en "Aankondigingen
+// (TTS)" in ARCHITECTURE.md). Eén document per (eventId, seriesNr)-paar, niet
+// per fysiek blok — een onderdeel kan over meerdere blokken lopen (zie
+// blockParticipants.js), maar "de aankondiging van reeks N van dit onderdeel"
+// blijft hetzelfde document ongeacht in welk blok die reeks precies valt.
+// Enkel actief/zichtbaar wanneer competition.isAnnouncementsEnabled aan staat
+// — dat wordt buiten dit bestand bewaakt (AppContext/LiveView).
+
+/**
+ * @typedef {Object} Announcement
+ * @property {string} id
+ * @property {string} eventId         ref → events/{id}
+ * @property {number} seriesNr
+ * @property {string} text            huidige (evt. handmatig aangepaste) tekst
+ * @property {string} generatedText   laatst automatisch gegenereerde tekst —
+ *                                     referentiewaarde om een handmatige
+ *                                     aanpassing te herkennen, stuurt zelf
+ *                                     geen staleness aan
+ * @property {number} textVersion     oplopend getal, +1 bij elke tekstwijziging
+ * @property {number} audioTextVersion  textVersion waaruit de huidige audio
+ *                                       gegenereerd is — audio is verouderd
+ *                                       zodra dit niet meer gelijk is aan textVersion
+ * @property {string} audioStoragePath
+ * @property {string} audioUrl
+ * @property {string} status          "tekst-klaar" | "audio-klaar" | "genereren-mislukt"
+ *                                     — gemaksveld, altijd herleidbaar uit de
+ *                                     andere velden, zelfde soort keuze als block.status
+ * @property {string} updatedAt
+ */
+const announcementConverter = {
+  fromFirestore(snapshot) {
+    const d = snapshot.data();
+    return {
+      id:                snapshot.id,
+      eventId:           d.eventId           ?? '',
+      seriesNr:          d.seriesNr          ?? 0,
+      text:              d.text              ?? '',
+      generatedText:     d.generatedText     ?? '',
+      textVersion:       d.textVersion       ?? 0,
+      audioTextVersion:  d.audioTextVersion  ?? -1,
+      audioStoragePath:  d.audioStoragePath  ?? '',
+      audioUrl:          d.audioUrl          ?? '',
+      status:            d.status            ?? 'tekst-klaar',
+      updatedAt:         d.updatedAt         ?? '',
+    };
+  },
+  toFirestore({
+    eventId, seriesNr, text, generatedText = '', textVersion = 0,
+    audioTextVersion = -1, audioStoragePath = '', audioUrl = '', status = 'tekst-klaar',
+  }) {
+    return { eventId, seriesNr, text, generatedText, textVersion, audioTextVersion, audioStoragePath, audioUrl, status };
+  },
+};
+
+export const announcementFactory = {
+  /**
+   * Luister naar alle aankondigingen van een wedstrijd.
+   * @param {string} competitionId
+   * @param {function} callback  cb(Announcement[])
+   * @returns {function} unsubscribe
+   */
+  subscribe(competitionId, callback) {
+    return onSnapshot(paths.announcements(competitionId), (snap) => {
+      callback(snap.docs.map(announcementConverter.fromFirestore));
+    });
+  },
+
+  /**
+   * Maak in één atomaire batch de aankondigingsteksten aan voor een lijst
+   * reeksen — gebruikt door de "genereer aankondigingsteksten"-actie, die
+   * enkel paren zonder bestaand document meegeeft (zie AppContext.jsx).
+   * @param {string} competitionId
+   * @param {Array<{ eventId: string, seriesNr: number, text: string }>} items
+   */
+  async bulkCreate(competitionId, items) {
+    const batch = writeBatch(getDb());
+    for (const item of items) {
+      const newRef = doc(paths.announcements(competitionId));
+      batch.set(newRef, announcementConverter.toFirestore({
+        eventId:       item.eventId,
+        seriesNr:      item.seriesNr,
+        text:          item.text,
+        generatedText: item.text,
+        textVersion:   1,
+      }));
+    }
+    await batch.commit();
+  },
+
+  /**
+   * Pas de tekst van een aankondiging aan (handmatige correctie door de
+   * speaker) — hoogt textVersion op zodat een bestaande audio als verouderd
+   * herkend wordt.
+   * @param {string} competitionId
+   * @param {string} announcementId
+   * @param {string} text
+   * @param {number} nextTextVersion  de nieuwe textVersion (aanroeper kent de
+   *                                   huidige waarde al via de live-subscription)
+   */
+  updateText(competitionId, announcementId, text, nextTextVersion) {
+    return updateDoc(paths.announcement(competitionId, announcementId), {
+      text, textVersion: nextTextVersion, status: 'tekst-klaar',
+      updatedAt: new Date().toISOString(),
+    });
+  },
+
+  /**
+   * Bevestig dat de audio voor een aankondiging klaarstaat.
+   * @param {string} competitionId
+   * @param {string} announcementId
+   * @param {{ audioStoragePath: string, audioUrl: string, audioTextVersion: number }} data
+   */
+  saveAudio(competitionId, announcementId, { audioStoragePath, audioUrl, audioTextVersion }) {
+    return updateDoc(paths.announcement(competitionId, announcementId), {
+      audioStoragePath, audioUrl, audioTextVersion, status: 'audio-klaar',
+      updatedAt: new Date().toISOString(),
+    });
+  },
+
+  /**
+   * Markeer dat het genereren van audio voor deze aankondiging mislukt is
+   * (bv. een Gemini-foutrespons) — zodat de UI een duidelijke "opnieuw
+   * proberen"-staat kan tonen i.p.v. stilzwijgend niets te doen.
+   * @param {string} competitionId
+   * @param {string} announcementId
+   */
+  markGenerationFailed(competitionId, announcementId) {
+    return updateDoc(paths.announcement(competitionId, announcementId), {
+      status: 'genereren-mislukt', updatedAt: new Date().toISOString(),
+    });
+  },
+
+  /**
+   * Laad een gegenereerde WAV-blob op naar Firebase Storage en koppel die
+   * aan de aankondiging. Vast pad per document (overschrijft een vorige
+   * versie bij regenereren) — zelfde patroon als clubFactory.uploadLogo.
+   * @param {string} competitionId
+   * @param {string} announcementId
+   * @param {number} audioTextVersion  de textVersion waaruit deze audio gegenereerd is
+   * @param {Blob} wavBlob
+   * @returns {Promise<string>} de nieuwe audioUrl
+   */
+  async uploadAudio(competitionId, announcementId, audioTextVersion, wavBlob) {
+    const path = `competitions/${competitionId}/announcements/${announcementId}.wav`;
+    const ref = storageRef(getStorageInstance(), path);
+    await uploadBytes(ref, wavBlob);
+    const url = await getDownloadURL(ref);
+    await announcementFactory.saveAudio(competitionId, announcementId, {
+      audioStoragePath: path, audioUrl: url, audioTextVersion,
+    });
+    return url;
   },
 };
 
