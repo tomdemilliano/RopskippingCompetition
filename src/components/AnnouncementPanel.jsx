@@ -4,17 +4,18 @@
  * Aankondigingsvak voor de speaker in LiveView.jsx — enkel gerenderd wanneer
  * `activeCompetition.isAnnouncementsEnabled` aan staat EN de huidige reeks
  * geen freestyle is (zie LiveView.jsx). Toont/bewerkt de tekst voor de
- * huidige reeks, genereert audio op aanvraag, speelt ze af en schakelt
- * daarna automatisch door naar het vaste "skippers klaar, jury klaar?"-
- * fragment. Data/acties komen volledig via AppContext — geen eigen
- * Firestore-toegang (CLAUDE.md).
+ * huidige reeks, genereert audio op aanvraag en speelt ze af — zowel de
+ * aankondiging als het vaste "skippers klaar, jury klaar?"-fragment kunnen
+ * ook gestopt en teruggezet worden naar het begin; geen van beide speelt
+ * ooit automatisch door naar de andere. Data/acties komen volledig via
+ * AppContext — geen eigen Firestore-toegang (CLAUDE.md).
  *
  * Zie "Aankondigingen (TTS)" in ARCHITECTURE.md.
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Volume2, PlayCircle, Repeat, RefreshCw, AlertTriangle,
+  Volume2, PlayCircle, Repeat, RefreshCw, AlertTriangle, Square,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow } from '../theme';
@@ -243,10 +244,24 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
     audioRef.current.play();
   };
 
+  /** Stopt de aankondiging en zet ze terug naar het begin. */
+  const handleStop = () => {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+  };
+
   const handlePlayFixedClip = () => {
     if (!fixedAudioRef.current) return;
     fixedAudioRef.current.currentTime = 0;
     fixedAudioRef.current.play();
+  };
+
+  /** Stopt het vaste fragment en zet het terug naar het begin. */
+  const handleStopFixedClip = () => {
+    if (!fixedAudioRef.current) return;
+    fixedAudioRef.current.pause();
+    fixedAudioRef.current.currentTime = 0;
   };
 
   const handleGenerateForBlock = async () => {
@@ -303,13 +318,21 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
             </button>
 
             {announcement.audioUrl && !isStale && (
-              <button style={s.btnPrimary} onClick={handlePlay}>
-                <PlayCircle size={14} /> Afspelen
-              </button>
+              <>
+                <button style={s.btnPrimary} onClick={handlePlay}>
+                  <PlayCircle size={14} /> Afspelen
+                </button>
+                <button style={s.btnGhost} onClick={handleStop} title="Stop en terug naar het begin">
+                  <Square size={13} /> Stop
+                </button>
+              </>
             )}
 
             <button style={s.btnGhost} onClick={handlePlayFixedClip}>
               <Repeat size={12} /> "Skippers klaar?" herhalen
+            </button>
+            <button style={s.btnGhost} onClick={handleStopFixedClip} title='Stop "skippers klaar?" en terug naar het begin'>
+              <Square size={13} />
             </button>
           </div>
 

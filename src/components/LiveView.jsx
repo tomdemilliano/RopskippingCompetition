@@ -12,7 +12,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock,
-  ListTodo, Trophy, Settings, Megaphone, Volume2, Flag,
+  ListTodo, Trophy, Settings, Megaphone, Volume2, Flag, Square,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
@@ -866,6 +866,18 @@ export default function LiveView() {
                       title='"Skippers klaar, jury klaar?" afspelen'
                     >
                       <Flag size={18} />
+                    </button>
+                    <button
+                      style={s.navBtn(false)}
+                      onClick={() => {
+                        announcementAudioRef.current?.pause();
+                        if (announcementAudioRef.current) announcementAudioRef.current.currentTime = 0;
+                        fixedClipAudioRef.current?.pause();
+                        if (fixedClipAudioRef.current) fixedClipAudioRef.current.currentTime = 0;
+                      }}
+                      title="Stop en terug naar het begin"
+                    >
+                      <Square size={18} />
                     </button>
                     <audio
                       ref={announcementAudioRef}

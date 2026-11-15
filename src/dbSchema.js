@@ -535,16 +535,19 @@ export function sortedEntries(participant) {
  * fallback zolang dat document nog niet bestaat, als voor de "Herstel
  * standaardwaarden"-knop in AnnouncementSettings.jsx. Enkel `voiceName`
  * (echt API-veld) en `temperature` (bestaat al in de payload, stuurt
- * expressiviteit) zijn "instellingen" in de klassieke zin — accent en
- * spreeksnelheid hebben geen apart API-veld bij Gemini TTS en worden daarom
- * via de tekst van `systemInstruction` zelf gestuurd (zie "Aankondigingen
- * (TTS)" in ARCHITECTURE.md).
+ * expressiviteit) zijn "instellingen" in de klassieke zin.
+ *
+ * `systemInstruction` is GEEN apart Gemini-veld — TTS-modellen ondersteunen
+ * dat niet (geeft 400 "Developer instruction is not enabled for this
+ * model"). Het wordt in api/tts.js vóór de tekst geplakt volgens Google's
+ * eigen gedocumenteerde patroon "Zeg <stijl>: <tekst>" — moet daarom KORT en
+ * direct blijven (geen lange, uitleggende alinea: die wordt gewoon mee
+ * voorgelezen i.p.v. als stijlaanwijzing herkend).
  */
 export const DEFAULT_ANNOUNCEMENT_SETTINGS = {
   systemInstruction:
-    'Je bent een omroeper op een Vlaamse ropeskipping wedstrijd. Spreek met ' +
-    'een Vlaams accent (geen Nederlands accent), op een vlotte, natuurlijke ' +
-    'en opgewekte manier, met een heldere stem.',
+    'Zeg op een vlotte, natuurlijke en opgewekte manier, met een Vlaams ' +
+    'accent (geen Nederlands accent)',
   voiceName: 'Enceladus',
   temperature: 0.0,
   textVariations: DEFAULT_TEXT_VARIATIONS,

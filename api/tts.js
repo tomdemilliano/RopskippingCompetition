@@ -28,11 +28,19 @@ const GEMINI_MODEL = 'gemini-3.8-flash-tts';
 // DEFAULT_ANNOUNCEMENT_SETTINGS in src/dbSchema.js) — deze server-functie
 // importeert bewust niets uit src/, blijft een zelfstandig, smal deployable
 // stuk. Wordt enkel gebruikt als de client (onverwacht) niets meestuurt.
+//
+// Kort gehouden als stijlaanwijzing ("Zeg ...:"), niet als uitgebreide
+// system-instructie — Gemini TTS-modellen ondersteunen GEEN apart
+// systemInstruction-veld (eerder geprobeerd, gaf 400 "Developer instruction
+// is not enabled for this model"). Google's eigen documentatie gebruikt
+// precies dit patroon ("Say cheerfully: Have a wonderful day!") — enkel een
+// korte, directe stijlaanwijzing gevolgd door een dubbele punt, in dezelfde
+// contents-tekst, wordt door het model herkend en NIET mee uitgesproken. Een
+// lange, uitleggende alinea (de vorige versie) werd wél gewoon voorgelezen.
 const DEFAULT_VOICE_NAME = 'Enceladus';
 const DEFAULT_SYSTEM_INSTRUCTION =
-  'Je bent een omroeper op een Vlaamse ropeskipping wedstrijd. Spreek met ' +
-  'een Vlaams accent (geen Nederlands accent), op een vlotte, natuurlijke ' +
-  'en opgewekte manier, met een heldere stem.';
+  'Zeg op een vlotte, natuurlijke en opgewekte manier, met een Vlaams ' +
+  'accent (geen Nederlands accent)';
 const DEFAULT_TEMPERATURE = 0.0;
 
 export default async function handler(req, res) {
@@ -59,13 +67,14 @@ export default async function handler(req, res) {
   }
 
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  // "Zeg <stijl>: <tekst>" — Google's eigen gedocumenteerde patroon voor
+  // stijl/accent/pace-sturing bij Gemini TTS (geen apart instructieveld
+  // ondersteund). De stijlaanwijzing wordt door het getrainde model
+  // herkend en losgeknipt van wat effectief uitgesproken wordt, MITS ze
+  // kort en direct blijft (zie DEFAULT_SYSTEM_INSTRUCTION hierboven).
+  const stylePrefix = systemInstruction.trim().replace(/:\s*$/, '');
   const payload = {
-    // Apart veld i.p.v. in de content-tekst geplakt — anders leest het model
-    // de instructie zelf mee voor. Accent/spreeksnelheid hebben geen eigen
-    // API-veld bij Gemini TTS en worden daarom via de bewoording van deze
-    // instructie gestuurd (zie ARCHITECTURE.md).
-    systemInstruction: { parts: [{ text: systemInstruction }] },
-    contents: [{ parts: [{ text }] }],
+    contents: [{ parts: [{ text: `${stylePrefix}: ${text}` }] }],
     generationConfig: {
       responseModalities: ['AUDIO'],
       temperature,

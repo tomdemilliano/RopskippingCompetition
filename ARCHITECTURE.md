@@ -1388,15 +1388,24 @@ orkestratie blijft client-side in `AppContext.jsx`. `src/pcmToWav.js` zet de
 ruwe PCM-respons om in een afspeelbare WAV-`Blob` (handmatige 44-byte
 RIFF/WAVE-header via `DataView`, geïnspireerd op de oude Apps Script-versie).
 
-**`systemInstruction` is een apart Gemini-veld (naast `contents`), niet in
-de voor te lezen tekst geplakt.** Een eerdere versie plakte de instructie
-vóór de tekst in dezelfde `contents`-part — Gemini las die dan letterlijk
-mee voor. Accent en spreeksnelheid hebben bij Gemini TTS **geen apart
-API-veld** (geen bevestigde `nl-BE`-taalcode, geen `speakingRate`-parameter
-— dit is door Google gedocumenteerd gedrag, niet een beperking van deze
-implementatie): die worden daarom via de bewoording van `systemInstruction`
-zelf gevraagd (bv. "Spreek met een Vlaams accent"). `temperature` is wél een
-echt, bestaand `generationConfig`-veld en stuurt expressiviteit/variatie —
+**Gemini TTS-modellen ondersteunen GEEN apart `systemInstruction`-veld** —
+dat gaf in de praktijk `400 "Developer instruction is not enabled for this
+model"`. `systemInstruction` (ondanks de naam, een instelling uit
+`settings/announcements`, geen echt Gemini-veld meer) wordt daarom vóór de
+tekst geplakt in dezelfde `contents`-part, volgens Google's eigen
+gedocumenteerde patroon: **`"Zeg <stijl>: <tekst>"`** — een KORTE, directe
+stijlaanwijzing gevolgd door een dubbele punt, die het getrainde model
+herkent en zelf niet uitspreekt (vgl. Google's eigen voorbeeld "Say
+cheerfully: Have a wonderful day!"). Een eerdere versie probeerde dit via
+een apart `systemInstruction`-veld (werkte niet — bovenstaande 400-fout) én
+daarvoor via een lange, uitleggende alinea in dezelfde tekst geplakt (werkte
+ook niet — die werd gewoon mee voorgelezen, te lang/complex om als
+stijlaanwijzing herkend te worden). Accent en spreeksnelheid hebben bij
+Gemini TTS **geen apart API-veld** (geen bevestigde `nl-BE`-taalcode, geen
+`speakingRate`-parameter — door Google gedocumenteerd gedrag): die worden
+daarom via de bewoording van deze korte stijlzin gevraagd (bv. "Zeg op een
+vlotte manier met een Vlaams accent"). `temperature` is wél een echt,
+bestaand `generationConfig`-veld en stuurt expressiviteit/variatie —
 vandaar de enige twee werkelijke "API-instellingen" die beheerbaar zijn:
 `voiceName` en `temperature`.
 
@@ -1406,18 +1415,20 @@ vandaar de enige twee werkelijke "API-instellingen" die beheerbaar zijn:
   van de huidige reeks, enkel gerenderd wanneer zowel `!isFreestyle` als
   `activeCompetition.isAnnouncementsEnabled` kloppen. Toont/bewerkt de tekst
   (opslaan bij blur, niet bij elke toetsaanslag), een "verouderd"-badge
-  zodra `audioTextVersion !== textVersion`, een afspeelknop, een losse
-  herhaalknop voor het vaste tweede fragment
+  zodra `audioTextVersion !== textVersion`, een afspeelknop + stopknop
+  (pauzeert en zet `currentTime` terug naar 0) voor de aankondiging, een
+  losse herhaal- en stopknop voor het vaste tweede fragment
   (`public/audio/skippers-klaar-jury-klaar.wav`, Vite serveert `public/` op
   de root), een "buffer: N/M klaar"-badge en een knop om audio voor het hele
   onderdeel in één keer te genereren. **Het vaste tweede fragment speelt
   nooit automatisch** na de aankondiging — enkel via een expliciete
   speaker-actie (deze herhaalknop, of de snelknop in LiveView's
   navigatievak hieronder).
-- **`LiveView.jsx`'s navigatievak** — twee snelknoppen (`Volume2`/`Flag`),
-  links van de "Volgende"-knop, enkel zichtbaar onder dezelfde voorwaarde
-  als `AnnouncementPanel`. Laten de speaker de aankondiging en het vaste
-  fragment direct afspelen zonder naar `AnnouncementPanel` te moeten
+- **`LiveView.jsx`'s navigatievak** — drie snelknoppen (`Volume2`/`Flag`/
+  `Square`), links van de "Volgende"-knop, enkel zichtbaar onder dezelfde
+  voorwaarde als `AnnouncementPanel`. Laten de speaker de aankondiging en het
+  vaste fragment direct afspelen, en met de stopknop beide tegelijk pauzeren
+  + terugzetten naar het begin, zonder naar `AnnouncementPanel` te moeten
   scrollen — eigen, lokale `<audio>`-elementen, los van die van
   `AnnouncementPanel` (geen gedeelde afspeelstate nodig).
 - **`AnnouncementManager.jsx`** — nieuwe tab "Aankondigingen" in
