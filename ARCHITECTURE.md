@@ -1359,7 +1359,7 @@ Een Gemini-API-key mag nooit in clientcode staan, dus is er één smalle
 serverless function nodig enkel om die te verbergen: `POST /api/tts`, body
 `{ text, voiceName? }`, leest `GEMINI_API_KEY` uit `process.env` (Vercel-
 omgevingsvariabele — **moet handmatig ingesteld worden in de Vercel-
-projectinstellingen**), roept Gemini's `gemini-2.5-flash-preview-tts`
+projectinstellingen**), roept Gemini's `gemini-3.8-flash-tts`
 `generateContent` aan met de gevalideerde system-instructie ("Je bent
 omroeper op een Vlaamse ropeskipping wedstrijd en kondigt de deelnemers op
 een vlotte wijze aan met een heldere en opgewekte stem: ") en geeft
