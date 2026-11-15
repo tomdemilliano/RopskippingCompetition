@@ -62,7 +62,12 @@ export default async function handler(req, res) {
 
     const part = responseBody?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
     if (!part?.data) {
-      res.status(502).json({ error: 'Geen audio ontvangen van Gemini TTS.' });
+      const reason = responseBody?.promptFeedback?.blockReason
+        ?? responseBody?.candidates?.[0]?.finishReason
+        ?? 'onbekend';
+      res.status(502).json({
+        error: `Geen audio ontvangen van Gemini TTS (reden: ${reason}). Volledige respons: ${JSON.stringify(responseBody)}`,
+      });
       return;
     }
 
