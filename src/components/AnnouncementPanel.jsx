@@ -292,6 +292,10 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
               <span style={s.staleBadge}><AlertTriangle size={12} /> Audio verouderd</span>
             )}
 
+            <button style={s.btnGhost} onClick={handleGenerateText} disabled={busyText}>
+              {busyText ? 'Bezig…' : 'Tekst opnieuw genereren'}
+            </button>
+
             <button style={s.btn} onClick={handleGenerateAudio} disabled={busyAudio}>
               {busyAudio
                 ? 'Bezig…'

@@ -1450,6 +1450,24 @@ export const announcementFactory = {
   },
 
   /**
+   * Overschrijf de tekst van een aankondiging met een opnieuw automatisch
+   * opgebouwde tekst (speaker klikte expliciet "opnieuw genereren") — in
+   * tegenstelling tot updateText() wordt ook generatedText meegenomen, zodat
+   * dit duidelijk een verse automatische generatie is, geen handmatige
+   * correctie. Hoogt textVersion op, net als updateText.
+   * @param {string} competitionId
+   * @param {string} announcementId
+   * @param {string} text
+   * @param {number} nextTextVersion
+   */
+  regenerateText(competitionId, announcementId, text, nextTextVersion) {
+    return updateDoc(paths.announcement(competitionId, announcementId), {
+      text, generatedText: text, textVersion: nextTextVersion, status: 'tekst-klaar',
+      updatedAt: new Date().toISOString(),
+    });
+  },
+
+  /**
    * Bevestig dat de audio voor een aankondiging klaarstaat.
    * @param {string} competitionId
    * @param {string} announcementId

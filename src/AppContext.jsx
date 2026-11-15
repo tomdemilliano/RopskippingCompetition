@@ -792,7 +792,12 @@ export function AppProvider({ children }) {
     if (items.length > 0) await announcementFactory.bulkCreate(competitionId, items);
   }, [blocks, events, participants, announcements, getClub]);
 
-  /** Genereer de tekst voor exact één reeks (speaker heeft nog geen document voor deze reeks). */
+  /**
+   * Genereer de tekst voor exact één reeks — bestaat er nog geen document
+   * voor deze reeks, dan wordt er één aangemaakt; bestaat er al één (de
+   * speaker klikte expliciet "opnieuw genereren"), dan wordt de tekst
+   * overschreven i.p.v. een duplicaat aan te maken.
+   */
   const generateAnnouncementTextForReeks = useCallback(async (competitionId, eventId, seriesNr) => {
     const sequence = buildSpeedReeksSequence(blocks, events, participants);
     const r = sequence.find(x => x.eventId === eventId && x.seriesNr === seriesNr);
@@ -803,8 +808,14 @@ export function AppProvider({ children }) {
       seriesParticipants: r.seriesParticipants, maxFieldNr: r.maxFieldNr,
       getClub, sortedAllBlocks: r.sortedAllBlocks, events,
     });
-    await announcementFactory.bulkCreate(competitionId, [{ eventId, seriesNr, text }]);
-  }, [blocks, events, participants, getClub]);
+
+    const existing = announcements.find(a => a.eventId === eventId && a.seriesNr === seriesNr);
+    if (existing) {
+      await announcementFactory.regenerateText(competitionId, existing.id, text, existing.textVersion + 1);
+    } else {
+      await announcementFactory.bulkCreate(competitionId, [{ eventId, seriesNr, text }]);
+    }
+  }, [blocks, events, participants, announcements, getClub]);
 
   /** Handmatige correctie van de speaker — hoogt textVersion op (audio wordt zo als verouderd herkend). */
   const updateAnnouncementText = useCallback((competitionId, announcementId, text) => {
