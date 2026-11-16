@@ -52,7 +52,7 @@ import {
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { DEFAULT_TEXT_VARIATIONS } from './announcementText';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -893,22 +893,37 @@ export const competitionFactory = {
   },
 
   /**
-   * Verwijder een wedstrijd inclusief alle deelnemers, blokken, podia en boodschappen.
+   * Verwijder een wedstrijd inclusief alle deelnemers, blokken, podia,
+   * boodschappen en aankondigingen — inclusief de bijhorende audiobestanden
+   * in Storage (anders blijven die daar wezen staan, los van elk Firestore-
+   * document, en groeit Storage ongemerkt verder).
    * @param {string} competitionId
    */
   async delete(competitionId) {
     const batch = writeBatch(getDb());
-    const [pSnap, bSnap, podSnap, msgSnap] = await Promise.all([
+    const [pSnap, bSnap, podSnap, msgSnap, annSnap] = await Promise.all([
       getDocs(paths.participants(competitionId)),
       getDocs(paths.blocks(competitionId)),
       getDocs(paths.podiums(competitionId)),
       getDocs(paths.messages(competitionId)),
+      getDocs(paths.announcements(competitionId)),
     ]);
     pSnap.forEach((d) => batch.delete(d.ref));
     bSnap.forEach((d) => batch.delete(d.ref));
     podSnap.forEach((d) => batch.delete(d.ref));
     msgSnap.forEach((d) => batch.delete(d.ref));
+
+    const audioDeletions = [];
+    annSnap.forEach((d) => {
+      batch.delete(d.ref);
+      const path = d.data().audioStoragePath;
+      // .catch(): een al verdwenen/ontbrekend Storage-object mag de rest
+      // van de opruiming niet blokkeren.
+      if (path) audioDeletions.push(deleteObject(storageRef(getStorageInstance(), path)).catch(() => {}));
+    });
+
     batch.delete(paths.competition(competitionId));
+    await Promise.all(audioDeletions);
     return batch.commit();
   },
 };
@@ -1557,6 +1572,36 @@ export const announcementFactory = {
       audioStoragePath: path, audioUrl: url, audioTextVersion,
     });
     return url;
+  },
+
+  /**
+   * Verwijder de gegenereerde audiobestanden van alle aankondigingen van
+   * een wedstrijd uit Storage, en wis de bijhorende velden — de teksten
+   * zelf blijven staan (nog altijd bruikbaar om later opnieuw audio voor
+   * te genereren). Gebruikt bij het beëindigen van een wedstrijd
+   * (AppContext.jsx#endCompetition), zodat Storage niet blijft volgroeien
+   * met audio van wedstrijden die toch voorbij zijn.
+   * @param {string} competitionId
+   */
+  async deleteAllAudioFiles(competitionId) {
+    const snap = await getDocs(paths.announcements(competitionId));
+    const batch = writeBatch(getDb());
+    const audioDeletions = [];
+
+    snap.forEach((d) => {
+      const path = d.data().audioStoragePath;
+      if (path) {
+        // .catch(): een al verdwenen Storage-object mag de rest van de
+        // opruiming niet blokkeren.
+        audioDeletions.push(deleteObject(storageRef(getStorageInstance(), path)).catch(() => {}));
+      }
+      batch.update(d.ref, {
+        audioStoragePath: '', audioUrl: '', audioTextVersion: -1, status: 'tekst-klaar',
+      });
+    });
+
+    await Promise.all(audioDeletions);
+    await batch.commit();
   },
 };
 

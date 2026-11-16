@@ -596,6 +596,16 @@ export function AppProvider({ children }) {
   const endCompetition = useCallback(async (competitionId) => {
     await competitionFactory.setStatus(competitionId, 'beëindigd');
     await settingsFactory.setActiveCompetition(null);
+    try {
+      // Opruimen van de (potentieel grote) TTS-audiobestanden — een
+      // wedstrijd die beëindigd is, heeft geen actieve speaker meer nodig.
+      // De teksten zelf blijven staan, dus audio kan later nog altijd
+      // opnieuw gegenereerd worden. Best-effort: mislukt dit, dan blijft de
+      // wedstrijd wél gewoon beëindigd.
+      await announcementFactory.deleteAllAudioFiles(competitionId);
+    } catch {
+      // bewust genegeerd — zie uitleg hierboven
+    }
   }, []);
 
   const saveEventOrder = useCallback((competitionId, eventOrder) => {

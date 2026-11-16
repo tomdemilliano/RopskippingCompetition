@@ -1552,6 +1552,33 @@ gekoppeld — het is wedstrijdonafhankelijke configuratie, geen TTS-activiteit
 voor een specifieke wedstrijd, en blijft dus altijd bereikbaar voor een
 beheerder (net als `ClubManagement`/`UserManagement`).
 
+### Opruiming van audio — Storage mag niet blijven volgroeien
+
+WAV-bestanden zijn verreweg het grootste deel van wat deze feature in
+Storage/Firestore opslaat. Twee plekken ruimen ze actief op:
+
+- **`endCompetition(competitionId)`** (AppContext.jsx) — roept na het
+  beëindigen van een wedstrijd `announcementFactory.deleteAllAudioFiles
+  (competitionId)` aan: verwijdert alle `.wav`-bestanden van die wedstrijd
+  uit Storage en wist `audioStoragePath`/`audioUrl`/`audioTextVersion`
+  (terug naar `status: 'tekst-klaar'`) op elk aankondigingsdocument. De
+  **teksten zelf blijven staan** — enkel de (grote) audio verdwijnt, zodat
+  een beëindigde wedstrijd geen Storage-ruimte blijft innemen terwijl de
+  tekst nog altijd beschikbaar is om later opnieuw audio voor te genereren.
+  Best-effort: faalt deze opruiming (bv. een netwerkfout), dan blijft de
+  wedstrijd gewoon beëindigd — de speaker-actie mag daar nooit door
+  geblokkeerd worden.
+- **`competitionFactory.delete(competitionId)`** — ruimde van bij de eerste
+  versie van deze feature de `announcements`-subcollectie zelf nog niet op
+  (die subcollectie bestond toen de verwijderfunctie geschreven werd nog
+  niet) — verwijdert nu ook die documenten én hun Storage-bestanden, naast
+  de al langer bestaande opruiming van deelnemers/blokken/podia/
+  boodschappen.
+
+Beide gebruiken dezelfde "`.catch(() => {})` per bestand"-aanpak: een
+Storage-object dat al weg is (bv. een vorige, gedeeltelijk gelukte opruiming)
+mag de rest van de opruiming niet blokkeren.
+
 ---
 
 ## Seed
