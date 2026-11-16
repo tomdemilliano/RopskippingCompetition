@@ -1429,22 +1429,22 @@ ook als een korte ruisklik kan afspelen.
   van de huidige reeks, enkel gerenderd wanneer zowel `!isFreestyle` als
   `activeCompetition.isAnnouncementsEnabled` kloppen. Toont/bewerkt de tekst
   (opslaan bij blur, niet bij elke toetsaanslag), een "verouderd"-badge
-  zodra `audioTextVersion !== textVersion`, een afspeelknop + stopknop
-  (pauzeert en zet `currentTime` terug naar 0) voor de aankondiging, een
-  losse herhaal- en stopknop voor het vaste tweede fragment
-  (`public/audio/skippers-klaar-jury-klaar.wav`, Vite serveert `public/` op
-  de root), een "buffer: N/M klaar"-badge en een knop om audio voor het hele
-  onderdeel in één keer te genereren. **Het vaste tweede fragment speelt
-  nooit automatisch** na de aankondiging — enkel via een expliciete
-  speaker-actie (deze herhaalknop, of de snelknop in LiveView's
-  navigatievak hieronder).
-- **`LiveView.jsx`'s navigatievak** — drie snelknoppen (`Volume2`/`Flag`/
-  `Square`), links van de "Volgende"-knop, enkel zichtbaar onder dezelfde
-  voorwaarde als `AnnouncementPanel`. Laten de speaker de aankondiging en het
-  vaste fragment direct afspelen, en met de stopknop beide tegelijk pauzeren
-  + terugzetten naar het begin, zonder naar `AnnouncementPanel` te moeten
-  scrollen — eigen, lokale `<audio>`-elementen, los van die van
-  `AnnouncementPanel` (geen gedeelde afspeelstate nodig).
+  zodra `audioTextVersion !== textVersion`, een "buffer: N/M klaar"-badge, en
+  de knoppen om tekst/audio te (her)genereren. **Geen afspeel-/stopknoppen
+  meer hier** — afspelen gebeurt uitsluitend via de audiospelers in
+  `LiveView.jsx`'s navigatievak (zie hieronder), en de "genereer audio voor
+  heel dit onderdeel"-knop staat niet meer hier maar enkel nog in
+  `AnnouncementManager.jsx` (wedstrijdbeheer).
+- **`LiveView.jsx`'s navigatievak** — twee gelabelde, natieve
+  `<audio controls>`-spelers ("Aankondiging" / "Jury klaar / skippers
+  klaar"), onder elkaar boven de "Volgende"-knop, enkel zichtbaar onder
+  dezelfde voorwaarde als `AnnouncementPanel`. De aankondigingsspeler toont
+  een plaatshoudertekst i.p.v. een speler zolang er geen audio is
+  (`currentAnnouncement?.audioUrl`); het vaste fragment
+  (`public/audio/skippers-klaar-jury-klaar.wav`) is altijd beschikbaar. Geen
+  eigen afspeel-/stoplogica meer nodig — de native controls geven start/
+  pauze én een voortgangsbalk, en "stoppen" is gewoon pauzeren (eventueel
+  met de balk terugslepen).
 - **`AnnouncementManager.jsx`** — nieuwe tab "Aankondigingen" in
   `CompetitionDetail.jsx` (wedstrijdbeheer), **enkel zichtbaar wanneer
   `competition.isAnnouncementsEnabled` aan staat** (de eerste conditioneel
@@ -1536,7 +1536,7 @@ i.p.v. telkens maar 1 reeks:
 
 Staat `competition.isAnnouncementsEnabled` uit, dan mag er nergens iets van
 zichtbaar of actief zijn. Plekken die dit respecteren:
-- `LiveView.jsx` — `AnnouncementPanel` én de twee snelknoppen in het
+- `LiveView.jsx` — `AnnouncementPanel` én de twee audiospelers in het
   navigatievak worden enkel gerenderd, en `preloadUpcomingAnnouncementAudio`
   enkel aangeroepen, wanneer de toggle aan staat (naast `!isFreestyle`).
 - `CompetitionDetail.jsx` — de "Aankondigingen"-tab (`AnnouncementManager`)

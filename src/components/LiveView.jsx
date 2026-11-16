@@ -12,7 +12,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock,
-  ListTodo, Trophy, Settings, Megaphone, Volume2, Flag, Square,
+  ListTodo, Trophy, Settings, Megaphone,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
@@ -115,6 +115,35 @@ const s = {
     width: '44px',
     justifyContent: 'center',
   }),
+
+  // Aankondiging/"skippers klaar"-audiospelers — onder elkaar, boven de
+  // "Volgende"-knop (zie LiveView.jsx's navCard).
+  announcementPlayers: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  playerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+  },
+  playerLabel: {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: color.muted,
+    minWidth: '7.5rem',
+    flexShrink: 0,
+  },
+  audioPlayer: {
+    flex: 1,
+    height: '32px',
+  },
+  playerPlaceholder: {
+    fontSize: '0.78rem',
+    color: color.faint,
+    fontStyle: 'italic',
+  },
   seriesLabel: (done) => ({
     fontSize: '1.8rem',
     fontWeight: 900,
@@ -584,16 +613,11 @@ export default function LiveView() {
     eventParticipants.filter(p => p._entry.seriesNr === activeSeriesNr),
   [eventParticipants, activeSeriesNr]);
 
-  // Aankondiging van de actieve reeks — voor de snelknoppen in het
-  // navigatievak hieronder. Eigen, lokale <audio>-elementen (zie onder),
-  // los van AnnouncementPanel's eigen afspeelstate.
+  // Aankondiging van de actieve reeks — voor de audiospeler in het
+  // navigatievak hieronder.
   const currentAnnouncement = announcements.find(
     a => a.eventId === activeEventId && a.seriesNr === activeSeriesNr
   );
-  const isCurrentAnnouncementStale = !!currentAnnouncement
-    && currentAnnouncement.audioTextVersion !== currentAnnouncement.textVersion;
-  const announcementAudioRef = useRef(null);
-  const fixedClipAudioRef = useRef(null);
 
   // Geplande tijd van de actieve reeks
   const plannedTime = currentSeriesParticipants[0]?._entry.scheduledTime ?? null;
@@ -848,45 +872,32 @@ export default function LiveView() {
                 </button>
               </div>
 
+              {/* Aankondiging/"skippers klaar"-audiospelers — onder elkaar,
+                  boven de "Volgende"-knop. */}
+              {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
+                <div style={s.announcementPlayers}>
+                  <div style={s.playerRow}>
+                    <span style={s.playerLabel}>Aankondiging</span>
+                    {currentAnnouncement?.audioUrl ? (
+                      <audio
+                        key={currentAnnouncement.audioUrl}
+                        controls
+                        src={currentAnnouncement.audioUrl}
+                        style={s.audioPlayer}
+                      />
+                    ) : (
+                      <span style={s.playerPlaceholder}>Nog geen audio</span>
+                    )}
+                  </div>
+                  <div style={s.playerRow}>
+                    <span style={s.playerLabel}>Jury klaar / skippers klaar</span>
+                    <audio controls src={FIXED_CLIP_URL} style={s.audioPlayer} />
+                  </div>
+                </div>
+              )}
+
               {/* Voltooiknop of voltooiindicator */}
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
-                {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
-                  <>
-                    <button
-                      style={s.navBtn(!currentAnnouncement?.audioUrl || isCurrentAnnouncementStale)}
-                      disabled={!currentAnnouncement?.audioUrl || isCurrentAnnouncementStale}
-                      onClick={() => announcementAudioRef.current?.play()}
-                      title="Aankondiging afspelen"
-                    >
-                      <Volume2 size={18} />
-                    </button>
-                    <button
-                      style={s.navBtn(false)}
-                      onClick={() => fixedClipAudioRef.current?.play()}
-                      title='"Skippers klaar, jury klaar?" afspelen'
-                    >
-                      <Flag size={18} />
-                    </button>
-                    <button
-                      style={s.navBtn(false)}
-                      onClick={() => {
-                        announcementAudioRef.current?.pause();
-                        if (announcementAudioRef.current) announcementAudioRef.current.currentTime = 0;
-                        fixedClipAudioRef.current?.pause();
-                        if (fixedClipAudioRef.current) fixedClipAudioRef.current.currentTime = 0;
-                      }}
-                      title="Stop en terug naar het begin"
-                    >
-                      <Square size={18} />
-                    </button>
-                    <audio
-                      ref={announcementAudioRef}
-                      src={currentAnnouncement?.audioUrl || undefined}
-                      style={{ display: 'none' }}
-                    />
-                    <audio ref={fixedClipAudioRef} src={FIXED_CLIP_URL} style={{ display: 'none' }} />
-                  </>
-                )}
                 {isSeriesDone ? (
                   <>
                     <div style={s.doneTag}>

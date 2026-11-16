@@ -4,23 +4,20 @@
  * Aankondigingsvak voor de speaker in LiveView.jsx — enkel gerenderd wanneer
  * `activeCompetition.isAnnouncementsEnabled` aan staat EN de huidige reeks
  * geen freestyle is (zie LiveView.jsx). Toont/bewerkt de tekst voor de
- * huidige reeks, genereert audio op aanvraag en speelt ze af — zowel de
- * aankondiging als het vaste "skippers klaar, jury klaar?"-fragment kunnen
- * ook gestopt en teruggezet worden naar het begin; geen van beide speelt
- * ooit automatisch door naar de andere. Data/acties komen volledig via
+ * huidige reeks en genereert audio op aanvraag. Afspelen gebeurt NIET hier
+ * — dat loopt via de twee audiospelers in LiveView.jsx's navigatievak
+ * (boven de "Volgende"-knop), zodat de speaker niet tussen dit vak en de
+ * navigatie moet wisselen om een aankondiging of het vaste "skippers klaar,
+ * jury klaar?"-fragment te starten. Data/acties komen volledig via
  * AppContext — geen eigen Firestore-toegang (CLAUDE.md).
  *
  * Zie "Aankondigingen (TTS)" in ARCHITECTURE.md.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  Volume2, PlayCircle, Repeat, RefreshCw, AlertTriangle, Square,
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Volume2, AlertTriangle } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow } from '../theme';
-
-const FIXED_CLIP_URL = '/audio/skippers-klaar-jury-klaar.wav';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -95,19 +92,6 @@ const s = {
     color: color.body,
     cursor: 'pointer',
   },
-  btnPrimary: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    background: color.primary,
-    border: 'none',
-    borderRadius: radius.sm,
-    padding: '0.45rem 0.9rem',
-    fontSize: '0.8rem',
-    fontWeight: 700,
-    color: '#fff',
-    cursor: 'pointer',
-  },
   btnGhost: {
     display: 'flex',
     alignItems: 'center',
@@ -144,12 +128,6 @@ const s = {
     color: color.faint,
     fontStyle: 'italic',
   },
-  blockActionRow: {
-    borderTop: `1px solid ${color.borderSoft}`,
-    paddingTop: '0.6rem',
-    display: 'flex',
-    justifyContent: 'flex-end',
-  },
   errorMsg: {
     fontSize: '0.78rem',
     color: color.dangerDark,
@@ -176,7 +154,6 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
     generateAnnouncementTextForReeks,
     updateAnnouncementText,
     generateAnnouncementAudio,
-    generateAnnouncementAudioForBlock,
     getAnnouncementPreloadStatus,
   } = useAppContext();
 
@@ -186,11 +163,7 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
   const [editing, setEditing]     = useState(false);
   const [busyText, setBusyText]   = useState(false);
   const [busyAudio, setBusyAudio] = useState(false);
-  const [busyBlock, setBusyBlock] = useState(false);
   const [error, setError]         = useState('');
-
-  const audioRef = useRef(null);
-  const fixedAudioRef = useRef(null);
 
   // De draft volgt het Firestore-document, behalve tijdens actief bewerken
   // (anders zou een live-update van elders de speaker's eigen tekst onder
@@ -238,43 +211,6 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
     }
   };
 
-  const handlePlay = () => {
-    if (!announcement?.audioUrl || !audioRef.current) return;
-    audioRef.current.currentTime = 0;
-    audioRef.current.play();
-  };
-
-  /** Stopt de aankondiging en zet ze terug naar het begin. */
-  const handleStop = () => {
-    if (!audioRef.current) return;
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-  };
-
-  const handlePlayFixedClip = () => {
-    if (!fixedAudioRef.current) return;
-    fixedAudioRef.current.currentTime = 0;
-    fixedAudioRef.current.play();
-  };
-
-  /** Stopt het vaste fragment en zet het terug naar het begin. */
-  const handleStopFixedClip = () => {
-    if (!fixedAudioRef.current) return;
-    fixedAudioRef.current.pause();
-    fixedAudioRef.current.currentTime = 0;
-  };
-
-  const handleGenerateForBlock = async () => {
-    setBusyBlock(true); setError('');
-    try {
-      await generateAnnouncementAudioForBlock(competitionId, eventId);
-    } catch (err) {
-      setError(err.message ?? 'Genereren voor dit onderdeel mislukt.');
-    } finally {
-      setBusyBlock(false);
-    }
-  };
-
   return (
     <div style={s.card}>
       <div style={s.header}>
@@ -316,24 +252,6 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
                 ? 'Bezig…'
                 : (announcement.audioUrl ? 'Audio opnieuw genereren' : 'Audio genereren')}
             </button>
-
-            {announcement.audioUrl && !isStale && (
-              <button style={s.btnPrimary} onClick={handlePlay}>
-                <PlayCircle size={14} /> Afspelen
-              </button>
-            )}
-            {announcement.audioUrl && (
-              <button style={s.btnGhost} onClick={handleStop} title="Stop en terug naar het begin">
-                <Square size={13} /> Stop
-              </button>
-            )}
-
-            <button style={s.btnGhost} onClick={handlePlayFixedClip}>
-              <Repeat size={12} /> "Skippers klaar?" herhalen
-            </button>
-            <button style={s.btnGhost} onClick={handleStopFixedClip} title='Stop "skippers klaar?" en terug naar het begin'>
-              <Square size={13} />
-            </button>
           </div>
 
           {announcement.status === 'genereren-mislukt' && (
@@ -343,25 +261,6 @@ export default function AnnouncementPanel({ competitionId, eventId, seriesNr }) 
       )}
 
       {error && <div style={s.errorMsg}>{error}</div>}
-
-      <div style={s.blockActionRow}>
-        <button style={s.btnGhost} onClick={handleGenerateForBlock} disabled={busyBlock}>
-          <RefreshCw size={13} />
-          {busyBlock ? 'Bezig met genereren…' : 'Genereer audio voor heel dit onderdeel'}
-        </button>
-      </div>
-
-      {/* Audio voor de aankondiging zelf — speelt NOOIT automatisch door naar
-          het vaste tweede fragment: de speaker triggert dat altijd zelf
-          (via de "Skippers klaar?"-knop hieronder, of de snelknop in
-          LiveView.jsx's navigatievak). */}
-      <audio
-        ref={audioRef}
-        src={announcement?.audioUrl || undefined}
-        style={{ display: 'none' }}
-      />
-      {/* Vast, niet-gegenereerd tweede fragment — enkel handmatig af te spelen. */}
-      <audio ref={fixedAudioRef} src={FIXED_CLIP_URL} style={{ display: 'none' }} />
     </div>
   );
 }
