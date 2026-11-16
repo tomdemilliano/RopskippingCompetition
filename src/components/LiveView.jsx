@@ -126,6 +126,7 @@ const s = {
   playerRow: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '0.6rem',
   },
   playerLabel: {
@@ -134,9 +135,12 @@ const s = {
     color: color.muted,
     minWidth: '7.5rem',
     flexShrink: 0,
+    textAlign: 'right',
   },
+  // ±5cm breed i.p.v. de volledige breedte van het navigatievak.
   audioPlayer: {
-    flex: 1,
+    width: '190px',
+    flexShrink: 0,
     height: '32px',
   },
   playerPlaceholder: {
@@ -236,32 +240,37 @@ const s = {
     fontWeight: 700,
     flexShrink: 0,
   }),
-  fieldNameCell: (hasSkipper, done) => ({
+  // Naam en club staan in ÉÉN cel met ÉÉN gedeelde rand (i.p.v. twee
+  // aparte cellen met een "verborgen" gedeelde rand) — dat laatste kon in
+  // sommige rijen een zichtbaar naadje tussen naam en club laten zien door
+  // een rendersafwijking van de browser bij het tekenen van twee aparte
+  // randen die precies tegen elkaar moeten aansluiten.
+  fieldInfoCell: {
     verticalAlign: 'middle',
-    padding: '0.4rem 1rem 0.4rem 0.75rem',
+    padding: 0,
+  },
+  fieldInfoPill: (hasSkipper, done) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    padding: '0.4rem 1rem',
     background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
     border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
-    borderRight: 'none',
-    borderRadius: '8px 0 0 8px',
+    borderRadius: '8px',
+    opacity: done ? 0.6 : 1,
+  }),
+  fieldNameText: (hasSkipper) => ({
     fontWeight: 800,
     fontSize: '1rem',
     fontStyle: hasSkipper ? 'normal' : 'italic',
     color: hasSkipper ? color.inkSoft : color.faintest,
     whiteSpace: 'nowrap',
-    opacity: done ? 0.6 : 1,
   }),
-  fieldClubCell: (hasSkipper, done) => ({
-    verticalAlign: 'middle',
-    padding: '0.4rem 0.75rem',
-    background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
-    border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
-    borderLeft: 'none',
-    borderRadius: '0 8px 8px 0',
+  fieldClubText: {
     fontSize: '0.85rem',
     color: color.faint,
     whiteSpace: 'nowrap',
-    opacity: done ? 0.6 : 1,
-  }),
+  },
 
   // Freestyle layout
   freestyleWrap: {
@@ -936,11 +945,15 @@ export default function LiveView() {
                         <td style={s.fieldNrCell}>
                           <div style={s.fieldNrBadge(!!skipper, isSeriesDone)}>{fieldNr}</div>
                         </td>
-                        <td style={s.fieldNameCell(!!skipper, isSeriesDone)}>
-                          {skipper?.name ?? '---'}
-                        </td>
-                        <td style={s.fieldClubCell(!!skipper, isSeriesDone)}>
-                          {club?.name ?? ''}
+                        <td style={s.fieldInfoCell}>
+                          <div style={s.fieldInfoPill(!!skipper, isSeriesDone)}>
+                            <span style={s.fieldNameText(!!skipper)}>
+                              {skipper?.name ?? '---'}
+                            </span>
+                            <span style={s.fieldClubText}>
+                              {club?.name ?? ''}
+                            </span>
+                          </div>
                         </td>
                       </tr>
                     );
