@@ -137,9 +137,9 @@ const s = {
     flexShrink: 0,
     textAlign: 'right',
   },
-  // ±5cm breed i.p.v. de volledige breedte van het navigatievak.
+  // ±10cm breed (bij 96dpi) i.p.v. de volledige breedte van het navigatievak.
   audioPlayer: {
-    width: '190px',
+    width: '378px',
     flexShrink: 0,
     height: '32px',
   },
@@ -252,11 +252,14 @@ const s = {
   fieldInfoPill: (hasSkipper, done) => ({
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: '0.75rem',
+    width: '100%',
     padding: '0.4rem 1rem',
     background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
     border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
     borderRadius: '8px',
+    boxSizing: 'border-box',
     opacity: done ? 0.6 : 1,
   }),
   fieldNameText: (hasSkipper) => ({
@@ -270,6 +273,8 @@ const s = {
     fontSize: '0.85rem',
     color: color.faint,
     whiteSpace: 'nowrap',
+    textAlign: 'right',
+    marginLeft: 'auto',
   },
 
   // Freestyle layout
