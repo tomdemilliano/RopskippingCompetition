@@ -17,10 +17,14 @@
  * Haalt de voornaam uit een "ACHTERNAAM Voornaam"-string. Gebruikt `\p{Lu}`
  * ("elke hoofdletter", Unicode-aware, `u`-vlag) i.p.v. het ASCII-only `[A-Z]`
  * zodat achternamen met accenten (GABRIËLS, TOTTÉ, HEMMERYCKX) correct als
- * hoofdletterblok herkend worden. De greedy-aard van `[\p{Lu}\s]+` laat de
- * regex-engine terugkrabbelen tot net vóór de voornaam begint, wat zowel
- * meerdelige achternamen ("VAN DEN BRANDEN") als meerdelige/gekoppelde
- * voornamen ("Laure Sien-Yue") correct splitst.
+ * hoofdletterblok herkend worden, en met een rechte/kromme apostrof (`'`/`’`)
+ * zodat namen als "D'HERDE"/"D'HONDT" ook correct herkend worden — zonder
+ * die apostrof viel de hele achternaam buiten de hoofdletter-klasse,
+ * waardoor de match volledig mislukte en de speaker per ongeluk de VOLLEDIGE
+ * naam (achternaam + voornaam) voorgelezen kreeg. De greedy-aard van
+ * `[\p{Lu}\s'’]+` laat de regex-engine terugkrabbelen tot net vóór de
+ * voornaam begint, wat zowel meerdelige achternamen ("VAN DEN BRANDEN") als
+ * meerdelige/gekoppelde voornamen ("Laure Sien-Yue") correct splitst.
  *
  * Het vangstgroepje vereist zelf ook een hoofdletter gevolgd door een
  * kleine letter (`\p{Lu}\p{Ll}`) — dat dwingt af dat de gevonden "voornaam"
@@ -37,7 +41,7 @@
  */
 export function extractFirstName(fullName) {
   if (!fullName) return '';
-  const match = fullName.match(/^[\p{Lu}\s]+\s+(\p{Lu}\p{Ll}.*)$/u);
+  const match = fullName.match(/^[\p{Lu}\s'’]+\s+(\p{Lu}\p{Ll}.*)$/u);
   return match ? match[1].trim() : fullName.trim();
 }
 
