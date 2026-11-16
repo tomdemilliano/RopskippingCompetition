@@ -469,23 +469,24 @@ export function AppProvider({ children }) {
   }, [blocks, events, participants, announcements, competitions]);
 
   /**
-   * Hoeveel reeksen van elk speed-onderdeel al een aankondigingstekst
-   * hebben — voor het overzicht in AnnouncementManager.jsx (de
+   * Hoeveel reeksen van elk speed-onderdeel al een aankondigingstekst en/of
+   * -audio hebben — voor het overzicht in AnnouncementManager.jsx (de
    * bulkgeneratie-tab in CompetitionDetail). Puur leesgedrag, werkt op de
    * voor de huidige wedstrijd geladen blocks/participants/announcements
    * (zie loadBlocks/loadParticipants/loadAnnouncements).
-   * @returns {Array<{ eventId: string, eventName: string, withText: number, total: number }>}
+   * @returns {Array<{ eventId: string, eventName: string, withText: number, withAudio: number, total: number }>}
    */
-  const getAnnouncementTextCoverage = useCallback(() => {
+  const getAnnouncementCoverage = useCallback(() => {
     const sequence = buildSpeedReeksSequence(blocks, events, participants);
     const byEvent = new Map();
 
     for (const r of sequence) {
-      const entry = byEvent.get(r.eventId) ?? { eventId: r.eventId, eventName: r.event?.name ?? '', withText: 0, total: 0 };
+      const entry = byEvent.get(r.eventId)
+        ?? { eventId: r.eventId, eventName: r.event?.name ?? '', withText: 0, withAudio: 0, total: 0 };
       entry.total += 1;
-      if (announcements.some(a => a.eventId === r.eventId && a.seriesNr === r.seriesNr)) {
-        entry.withText += 1;
-      }
+      const match = announcements.find(a => a.eventId === r.eventId && a.seriesNr === r.seriesNr);
+      if (match) entry.withText += 1;
+      if (match?.audioUrl) entry.withAudio += 1;
       byEvent.set(r.eventId, entry);
     }
 
@@ -1026,7 +1027,7 @@ export function AppProvider({ children }) {
     isFullyScratched,
     blockTypeLabels: BLOCK_TYPE_LABELS,
     getAnnouncementPreloadStatus,
-    getAnnouncementTextCoverage,
+    getAnnouncementCoverage,
 
     // Actions — wedstrijden
     createCompetition,

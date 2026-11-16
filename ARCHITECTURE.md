@@ -1448,20 +1448,34 @@ ook als een korte ruisklik kan afspelen.
 - **`AnnouncementManager.jsx`** — nieuwe tab "Aankondigingen" in
   `CompetitionDetail.jsx` (wedstrijdbeheer), **enkel zichtbaar wanneer
   `competition.isAnnouncementsEnabled` aan staat** (de eerste conditioneel
-  getoonde tab in dat bestand). Knop "Genereer alle ontbrekende teksten"
-  (`generateAnnouncementTexts(competitionId)`) + per speed-onderdeel een
-  tekst-dekkingsoverzicht (`getAnnouncementTextCoverage`) met zowel een
-  "Genereer tekst voor dit onderdeel"-knop
-  (`generateAnnouncementTexts(competitionId, eventId)` — hetzelfde
-  bulk-genereren, nu beperkt tot één onderdeel) als een "Genereer audio voor
-  dit onderdeel"-knop (bestaande `generateAnnouncementAudioForBlock`).
-  Daaronder een **reeksnavigator** (onderdeel-keuzelijst + vorige/volgende
-  door de reeksen van dat onderdeel) die simpelweg `AnnouncementPanel.jsx`
-  rendert voor de gekozen `(eventId, seriesNr)` — hergebruikt zo de
-  bestaande tekst-bewerk/audio-(re)genereer/afspeel-logica van het
-  speakerscherm rechtstreeks, zodat de beheerder gegenereerde teksten kan
-  nakijken en aanpassen zonder dat er een tweede, aparte bewerk-UI
-  geschreven moest worden.
+  getoonde tab in dat bestand). Tweekolommenlayout:
+  - **Links**: knop "Genereer alle ontbrekende teksten"
+    (`generateAnnouncementTexts(competitionId)`) bovenaan, daaronder per
+    speed-onderdeel een kaartje met een tekst- én audio-dekkingsoverzicht
+    (`getAnnouncementCoverage` — `withText`/`withAudio`/`total`) en twee
+    rechts uitgelijnde, gestapelde knoppen: "Genereer tekst voor dit
+    onderdeel" (`generateAnnouncementTexts(competitionId, eventId)` —
+    hetzelfde bulk-genereren, nu beperkt tot één onderdeel) en "Genereer
+    audio voor dit onderdeel" (bestaande `generateAnnouncementAudioForBlock`).
+  - **Rechts**: een **reeksnavigator** (onderdeel-keuzelijst + vorige/
+    volgende door de reeksen van dat onderdeel) boven een lokaal
+    `AnnouncementReview`-subcomponent (in hetzelfde bestand, niet
+    geëxporteerd) voor de gekozen `(eventId, seriesNr)` — een grote
+    tekst-`<textarea>` (11 rijen) om te bewerken, "Tekst opnieuw
+    genereren"/"Audio (opnieuw) genereren"-knoppen, en een natieve
+    `<audio controls>`-afspeler (start/pauze/voortgangsbalk) die enkel
+    getoond wordt als er al audio is — anders een lege plaatshouder, dus
+    nooit een "actieve" speler zonder bron.
+
+  **Bewust géén hergebruik van `AnnouncementPanel.jsx` hier** — dat
+  speakerscherm-component bevat zaken die in dit beheerscontext niet thuis-
+  horen (het vaste "skippers klaar"-fragment, de preload-bufferbadge, de
+  "genereer audio voor heel dit onderdeel"-knop, die hier al links in de
+  kolom per onderdeel staat) en gebruikte voorheen losse Afspelen/Stop-
+  knoppen i.p.v. een echte afspeelbalk. `AnnouncementReview` is een eigen,
+  lichtere review-UI die wel dezelfde AppContext-acties hergebruikt
+  (`generateAnnouncementTextForReeks`, `updateAnnouncementText`,
+  `generateAnnouncementAudio`).
 - **`AnnouncementSettings.jsx`** — nieuwe sectie "Aankondigingen" in
   `ManagementView.jsx` (globaal beheer, niet per wedstrijd). Formulier voor
   `systemInstruction`/`voiceName`/`temperature`/`textVariations`, met een
