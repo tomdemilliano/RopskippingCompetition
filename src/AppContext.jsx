@@ -806,9 +806,14 @@ export function AppProvider({ children }) {
    * Genereer in één batch de aankondigingstekst voor elke speed/endurance/
    * triple-under-reeks die nog GEEN document heeft. Bestaande documenten
    * (ook handmatig aangepaste) worden nooit aangeraakt.
+   * @param {string} competitionId
+   * @param {string|null} [eventId]  beperk tot één onderdeel i.p.v. de hele
+   *   wedstrijd — gebruikt door de "Genereer tekst voor dit onderdeel"-knop
+   *   in AnnouncementManager.jsx (mirrort generateAnnouncementAudioForBlock).
    */
-  const generateAnnouncementTexts = useCallback(async (competitionId) => {
-    const sequence = buildSpeedReeksSequence(blocks, events, participants);
+  const generateAnnouncementTexts = useCallback(async (competitionId, eventId = null) => {
+    const sequence = buildSpeedReeksSequence(blocks, events, participants)
+      .filter(r => !eventId || r.eventId === eventId);
     const existingKeys = new Set(announcements.map(a => `${a.eventId}:${a.seriesNr}`));
 
     const items = sequence

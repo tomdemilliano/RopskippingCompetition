@@ -1449,10 +1449,19 @@ ook als een korte ruisklik kan afspelen.
   `CompetitionDetail.jsx` (wedstrijdbeheer), **enkel zichtbaar wanneer
   `competition.isAnnouncementsEnabled` aan staat** (de eerste conditioneel
   getoonde tab in dat bestand). Knop "Genereer alle ontbrekende teksten"
-  (`generateAnnouncementTexts`) + per speed-onderdeel een
-  tekst-dekkingsoverzicht (`getAnnouncementTextCoverage`) met een
-  "Genereer audio voor dit onderdeel"-knop (bestaande
-  `generateAnnouncementAudioForBlock`).
+  (`generateAnnouncementTexts(competitionId)`) + per speed-onderdeel een
+  tekst-dekkingsoverzicht (`getAnnouncementTextCoverage`) met zowel een
+  "Genereer tekst voor dit onderdeel"-knop
+  (`generateAnnouncementTexts(competitionId, eventId)` — hetzelfde
+  bulk-genereren, nu beperkt tot één onderdeel) als een "Genereer audio voor
+  dit onderdeel"-knop (bestaande `generateAnnouncementAudioForBlock`).
+  Daaronder een **reeksnavigator** (onderdeel-keuzelijst + vorige/volgende
+  door de reeksen van dat onderdeel) die simpelweg `AnnouncementPanel.jsx`
+  rendert voor de gekozen `(eventId, seriesNr)` — hergebruikt zo de
+  bestaande tekst-bewerk/audio-(re)genereer/afspeel-logica van het
+  speakerscherm rechtstreeks, zodat de beheerder gegenereerde teksten kan
+  nakijken en aanpassen zonder dat er een tweede, aparte bewerk-UI
+  geschreven moest worden.
 - **`AnnouncementSettings.jsx`** — nieuwe sectie "Aankondigingen" in
   `ManagementView.jsx` (globaal beheer, niet per wedstrijd). Formulier voor
   `systemInstruction`/`voiceName`/`temperature`/`textVariations`, met een
