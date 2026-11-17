@@ -8,11 +8,11 @@
  * Data komt volledig uit AppContext — geen directe Firebase-toegang.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock,
-  ListTodo, Trophy, Settings, Megaphone,
+  ListTodo, Trophy, Settings, Megaphone, Volume2, VolumeX,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
@@ -122,6 +122,21 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.5rem',
+  },
+  volumeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    color: color.muted,
+  },
+  volumeSlider: {
+    width: '110px',
+  },
+  volumeValue: {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    minWidth: '2.2rem',
   },
   playerRow: {
     display: 'flex',
@@ -633,6 +648,25 @@ export default function LiveView() {
     a => a.eventId === activeEventId && a.seriesNr === activeSeriesNr
   );
 
+  // Algemeen volume voor de twee audiospelers — lokale UI-voorkeur, geen
+  // Firestore-data. De aankondigingsspeler krijgt bij elke nieuwe reeks een
+  // nieuwe `key` (zie hieronder) zodat de browser de nieuwe audio betrouwbaar
+  // laadt, maar dat betekent ook een nieuw <audio>-element, dat zonder meer
+  // weer op het browserstandaard-volume (100%) zou starten. Callback-refs
+  // i.p.v. gewone refs zetten de volume-property expliciet bij élke
+  // (her)mount, en meteen ook bij elke aanpassing van de slider zelf — zo
+  // blijft het ingestelde volume behouden bij het navigeren doorheen de
+  // reeksen.
+  const [announcementVolume, setAnnouncementVolume] = useState(1);
+  const setAnnouncementAudioVolume = useCallback(
+    (el) => { if (el) el.volume = announcementVolume; },
+    [announcementVolume]
+  );
+  const setFixedClipAudioVolume = useCallback(
+    (el) => { if (el) el.volume = announcementVolume; },
+    [announcementVolume]
+  );
+
   // Geplande tijd van de actieve reeks
   const plannedTime = currentSeriesParticipants[0]?._entry.scheduledTime ?? null;
 
@@ -890,11 +924,26 @@ export default function LiveView() {
                   boven de "Volgende"-knop. */}
               {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
                 <div style={s.announcementPlayers}>
+                  <div style={s.volumeRow}>
+                    {announcementVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={announcementVolume}
+                      onChange={e => setAnnouncementVolume(parseFloat(e.target.value))}
+                      style={s.volumeSlider}
+                      title="Algemeen volume"
+                    />
+                    <span style={s.volumeValue}>{Math.round(announcementVolume * 100)}%</span>
+                  </div>
                   <div style={s.playerRow}>
                     <span style={s.playerLabel}>Aankondiging</span>
                     {currentAnnouncement?.audioUrl ? (
                       <audio
                         key={currentAnnouncement.audioUrl}
+                        ref={setAnnouncementAudioVolume}
                         controls
                         src={currentAnnouncement.audioUrl}
                         style={s.audioPlayer}
@@ -905,7 +954,7 @@ export default function LiveView() {
                   </div>
                   <div style={s.playerRow}>
                     <span style={s.playerLabel}>Jury klaar / skippers klaar</span>
-                    <audio controls src={FIXED_CLIP_URL} style={s.audioPlayer} />
+                    <audio ref={setFixedClipAudioVolume} controls src={FIXED_CLIP_URL} style={s.audioPlayer} />
                   </div>
                 </div>
               )}

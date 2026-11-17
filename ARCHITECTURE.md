@@ -1444,7 +1444,15 @@ ook als een korte ruisklik kan afspelen.
   (`public/audio/skippers-klaar-jury-klaar.wav`) is altijd beschikbaar. Geen
   eigen afspeel-/stoplogica meer nodig — de native controls geven start/
   pauze én een voortgangsbalk, en "stoppen" is gewoon pauzeren (eventueel
-  met de balk terugslepen).
+  met de balk terugslepen). Een slider erboven ("Algemeen volume") stelt het
+  volume van beide spelers tegelijk in — lokale UI-state (`announcementVolume`
+  in `LiveView.jsx`), geen Firestore-data. De aankondigingsspeler krijgt een
+  nieuwe `key` per reeks (nodig zodat de browser de nieuwe audio betrouwbaar
+  laadt), wat normaal het volume van dat `<audio>`-element bij elke
+  reekswissel naar de browserstandaard (100%) zou terugzetten; een
+  callback-ref (i.p.v. een gewone ref) zet `el.volume` daarom expliciet bij
+  élke (her)mount én bij elke aanpassing van de slider, zodat het ingestelde
+  volume behouden blijft bij het navigeren doorheen de reeksen.
 - **`AnnouncementManager.jsx`** — nieuwe tab "Aankondigingen" in
   `CompetitionDetail.jsx` (wedstrijdbeheer), **enkel zichtbaar wanneer
   `competition.isAnnouncementsEnabled` aan staat** (de eerste conditioneel
