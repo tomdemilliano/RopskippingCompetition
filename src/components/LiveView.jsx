@@ -8,11 +8,11 @@
  * Data komt volledig uit AppContext — geen directe Firebase-toegang.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock,
-  ListTodo, Trophy, Settings, Megaphone,
+  ListTodo, Trophy, Settings, Megaphone, Volume2, VolumeX,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
@@ -23,6 +23,7 @@ import { resolveBlockIconKey, getBlockIcon } from '../blockIcons';
 import PodiumManager from './PodiumManager';
 import PodiumCeremonyPanel from './PodiumCeremonyPanel';
 import MessageManager from './MessageManager';
+import AnnouncementPanel from './AnnouncementPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
@@ -114,6 +115,54 @@ const s = {
     width: '44px',
     justifyContent: 'center',
   }),
+
+  // Aankondiging/"skippers klaar"-audiospelers — onder elkaar, boven de
+  // "Volgende"-knop (zie LiveView.jsx's navCard).
+  announcementPlayers: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  volumeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    color: color.muted,
+  },
+  volumeSlider: {
+    width: '110px',
+  },
+  volumeValue: {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    minWidth: '2.2rem',
+  },
+  playerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.6rem',
+  },
+  playerLabel: {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: color.muted,
+    minWidth: '7.5rem',
+    flexShrink: 0,
+    textAlign: 'right',
+  },
+  // ±10cm breed (bij 96dpi) i.p.v. de volledige breedte van het navigatievak.
+  audioPlayer: {
+    width: '378px',
+    flexShrink: 0,
+    height: '32px',
+  },
+  playerPlaceholder: {
+    fontSize: '0.78rem',
+    color: color.faint,
+    fontStyle: 'italic',
+  },
   seriesLabel: (done) => ({
     fontSize: '1.8rem',
     fontWeight: 900,
@@ -206,32 +255,42 @@ const s = {
     fontWeight: 700,
     flexShrink: 0,
   }),
-  fieldNameCell: (hasSkipper, done) => ({
+  // Naam en club staan in ÉÉN cel met ÉÉN gedeelde rand (i.p.v. twee
+  // aparte cellen met een "verborgen" gedeelde rand) — dat laatste kon in
+  // sommige rijen een zichtbaar naadje tussen naam en club laten zien door
+  // een rendersafwijking van de browser bij het tekenen van twee aparte
+  // randen die precies tegen elkaar moeten aansluiten.
+  fieldInfoCell: {
     verticalAlign: 'middle',
-    padding: '0.4rem 1rem 0.4rem 0.75rem',
+    padding: 0,
+  },
+  fieldInfoPill: (hasSkipper, done) => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    width: '100%',
+    padding: '0.4rem 1rem',
     background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
     border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
-    borderRight: 'none',
-    borderRadius: '8px 0 0 8px',
+    borderRadius: '8px',
+    boxSizing: 'border-box',
+    opacity: done ? 0.6 : 1,
+  }),
+  fieldNameText: (hasSkipper) => ({
     fontWeight: 800,
     fontSize: '1rem',
     fontStyle: hasSkipper ? 'normal' : 'italic',
     color: hasSkipper ? color.inkSoft : color.faintest,
     whiteSpace: 'nowrap',
-    opacity: done ? 0.6 : 1,
   }),
-  fieldClubCell: (hasSkipper, done) => ({
-    verticalAlign: 'middle',
-    padding: '0.4rem 0.75rem',
-    background: done ? color.borderSoft : hasSkipper ? color.surface : 'transparent',
-    border: hasSkipper ? `1px solid ${color.faintest}` : `1px dashed ${color.faintest}`,
-    borderLeft: 'none',
-    borderRadius: '0 8px 8px 0',
+  fieldClubText: {
     fontSize: '0.85rem',
     color: color.faint,
     whiteSpace: 'nowrap',
-    opacity: done ? 0.6 : 1,
-  }),
+    textAlign: 'right',
+    marginLeft: 'auto',
+  },
 
   // Freestyle layout
   freestyleWrap: {
@@ -346,6 +405,10 @@ const s = {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Zelfde vast, niet-gegenereerd fragment als AnnouncementPanel.jsx — hier
+// opnieuw gedefinieerd i.p.v. een gedeelde module voor één stringconstante.
+const FIXED_CLIP_URL = '/audio/skippers-klaar-jury-klaar.wav';
+
 function calcExpectedTime(scheduledTime, timeDiff) {
   if (!scheduledTime || !timeDiff || Math.abs(timeDiff) <= 2) return scheduledTime;
   try {
@@ -378,15 +441,20 @@ export default function LiveView() {
     loadBlocks,
     blockTypeLabels,
     setBlockStatus,
+    loadAnnouncements,
+    announcements,
+    preloadUpcomingAnnouncementAudio,
   } = useAppContext();
 
-  // Deelnemers en dagtijdlijn laden voor de actieve wedstrijd — nodig omdat
-  // dit scherm rechtstreeks via zijn eigen route geopend kan worden, zonder
-  // eerst via Beheer te zijn gepasseerd (dat laadt ze anders zelf al).
+  // Deelnemers, dagtijdlijn en aankondigingen laden voor de actieve wedstrijd
+  // — nodig omdat dit scherm rechtstreeks via zijn eigen route geopend kan
+  // worden, zonder eerst via Beheer te zijn gepasseerd (dat laadt ze anders
+  // zelf al).
   useEffect(() => {
     loadParticipants(activeCompetition?.id ?? null);
     loadBlocks(activeCompetition?.id ?? null);
-  }, [activeCompetition?.id, loadParticipants, loadBlocks]);
+    loadAnnouncements(activeCompetition?.id ?? null);
+  }, [activeCompetition?.id, loadParticipants, loadBlocks, loadAnnouncements]);
 
   // Dagtijdlijn, op volgorde. Huidig blok = eerste blok dat nog niet
   // afgewerkt is — dit bepaalt zowel de pauzeschermen als, hieronder, welk
@@ -402,6 +470,15 @@ export default function LiveView() {
     const idx = sortedBlocks.findIndex(b => b.id === currentBlock.id);
     return idx >= 0 ? (sortedBlocks[idx + 1] ?? null) : null;
   }, [sortedBlocks, currentBlock]);
+
+  // Vult de audio-preloadbuffer al aan zodra een blok currentBlock wordt —
+  // nog vóór de speaker de eerste reeks ervan gestart heeft (fire-and-forget,
+  // net als de aanroep in handleFinishSeries hieronder).
+  useEffect(() => {
+    if (activeCompetition?.isAnnouncementsEnabled && currentBlock) {
+      preloadUpcomingAnnouncementAudio(activeCompetition.id);
+    }
+  }, [currentBlock?.id, activeCompetition?.id, activeCompetition?.isAnnouncementsEnabled]);
 
   // Welk blok het rechterpaneel toont: standaard het echte huidige blok
   // (currentBlock), maar de speaker kan via het linkerpaneel een ANDER blok
@@ -565,6 +642,31 @@ export default function LiveView() {
     eventParticipants.filter(p => p._entry.seriesNr === activeSeriesNr),
   [eventParticipants, activeSeriesNr]);
 
+  // Aankondiging van de actieve reeks — voor de audiospeler in het
+  // navigatievak hieronder.
+  const currentAnnouncement = announcements.find(
+    a => a.eventId === activeEventId && a.seriesNr === activeSeriesNr
+  );
+
+  // Algemeen volume voor de twee audiospelers — lokale UI-voorkeur, geen
+  // Firestore-data. De aankondigingsspeler krijgt bij elke nieuwe reeks een
+  // nieuwe `key` (zie hieronder) zodat de browser de nieuwe audio betrouwbaar
+  // laadt, maar dat betekent ook een nieuw <audio>-element, dat zonder meer
+  // weer op het browserstandaard-volume (100%) zou starten. Callback-refs
+  // i.p.v. gewone refs zetten de volume-property expliciet bij élke
+  // (her)mount, en meteen ook bij elke aanpassing van de slider zelf — zo
+  // blijft het ingestelde volume behouden bij het navigeren doorheen de
+  // reeksen.
+  const [announcementVolume, setAnnouncementVolume] = useState(1);
+  const setAnnouncementAudioVolume = useCallback(
+    (el) => { if (el) el.volume = announcementVolume; },
+    [announcementVolume]
+  );
+  const setFixedClipAudioVolume = useCallback(
+    (el) => { if (el) el.volume = announcementVolume; },
+    [announcementVolume]
+  );
+
   // Geplande tijd van de actieve reeks
   const plannedTime = currentSeriesParticipants[0]?._entry.scheduledTime ?? null;
 
@@ -611,6 +713,12 @@ export default function LiveView() {
     // het huidige, eventueel afgebakende tijdvenster.
     const isLastInEvent = activeSeriesNr === allSeriesNrs[allSeriesNrs.length - 1];
     await finishSeries(activeEventId, activeSeriesNr, isLastInEvent);
+
+    // Fire-and-forget: vult de preload-buffer verder aan tot zijn volle
+    // venstergrootte, los van de UI-navigatie hieronder.
+    if (activeCompetition?.isAnnouncementsEnabled) {
+      preloadUpcomingAnnouncementAudio(activeCompetition.id);
+    }
 
     if (!isLastSeries) {
       setActiveSeriesNr(seriesNrs[seriesIdx + 1]);
@@ -812,6 +920,45 @@ export default function LiveView() {
                 </button>
               </div>
 
+              {/* Aankondiging/"skippers klaar"-audiospelers — onder elkaar,
+                  boven de "Volgende"-knop. */}
+              {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
+                <div style={s.announcementPlayers}>
+                  <div style={s.volumeRow}>
+                    {announcementVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={announcementVolume}
+                      onChange={e => setAnnouncementVolume(parseFloat(e.target.value))}
+                      style={s.volumeSlider}
+                      title="Algemeen volume"
+                    />
+                    <span style={s.volumeValue}>{Math.round(announcementVolume * 100)}%</span>
+                  </div>
+                  <div style={s.playerRow}>
+                    <span style={s.playerLabel}>Aankondiging</span>
+                    {currentAnnouncement?.audioUrl ? (
+                      <audio
+                        key={currentAnnouncement.audioUrl}
+                        ref={setAnnouncementAudioVolume}
+                        controls
+                        src={currentAnnouncement.audioUrl}
+                        style={s.audioPlayer}
+                      />
+                    ) : (
+                      <span style={s.playerPlaceholder}>Nog geen audio</span>
+                    )}
+                  </div>
+                  <div style={s.playerRow}>
+                    <span style={s.playerLabel}>Jury klaar / skippers klaar</span>
+                    <audio ref={setFixedClipAudioVolume} controls src={FIXED_CLIP_URL} style={s.audioPlayer} />
+                  </div>
+                </div>
+              )}
+
               {/* Voltooiknop of voltooiindicator */}
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
                 {isSeriesDone ? (
@@ -852,17 +999,32 @@ export default function LiveView() {
                         <td style={s.fieldNrCell}>
                           <div style={s.fieldNrBadge(!!skipper, isSeriesDone)}>{fieldNr}</div>
                         </td>
-                        <td style={s.fieldNameCell(!!skipper, isSeriesDone)}>
-                          {skipper?.name ?? '---'}
-                        </td>
-                        <td style={s.fieldClubCell(!!skipper, isSeriesDone)}>
-                          {club?.name ?? ''}
+                        <td style={s.fieldInfoCell}>
+                          <div style={s.fieldInfoPill(!!skipper, isSeriesDone)}>
+                            <span style={s.fieldNameText(!!skipper)}>
+                              {skipper?.name ?? '---'}
+                            </span>
+                            <span style={s.fieldClubText}>
+                              {club?.name ?? ''}
+                            </span>
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+            )}
+
+            {/* ── Automatische aankondiging (TTS) — enkel speed/endurance/
+                triple-under, enkel wanneer de feature-toggle voor deze
+                wedstrijd aan staat (zie EditCompetitionModal.jsx). ── */}
+            {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
+              <AnnouncementPanel
+                competitionId={activeCompetition.id}
+                eventId={activeEventId}
+                seriesNr={activeSeriesNr}
+              />
             )}
 
             {/* ── Freestyle: huidige + volgende ── */}

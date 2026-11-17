@@ -42,11 +42,67 @@ import {
   blockFactory,
   podiumFactory,
   messageFactory,
+  announcementFactory,
+  DEFAULT_ANNOUNCEMENT_SETTINGS,
   BLOCK_TYPE_LABELS,
   userFactory,
 } from './dbSchema';
 
 import { APP_ID, getFirebaseConfig, emailForUsername } from './constants';
+import { buildAnnouncementText } from './announcementText';
+import { maxFieldNr as computeMaxFieldNr } from './fieldLayout';
+import { pcmToWav, base64ToBytes } from './pcmToWav';
+
+// Hoeveel reeksen vooruit de audio-preloadbuffer standaard probeert klaar te
+// houden — zie "Aankondigingen (TTS)" in ARCHITECTURE.md. Uit ervaring van de
+// gebruiker was 1 reeks vooruit (de oorspronkelijke Google Sheets-versie) vaak
+// te krap; dit is eenvoudig op te schroeven zonder structuurwijziging.
+const ANNOUNCE_PRELOAD_WINDOW = 5;
+
+/**
+ * Zet de dagtijdlijn om in een platte, chronologische lijst van speed/
+ * endurance/triple-under-reeksen (nooit freestyle — zelfde scoringType-check
+ * als LiveView.jsx#isFreestyle), elk met de deelnemers/context die nodig zijn
+ * om een aankondigingstekst te bouwen. Gedeeld door generateAnnouncementTexts,
+ * generateAnnouncementTextForReeks, preloadUpcomingAnnouncementAudio en
+ * generateAnnouncementAudioForBlock — zodat alle vier exact dezelfde
+ * "welke reeksen bestaan er, in welke volgorde" berekening gebruiken.
+ */
+function buildSpeedReeksSequence(blocks, allEvents, allParticipants) {
+  const sortedBlocks = [...blocks].sort((a, b) => a.order - b.order);
+
+  const speedEventIds = [];
+  for (const b of sortedBlocks) {
+    if (b.type !== 'heats' || !b.eventId || speedEventIds.includes(b.eventId)) continue;
+    const ev = allEvents.find(e => e.id === b.eventId);
+    if (ev?.scoringType === 'speed') speedEventIds.push(b.eventId);
+  }
+
+  const sequence = [];
+  for (const eventId of speedEventIds) {
+    const event = allEvents.find(e => e.id === eventId);
+    const eventParticipants = allParticipants
+      .filter(p => p.entries.some(e => e.eventId === eventId && !e.isScratched))
+      .map(p => ({ ...p, _entry: p.entries.find(e => e.eventId === eventId) }));
+    const seriesNrs = [...new Set(eventParticipants.map(p => p._entry.seriesNr).filter(Boolean))]
+      .sort((a, b) => a - b);
+    const totalSeriesForEvent = seriesNrs[seriesNrs.length - 1] ?? null;
+    const eventMaxFieldNr = computeMaxFieldNr(eventParticipants);
+
+    for (const seriesNr of seriesNrs) {
+      sequence.push({
+        eventId,
+        event,
+        seriesNr,
+        totalSeriesForEvent,
+        maxFieldNr: eventMaxFieldNr,
+        seriesParticipants: eventParticipants.filter(p => p._entry.seriesNr === seriesNr),
+        sortedAllBlocks: sortedBlocks,
+      });
+    }
+  }
+  return sequence;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTEXT SETUP
@@ -91,6 +147,9 @@ export function AppProvider({ children }) {
   // finishedEvents/finishedSeries leven op het competition-document zelf
   // (zie dbSchema.js) en worden hieronder afgeleid van activeCompetition.
 
+  // ── Globale TTS-aankondigingsinstellingen (niet per wedstrijd) ───────────
+  const [announcementSettings, setAnnouncementSettings] = useState(DEFAULT_ANNOUNCEMENT_SETTINGS);
+
   // ── Deelnemers (per wedstrijd geladen) ───────────────────────────────────
   const [participants, setParticipants]               = useState([]);
   const [participantsCompId, setParticipantsCompId]   = useState(null);
@@ -110,6 +169,11 @@ export function AppProvider({ children }) {
   const [messages, setMessages]             = useState([]);
   const [messagesCompId, setMessagesCompId] = useState(null);
   const messageUnsubRef                     = useRef(null);
+
+  // ── Announcements — TTS-aankondigingen (per wedstrijd geladen) ──────────
+  const [announcements, setAnnouncements]             = useState([]);
+  const [announcementsCompId, setAnnouncementsCompId] = useState(null);
+  const announcementUnsubRef                           = useRef(null);
 
   // ─────────────────────────────────────────────────────────────────────────
   // FIREBASE INIT
@@ -171,6 +235,7 @@ export function AppProvider({ children }) {
       settingsFactory.subscribeCompetition(({ activeCompetitionId: id }) => {
         setActiveCompetitionId(id ?? null);
       }),
+      settingsFactory.subscribeAnnouncementSettings(setAnnouncementSettings),
     ];
 
     return () => unsubs.forEach(u => u());
@@ -302,6 +367,36 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ANNOUNCEMENTS — laden per geselecteerde wedstrijd
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start realtime listener voor de TTS-aankondigingen van een wedstrijd.
+   * Stopt de vorige listener automatisch.
+   */
+  const loadAnnouncements = useCallback((competitionId) => {
+    if (announcementUnsubRef.current) {
+      announcementUnsubRef.current();
+      announcementUnsubRef.current = null;
+    }
+
+    if (!competitionId) {
+      setAnnouncements([]);
+      setAnnouncementsCompId(null);
+      return;
+    }
+
+    setAnnouncementsCompId(competitionId);
+    announcementUnsubRef.current = announcementFactory.subscribe(competitionId, setAnnouncements);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (announcementUnsubRef.current) announcementUnsubRef.current();
+    };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // AFGELEIDE DATA
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -347,6 +442,56 @@ export function AppProvider({ children }) {
 
   /** Heeft de ingelogde gebruiker recht op dit scherm? Beheerder = altijd. */
   const checkPermission = useCallback((key) => hasPermission(userProfile, key), [userProfile]);
+
+  /**
+   * Hoeveel van de eerstvolgende preload-venster-reeksen al audio-klaar
+   * staan — voor de "4/5 klaar"-indicator in AnnouncementPanel. Puur
+   * leesgedrag (geen schrijfactie), dezelfde reeksenvolgorde als
+   * preloadUpcomingAnnouncementAudio.
+   * @returns {{ ready: number, total: number }}
+   */
+  const getAnnouncementPreloadStatus = useCallback((competitionId, windowSize = ANNOUNCE_PRELOAD_WINDOW) => {
+    const comp = competitions.find(c => c.id === competitionId);
+    if (!comp) return { ready: 0, total: 0 };
+    const finished = comp.finishedSeries ?? {};
+
+    const sequence = buildSpeedReeksSequence(blocks, events, participants);
+    const upcoming = sequence
+      .filter(r => !(finished[r.eventId] ?? []).includes(r.seriesNr))
+      .slice(0, windowSize);
+
+    const ready = upcoming.filter(r => {
+      const existing = announcements.find(a => a.eventId === r.eventId && a.seriesNr === r.seriesNr);
+      return !!existing && existing.audioUrl && existing.audioTextVersion === existing.textVersion;
+    }).length;
+
+    return { ready, total: upcoming.length };
+  }, [blocks, events, participants, announcements, competitions]);
+
+  /**
+   * Hoeveel reeksen van elk speed-onderdeel al een aankondigingstekst en/of
+   * -audio hebben — voor het overzicht in AnnouncementManager.jsx (de
+   * bulkgeneratie-tab in CompetitionDetail). Puur leesgedrag, werkt op de
+   * voor de huidige wedstrijd geladen blocks/participants/announcements
+   * (zie loadBlocks/loadParticipants/loadAnnouncements).
+   * @returns {Array<{ eventId: string, eventName: string, withText: number, withAudio: number, total: number }>}
+   */
+  const getAnnouncementCoverage = useCallback(() => {
+    const sequence = buildSpeedReeksSequence(blocks, events, participants);
+    const byEvent = new Map();
+
+    for (const r of sequence) {
+      const entry = byEvent.get(r.eventId)
+        ?? { eventId: r.eventId, eventName: r.event?.name ?? '', withText: 0, withAudio: 0, total: 0 };
+      entry.total += 1;
+      const match = announcements.find(a => a.eventId === r.eventId && a.seriesNr === r.seriesNr);
+      if (match) entry.withText += 1;
+      if (match?.audioUrl) entry.withAudio += 1;
+      byEvent.set(r.eventId, entry);
+    }
+
+    return [...byEvent.values()];
+  }, [blocks, events, participants, announcements]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // ACTIONS — auth & gebruikers
@@ -451,6 +596,16 @@ export function AppProvider({ children }) {
   const endCompetition = useCallback(async (competitionId) => {
     await competitionFactory.setStatus(competitionId, 'beëindigd');
     await settingsFactory.setActiveCompetition(null);
+    try {
+      // Opruimen van de (potentieel grote) TTS-audiobestanden — een
+      // wedstrijd die beëindigd is, heeft geen actieve speaker meer nodig.
+      // De teksten zelf blijven staan, dus audio kan later nog altijd
+      // opnieuw gegenereerd worden. Best-effort: mislukt dit, dan blijft de
+      // wedstrijd wél gewoon beëindigd.
+      await announcementFactory.deleteAllAudioFiles(competitionId);
+    } catch {
+      // bewust genegeerd — zie uitleg hierboven
+    }
   }, []);
 
   const saveEventOrder = useCallback((competitionId, eventOrder) => {
@@ -650,6 +805,168 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ACTIONS — aankondigingen (TTS)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Sla de globale TTS-aankondigingsinstellingen op (zie AnnouncementSettings.jsx). */
+  const updateAnnouncementSettings = useCallback((data) => {
+    return settingsFactory.setAnnouncementSettings(data);
+  }, []);
+
+  /**
+   * Genereer in één batch de aankondigingstekst voor elke speed/endurance/
+   * triple-under-reeks die nog GEEN document heeft. Bestaande documenten
+   * (ook handmatig aangepaste) worden nooit aangeraakt.
+   * @param {string} competitionId
+   * @param {string|null} [eventId]  beperk tot één onderdeel i.p.v. de hele
+   *   wedstrijd — gebruikt door de "Genereer tekst voor dit onderdeel"-knop
+   *   in AnnouncementManager.jsx (mirrort generateAnnouncementAudioForBlock).
+   */
+  const generateAnnouncementTexts = useCallback(async (competitionId, eventId = null) => {
+    const sequence = buildSpeedReeksSequence(blocks, events, participants)
+      .filter(r => !eventId || r.eventId === eventId);
+    const existingKeys = new Set(announcements.map(a => `${a.eventId}:${a.seriesNr}`));
+
+    const items = sequence
+      .filter(r => !existingKeys.has(`${r.eventId}:${r.seriesNr}`))
+      .map(r => ({
+        eventId: r.eventId,
+        seriesNr: r.seriesNr,
+        text: buildAnnouncementText({
+          event: r.event, seriesNr: r.seriesNr, totalSeriesForEvent: r.totalSeriesForEvent,
+          seriesParticipants: r.seriesParticipants, maxFieldNr: r.maxFieldNr,
+          getClub, sortedAllBlocks: r.sortedAllBlocks, events,
+          textVariations: announcementSettings.textVariations,
+        }),
+      }));
+
+    if (items.length > 0) await announcementFactory.bulkCreate(competitionId, items);
+  }, [blocks, events, participants, announcements, getClub, announcementSettings]);
+
+  /**
+   * Genereer de tekst voor exact één reeks — bestaat er nog geen document
+   * voor deze reeks, dan wordt er één aangemaakt; bestaat er al één (de
+   * speaker klikte expliciet "opnieuw genereren"), dan wordt de tekst
+   * overschreven i.p.v. een duplicaat aan te maken.
+   */
+  const generateAnnouncementTextForReeks = useCallback(async (competitionId, eventId, seriesNr) => {
+    const sequence = buildSpeedReeksSequence(blocks, events, participants);
+    const r = sequence.find(x => x.eventId === eventId && x.seriesNr === seriesNr);
+    if (!r) throw new Error('Reeks niet gevonden in de dagtijdlijn.');
+
+    const text = buildAnnouncementText({
+      event: r.event, seriesNr: r.seriesNr, totalSeriesForEvent: r.totalSeriesForEvent,
+      seriesParticipants: r.seriesParticipants, maxFieldNr: r.maxFieldNr,
+      getClub, sortedAllBlocks: r.sortedAllBlocks, events,
+      textVariations: announcementSettings.textVariations,
+    });
+
+    const existing = announcements.find(a => a.eventId === eventId && a.seriesNr === seriesNr);
+    if (existing) {
+      await announcementFactory.regenerateText(competitionId, existing.id, text, existing.textVersion + 1);
+    } else {
+      await announcementFactory.bulkCreate(competitionId, [{ eventId, seriesNr, text }]);
+    }
+  }, [blocks, events, participants, announcements, getClub, announcementSettings]);
+
+  /** Handmatige correctie van de speaker — hoogt textVersion op (audio wordt zo als verouderd herkend). */
+  const updateAnnouncementText = useCallback((competitionId, announcementId, text) => {
+    const current = announcements.find(a => a.id === announcementId);
+    const nextTextVersion = (current?.textVersion ?? 0) + 1;
+    return announcementFactory.updateText(competitionId, announcementId, text, nextTextVersion);
+  }, [announcements]);
+
+  /**
+   * Genereer audio voor één aankondiging: roept de Vercel-functie aan
+   * (GEMINI_API_KEY blijft server-side), zet de ruwe PCM-respons om in een
+   * WAV-blob en laadt die op naar Storage. Bij elke fout: markeer de
+   * aankondiging als mislukt i.p.v. stilzwijgend niets te doen.
+   */
+  const generateAnnouncementAudio = useCallback(async (competitionId, announcement) => {
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: announcement.text,
+          voiceName: announcementSettings.voiceName,
+          systemInstruction: announcementSettings.systemInstruction,
+          temperature: announcementSettings.temperature,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error ?? 'TTS-fout.');
+
+      // Sommige Gemini TTS-modellen geven al een volledige WAV-container
+      // terug (eigen header + afsluitend metadata-blokje) i.p.v. ruwe PCM —
+      // die nogmaals in onze eigen pcmToWav()-header wrappen zou het
+      // afsluitende metadata-blokje als audiosamples laten meespelen (hoorbaar
+      // als een korte, luide ruis op het einde). mimeType vertelt ons welk
+      // van beide we kregen.
+      const mimeType = body.mimeType ?? '';
+      const isAlreadyWav = mimeType.toLowerCase().includes('wav');
+      let wavBlob;
+      if (isAlreadyWav) {
+        wavBlob = new Blob([base64ToBytes(body.audioBase64)], { type: 'audio/wav' });
+      } else {
+        const sampleRateMatch = /rate=(\d+)/.exec(mimeType);
+        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+        wavBlob = pcmToWav(base64ToBytes(body.audioBase64), { sampleRate });
+      }
+
+      await announcementFactory.uploadAudio(competitionId, announcement.id, announcement.textVersion, wavBlob);
+    } catch (err) {
+      await announcementFactory.markGenerationFailed(competitionId, announcement.id);
+      throw err;
+    }
+  }, [announcementSettings]);
+
+  /**
+   * Vult de audio-preloadbuffer van de eerstvolgende `windowSize` nog niet
+   * afgewerkte reeksen aan — sequentieel (niet parallel), enkel voor reeksen
+   * die al een tekst-document hebben (tekst genereren is geen taak van deze
+   * actie) en waarvan de audio ontbreekt of verouderd is. Fire-and-forget
+   * aan te roepen (zie LiveView.jsx) — vult telkens opnieuw tot de volle
+   * venstergrootte, i.p.v. enkel één reeks vooruit te kijken.
+   */
+  const preloadUpcomingAnnouncementAudio = useCallback(async (competitionId, { windowSize = ANNOUNCE_PRELOAD_WINDOW } = {}) => {
+    const comp = competitions.find(c => c.id === competitionId);
+    if (!comp) return;
+    const finished = comp.finishedSeries ?? {};
+
+    const sequence = buildSpeedReeksSequence(blocks, events, participants);
+    const upcoming = sequence
+      .filter(r => !(finished[r.eventId] ?? []).includes(r.seriesNr))
+      .slice(0, windowSize);
+
+    for (const r of upcoming) {
+      const existing = announcements.find(a => a.eventId === r.eventId && a.seriesNr === r.seriesNr);
+      if (!existing) continue;
+      if (existing.audioUrl && existing.audioTextVersion === existing.textVersion) continue;
+      await generateAnnouncementAudio(competitionId, existing);
+    }
+  }, [blocks, events, participants, announcements, competitions, generateAnnouncementAudio]);
+
+  /**
+   * Genereer in één keer audio voor ALLE reeksen van één onderdeel —
+   * bedoeld voor de speaker/beheerder om bv. tijdens de briefing vóór een
+   * blok start alles al klaar te zetten, los van de automatische buffer.
+   * Ook hier sequentieel, om geen stortvloed van gelijktijdige Gemini-
+   * aanroepen te veroorzaken.
+   */
+  const generateAnnouncementAudioForBlock = useCallback(async (competitionId, eventId) => {
+    const sequence = buildSpeedReeksSequence(blocks, events, participants);
+    const reeksenForEvent = sequence.filter(r => r.eventId === eventId);
+
+    for (const r of reeksenForEvent) {
+      const existing = announcements.find(a => a.eventId === r.eventId && a.seriesNr === r.seriesNr);
+      if (!existing) continue;
+      if (existing.audioUrl && existing.audioTextVersion === existing.textVersion) continue;
+      await generateAnnouncementAudio(competitionId, existing);
+    }
+  }, [blocks, events, participants, announcements, generateAnnouncementAudio]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -699,6 +1016,13 @@ export function AppProvider({ children }) {
     activeMessage,
     activeMessageId,
 
+    // Announcements (TTS)
+    announcements,
+    announcementsCompId,
+    loadAnnouncements,
+    announcementSettings,
+    defaultAnnouncementSettings: DEFAULT_ANNOUNCEMENT_SETTINGS,
+
     // Settings
     activeCompetitionId,
     activeCompetition,
@@ -712,6 +1036,8 @@ export function AppProvider({ children }) {
     isScratchedFromEvent,
     isFullyScratched,
     blockTypeLabels: BLOCK_TYPE_LABELS,
+    getAnnouncementPreloadStatus,
+    getAnnouncementCoverage,
 
     // Actions — wedstrijden
     createCompetition,
@@ -759,6 +1085,15 @@ export function AppProvider({ children }) {
     updateMessage,
     deleteMessage,
     setActiveMessage,
+
+    // Actions — aankondigingen (TTS)
+    updateAnnouncementSettings,
+    generateAnnouncementTexts,
+    generateAnnouncementTextForReeks,
+    updateAnnouncementText,
+    generateAnnouncementAudio,
+    preloadUpcomingAnnouncementAudio,
+    generateAnnouncementAudioForBlock,
   };
 
   return (

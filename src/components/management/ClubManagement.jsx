@@ -142,7 +142,7 @@ const s = {
   },
 };
 
-const EMPTY_FORM = { name: '', shortName: '', city: '', country: 'BE' };
+const EMPTY_FORM = { name: '', shortName: '', announceAsName: '', city: '', country: 'BE' };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
@@ -165,7 +165,10 @@ export default function ClubManagement() {
   };
 
   const openEdit = (club) => {
-    setForm({ name: club.name, shortName: club.shortName, city: club.city, country: club.country });
+    setForm({
+      name: club.name, shortName: club.shortName, announceAsName: club.announceAsName,
+      city: club.city, country: club.country,
+    });
     setEditingId(club.id);
   };
 
@@ -279,6 +282,15 @@ export default function ClubManagement() {
                 style={s.input}
                 value={form.shortName}
                 onChange={e => setForm({ ...form, shortName: e.target.value })}
+              />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={s.label}>Voorleesnaam (optioneel)</label>
+              <input
+                style={s.input}
+                value={form.announceAsName}
+                onChange={e => setForm({ ...form, announceAsName: e.target.value })}
+                placeholder="bv. ROM — laat leeg om de volledige naam voor te lezen"
               />
             </div>
             <div>
