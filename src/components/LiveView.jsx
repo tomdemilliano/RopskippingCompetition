@@ -12,7 +12,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock,
-  ListTodo, Trophy, Settings, Megaphone, Volume2, VolumeX,
+  ListTodo, Trophy, Settings, Megaphone, Volume2, VolumeX, AlertTriangle,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
@@ -317,6 +317,22 @@ const s = {
     justifyContent: 'space-between',
     alignItems: 'center',
     boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+  },
+  // Waarschuwing wanneer de normale veldafwisseling in freestyle onderbroken
+  // is (een deelnemer viel tussenuit, waardoor twee opeenvolgende reeksen op
+  // hetzelfde veld uitkomen) — zie `upcomingSameField` hieronder.
+  fieldClashWarning: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginTop: '0.6rem',
+    padding: '0.45rem 0.75rem',
+    background: color.warningSoft,
+    color: color.warning,
+    border: `1px solid ${color.warningBorder}`,
+    borderRadius: '8px',
+    fontSize: '0.78rem',
+    fontWeight: 700,
   },
   programTable: {
     maxHeight: '320px',
@@ -707,6 +723,18 @@ export default function LiveView() {
     eventParticipants.filter(p => p._entry.seriesNr > activeSeriesNr),
   [eventParticipants, activeSeriesNr]);
 
+  // Bij freestyle wisselen de velden normaal af tussen opeenvolgende reeksen
+  // (de volgende springer staat al klaar op het andere veld terwijl de
+  // huidige aan de beurt is). Valt er een deelnemer tussenuit (geschrapt),
+  // dan kan de eerstvolgende reeks toch op hetzelfde veld uitkomen als de
+  // huidige — dat verrast de speaker als het niet expliciet gewaarschuwd
+  // wordt (zie "NU AAN DE BEURT"/"VOLGENDE" hieronder).
+  const upcomingSameField = isFreestyle
+    && !isSeriesDone
+    && !!currentSeriesParticipants[0]
+    && !!upcomingParticipants[0]
+    && currentSeriesParticipants[0]._entry.fieldNr === upcomingParticipants[0]._entry.fieldNr;
+
   const handleFinishSeries = async () => {
     // "Klaar" voor het hele onderdeel (finishedEvents) betekent de ECHTE
     // laatste reeks over al zijn blokken heen — niet enkel de laatste binnen
@@ -1059,36 +1087,53 @@ export default function LiveView() {
                       </div>
                     </div>
                   </div>
+
+                  {upcomingSameField && (
+                    <div style={s.fieldClashWarning}>
+                      <AlertTriangle size={14} />
+                      Volgende springt ook op veld {upcomingParticipants[0]._entry.fieldNr} —
+                      normale veldafwisseling onderbroken (deelnemer tussenuit gevallen)
+                    </div>
+                  )}
                 </div>
 
                 {/* Volgende + programma (alleen als reeks niet klaar) */}
                 {!isSeriesDone && upcomingParticipants.length > 0 && (
                   <>
                     {/* Eerstvolgende */}
-                    <div style={s.nextCard}>
-                      <div>
-                        <div style={{
-                          color: color.muted, fontWeight: 700, fontSize: '0.65rem',
-                          display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px',
-                        }}>
-                          <FastForward size={13} /> VOLGENDE
+                    <div>
+                      <div style={s.nextCard}>
+                        <div>
+                          <div style={{
+                            color: color.muted, fontWeight: 700, fontSize: '0.65rem',
+                            display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px',
+                          }}>
+                            <FastForward size={13} /> VOLGENDE
+                          </div>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
+                            {upcomingParticipants[0].name}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: color.muted }}>
+                            {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
-                          {upcomingParticipants[0].name}
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: color.muted }}>
-                          {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
+                        <div style={{ textAlign: 'right', color: color.muted }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.slate }}>
+                            VELD {upcomingParticipants[0]._entry.fieldNr}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                            <Clock size={12} />
+                            {calcExpectedTime(upcomingParticipants[0]._entry.scheduledTime, timeDiff)}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right', color: color.muted }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.slate }}>
-                          VELD {upcomingParticipants[0]._entry.fieldNr}
+
+                      {upcomingSameField && (
+                        <div style={s.fieldClashWarning}>
+                          <AlertTriangle size={14} />
+                          Geen veldwissel — zelfde veld als de huidige springer
                         </div>
-                        <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                          <Clock size={12} />
-                          {calcExpectedTime(upcomingParticipants[0]._entry.scheduledTime, timeDiff)}
-                        </div>
-                      </div>
+                      )}
                     </div>
 
                     {/* Verder programma */}

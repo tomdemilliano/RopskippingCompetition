@@ -917,6 +917,32 @@ op een heats-blok in de linkerkolom (dagtijdlijn) blijft een handmatige
 "overschrijf-optie" om naar eender welk onderdeel te springen, los van de
 dagtijdlijn.
 
+### Freestyle — waarschuwing bij onderbroken veldafwisseling
+
+Bij freestyle is elke reeks precies 1 deelnemer (zie "Grammatica" hierboven),
+met velden die afwisselen tussen (meestal) twee kolommen (`Veld A`/`Veld B`
+bij PDF-import) — zo staat de volgende springer al klaar op het andere veld
+terwijl de huidige aan de beurt is. Valt er een deelnemer tussenuit
+(geschrapt uit dit onderdeel ná de PDF-import), dan verdwijnt die reeks
+gewoon uit `eventParticipants` (al gefilterd op `!isScratched`) — met als
+gevolg dat twee nu opeenvolgende reeksen toevallig hetzelfde veld kunnen
+hebben, wat de normale afwisseling doorbreekt zonder dat iemand dat merkt
+vóór het misloopt op het podium.
+
+`LiveView.jsx#upcomingSameField` (pure vergelijking, geen extra Firestore-
+data nodig): `true` zodra `currentSeriesParticipants[0]._entry.fieldNr ===
+upcomingParticipants[0]._entry.fieldNr` (en de huidige reeks nog niet
+voltooid is). Getoond op twee plekken in de freestyle-UI:
+- in de "NU AAN DE BEURT"-kaart (`currentCard`) — zodat de speaker het al
+  ziet terwijl de huidige springer aangekondigd wordt, en het meteen mee kan
+  aankondigen ("en de volgende springt ook op veld X");
+- in de "VOLGENDE"-kaart (`nextCard`) — ter bevestiging wanneer de speaker
+  vooruitkijkt.
+
+Enkel een UI-waarschuwing, geen datawijziging: de velden zelf worden niet
+herverdeeld (dat zou de PDF-brongegevens tegenspreken) — de speaker beslist
+zelf hoe dit mondeling opgevangen wordt.
+
 ### Een reeks of blok heropenen (vergissingen rechtzetten)
 
 `unfinishSeries(competitionId, resets)` (AppContext) markeert één of meerdere
