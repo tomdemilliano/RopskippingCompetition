@@ -686,17 +686,62 @@ export function AppProvider({ children }) {
     return participantFactory.setPresence(competitionId, participantId, isPresent);
   }, []);
 
+  /**
+   * Signaleert op de bijhorende aankondiging dat een deelnemer geschrapt of
+   * hersteld werd, zodat de beheerder in de "Aankondigingen"-tab ziet dat een
+   * al gegenereerde tekst mogelijk niet meer klopt. Best-effort: dit mag de
+   * eigenlijke schrap-actie (scratchFromEvent/scratchFromAll) nooit blokkeren
+   * — zelfde soort try/catch-redenering als endCompetition's audio-opruiming.
+   * Enkel relevant wanneer de wedstrijd isAnnouncementsEnabled heeft EN er al
+   * een aankondiging MET tekst bestaat voor die (event, reeks).
+   */
+  const flagAnnouncementRosterChange = useCallback((competitionId, entry, participant, kind) => {
+    const competition = competitions.find(c => c.id === competitionId);
+    if (!competition?.isAnnouncementsEnabled) return;
+
+    const announcement = announcements.find(
+      a => a.eventId === entry.eventId && a.seriesNr === entry.seriesNr
+    );
+    if (!announcement || !announcement.text) return;
+
+    const eventName = events.find(e => e.id === entry.eventId)?.name ?? '';
+    const nextDroppedParticipants = [
+      ...announcement.droppedParticipants,
+      {
+        participantId:   participant.id,
+        participantName: participant.name,
+        eventName,
+        kind,
+        flaggedAt: new Date().toISOString(),
+      },
+    ];
+    announcementFactory
+      .flagRosterChange(competitionId, announcement.id, nextDroppedParticipants)
+      .catch(() => {});
+  }, [competitions, announcements, events]);
+
   const scratchFromEvent = useCallback((competitionId, participant, eventId, isScratched) => {
+    const entry = participant.entries.find(e => e.eventId === eventId);
+    if (entry && entry.isScratched !== isScratched) {
+      flagAnnouncementRosterChange(
+        competitionId, entry, participant, isScratched ? 'geschrapt' : 'hersteld'
+      );
+    }
     return participantFactory.setScratchedForEvent(
       competitionId, participant, eventId, isScratched
     );
-  }, []);
+  }, [flagAnnouncementRosterChange]);
 
   const scratchFromAll = useCallback((competitionId, participant, isScratched) => {
+    participant.entries
+      .filter(e => e.isScratched !== isScratched)
+      .forEach(entry => flagAnnouncementRosterChange(
+        competitionId, entry, participant, isScratched ? 'geschrapt' : 'hersteld'
+      ));
     return participantFactory.setScratchedForAll(
       competitionId, participant, isScratched
     );
-  }, []);
+  }, [flagAnnouncementRosterChange]);
 
   const updateParticipant = useCallback((competitionId, participantId, data) => {
     return participantFactory.update(competitionId, participantId, data);
@@ -875,6 +920,15 @@ export function AppProvider({ children }) {
     const nextTextVersion = (current?.textVersion ?? 0) + 1;
     return announcementFactory.updateText(competitionId, announcementId, text, nextTextVersion);
   }, [announcements]);
+
+  /**
+   * Beheerder heeft de rooster-waarschuwing(en) van een aankondiging nagekeken
+   * en bewust niets gewijzigd — maakt de lijst leeg zonder de tekst zelf aan
+   * te passen (zie AnnouncementManager.jsx's "Markeer als verwerkt"-knop).
+   */
+  const clearAnnouncementRosterFlags = useCallback((competitionId, announcementId) => {
+    return announcementFactory.clearDroppedParticipants(competitionId, announcementId);
+  }, []);
 
   /**
    * Genereer audio voor één aankondiging: roept de Vercel-functie aan
@@ -1091,6 +1145,7 @@ export function AppProvider({ children }) {
     generateAnnouncementTexts,
     generateAnnouncementTextForReeks,
     updateAnnouncementText,
+    clearAnnouncementRosterFlags,
     generateAnnouncementAudio,
     preloadUpcomingAnnouncementAudio,
     generateAnnouncementAudioForBlock,

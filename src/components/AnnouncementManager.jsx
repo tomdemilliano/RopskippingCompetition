@@ -17,7 +17,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Volume2, FileText, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Volume2, FileText, ChevronLeft, ChevronRight, AlertTriangle, UserX, Check } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow } from '../theme';
 import Button from './ui/Button';
@@ -186,6 +186,81 @@ const s = {
     borderRadius: radius.pill,
     padding: '0.2rem 0.6rem',
   },
+
+  // Rooster-wijziging-waarschuwing (deelnemer geschrapt/hersteld ná het
+  // genereren van de tekst) — bewust een ander kleurgebruik (rood) dan de
+  // bestaande "Audio verouderd"-badge (amber), want dit is een ander soort
+  // probleem: de TEKST zelf klopt mogelijk niet meer, niet enkel de audio.
+  pendingBanner: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    padding: '0.85rem 1rem',
+    background: color.dangerSoft,
+    border: `1px solid ${color.dangerBorder}`,
+    borderRadius: radius.md,
+  },
+  pendingBannerTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontWeight: 800,
+    fontSize: '0.85rem',
+    color: color.dangerDark,
+  },
+  pendingItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    padding: '0.5rem 0.65rem',
+    background: color.surface,
+    border: `1px solid ${color.dangerBorder}`,
+    borderRadius: radius.sm,
+  },
+  pendingItemText: {
+    fontSize: '0.8rem',
+    color: color.inkSoft,
+  },
+  pendingItemNames: {
+    fontSize: '0.78rem',
+    color: color.dangerDark,
+    fontWeight: 700,
+  },
+  eventPendingBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: color.dangerDark,
+    background: color.dangerSoft,
+    border: `1px solid ${color.dangerBorder}`,
+    borderRadius: radius.pill,
+    padding: '0.15rem 0.55rem',
+    width: 'fit-content',
+  },
+  rosterWarningBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+    padding: '0.65rem 0.8rem',
+    background: color.dangerSoft,
+    border: `1px solid ${color.dangerBorder}`,
+    borderRadius: radius.sm,
+  },
+  rosterWarningTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontWeight: 800,
+    fontSize: '0.8rem',
+    color: color.dangerDark,
+  },
+  rosterWarningItem: {
+    fontSize: '0.78rem',
+    color: color.inkSoft,
+  },
   audioPlaceholder: {
     fontSize: '0.8rem',
     color: color.faint,
@@ -213,6 +288,7 @@ function AnnouncementReview({ competitionId, eventId, seriesNr }) {
     announcements,
     generateAnnouncementTextForReeks,
     updateAnnouncementText,
+    clearAnnouncementRosterFlags,
     generateAnnouncementAudio,
   } = useAppContext();
 
@@ -222,6 +298,7 @@ function AnnouncementReview({ competitionId, eventId, seriesNr }) {
   const [editing, setEditing] = useState(false);
   const [busyText, setBusyText] = useState(false);
   const [busyAudio, setBusyAudio] = useState(false);
+  const [busyRosterFlags, setBusyRosterFlags] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -265,8 +342,43 @@ function AnnouncementReview({ competitionId, eventId, seriesNr }) {
     }
   };
 
+  const handleMarkRosterReviewed = async () => {
+    if (!announcement) return;
+    setBusyRosterFlags(true); setError('');
+    try {
+      await clearAnnouncementRosterFlags(competitionId, announcement.id);
+    } catch (err) {
+      setError(err.message ?? 'Markeren als verwerkt mislukt.');
+    } finally {
+      setBusyRosterFlags(false);
+    }
+  };
+
   return (
     <div style={s.reviewCard}>
+      {announcement?.droppedParticipants?.length > 0 && (
+        <div style={s.rosterWarningBox}>
+          <div style={s.rosterWarningTitle}>
+            <UserX size={14} /> Deelnemerslijst gewijzigd sinds deze tekst gegenereerd werd
+          </div>
+          {announcement.droppedParticipants.map((d, i) => (
+            <div key={i} style={s.rosterWarningItem}>
+              {d.participantName} is {d.kind} — {new Date(d.flaggedAt).toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          ))}
+          <div>
+            <Button
+              variant="secondary" size="sm"
+              icon={<Check size={13} />}
+              onClick={handleMarkRosterReviewed}
+              disabled={busyRosterFlags}
+            >
+              {busyRosterFlags ? 'Bezig…' : 'Markeer als verwerkt'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {!announcement ? (
         <div>
           <div style={{ ...s.audioPlaceholder, marginBottom: '0.75rem' }}>
@@ -325,15 +437,15 @@ function AnnouncementReview({ competitionId, eventId, seriesNr }) {
 /** @param {{ competitionId: string }} props */
 export default function AnnouncementManager({ competitionId }) {
   const {
-    loadAnnouncements,
+    announcements,
     generateAnnouncementTexts,
     generateAnnouncementAudioForBlock,
     getAnnouncementCoverage,
   } = useAppContext();
 
-  useEffect(() => {
-    loadAnnouncements(competitionId ?? null);
-  }, [competitionId, loadAnnouncements]);
+  // `announcements` wordt al geladen door CompetitionDetail.jsx's mount-
+  // effect (nodig voor de rooster-wijziging-detectie ongeacht welk tabblad
+  // open staat) — hier dus geen eigen loadAnnouncements()-aanroep meer nodig.
 
   const [busyTexts, setBusyTexts] = useState(false);
   // Per-onderdeel knoppen (tekst én audio) kunnen gelijktijdig bezig zijn —
@@ -362,6 +474,23 @@ export default function AnnouncementManager({ competitionId }) {
     setSelectedEventId(eventId);
     setSelectedSeriesNr(1);
   };
+
+  const handleGoToReeks = (eventId, seriesNr) => {
+    setSelectedEventId(eventId);
+    setSelectedSeriesNr(seriesNr);
+  };
+
+  // Reeksen met een al gegenereerde tekst waarvan de deelnemerslijst nadien
+  // gewijzigd is (zie AppContext.jsx#scratchFromEvent/scratchFromAll) — voor
+  // de meldingsbalk bovenaan en de badge per onderdeel hieronder.
+  const pendingReview = announcements
+    .filter(a => a.droppedParticipants?.length > 0)
+    .map(a => ({
+      ...a,
+      eventName: coverage.find(c => c.eventId === a.eventId)?.eventName
+        ?? a.droppedParticipants[0]?.eventName ?? '',
+    }))
+    .sort((a, b) => a.eventName.localeCompare(b.eventName) || a.seriesNr - b.seriesNr);
 
   const handleGenerateTexts = async () => {
     setBusyTexts(true); setStatus(''); setError('');
@@ -417,6 +546,34 @@ export default function AnnouncementManager({ competitionId }) {
       {status && <div style={s.statusMsg}>{status}</div>}
       {error && <div style={s.errorMsg}>{error}</div>}
 
+      {pendingReview.length > 0 && (
+        <div style={s.pendingBanner}>
+          <div style={s.pendingBannerTitle}>
+            <UserX size={16} />
+            {pendingReview.length === 1
+              ? '1 reeks moet nagekeken worden — de deelnemerslijst is gewijzigd sinds de tekst gegenereerd werd'
+              : `${pendingReview.length} reeksen moeten nagekeken worden — de deelnemerslijst is gewijzigd sinds de tekst gegenereerd werd`}
+          </div>
+          {pendingReview.map(a => (
+            <div key={a.id} style={s.pendingItem}>
+              <div>
+                <div style={s.pendingItemText}>{a.eventName} — Reeks {a.seriesNr}</div>
+                <div style={s.pendingItemNames}>
+                  {a.droppedParticipants.map(d => `${d.participantName} (${d.kind})`).join(', ')}
+                </div>
+              </div>
+              <Button
+                variant="secondary" size="sm"
+                icon={<ChevronRight size={13} />}
+                onClick={() => handleGoToReeks(a.eventId, a.seriesNr)}
+              >
+                Ga naar reeks
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {coverage.length === 0 ? (
         <div style={s.empty}>
           Nog geen speed/endurance/triple-under-onderdelen gevonden in de dagtijdlijn.
@@ -424,34 +581,42 @@ export default function AnnouncementManager({ competitionId }) {
       ) : (
         <div style={s.columns}>
           <div style={s.leftColumn}>
-            {coverage.map(c => (
-              <div key={c.eventId} style={s.eventCard}>
-                <div>
-                  <div style={s.eventName}>{c.eventName}</div>
-                  <div style={s.eventCoverage}>
-                    {c.withText}/{c.total} teksten · {c.withAudio}/{c.total} audio
+            {coverage.map(c => {
+              const pendingForEvent = pendingReview.filter(a => a.eventId === c.eventId).length;
+              return (
+                <div key={c.eventId} style={s.eventCard}>
+                  <div>
+                    <div style={s.eventName}>{c.eventName}</div>
+                    <div style={s.eventCoverage}>
+                      {c.withText}/{c.total} teksten · {c.withAudio}/{c.total} audio
+                    </div>
+                    {pendingForEvent > 0 && (
+                      <div style={{ ...s.eventPendingBadge, marginTop: '0.4rem' }}>
+                        <UserX size={11} /> {pendingForEvent} te herzien
+                      </div>
+                    )}
+                  </div>
+                  <div style={s.eventActionsStacked}>
+                    <Button
+                      variant="secondary" size="sm"
+                      icon={<FileText size={13} />}
+                      onClick={() => handleGenerateTextsForEvent(c.eventId)}
+                      disabled={busyTextEventId === c.eventId}
+                    >
+                      {busyTextEventId === c.eventId ? 'Bezig…' : 'Genereer tekst voor dit onderdeel'}
+                    </Button>
+                    <Button
+                      variant="secondary" size="sm"
+                      icon={<Volume2 size={13} />}
+                      onClick={() => handleGenerateAudioForEvent(c.eventId)}
+                      disabled={busyAudioEventId === c.eventId}
+                    >
+                      {busyAudioEventId === c.eventId ? 'Bezig…' : 'Genereer audio voor dit onderdeel'}
+                    </Button>
                   </div>
                 </div>
-                <div style={s.eventActionsStacked}>
-                  <Button
-                    variant="secondary" size="sm"
-                    icon={<FileText size={13} />}
-                    onClick={() => handleGenerateTextsForEvent(c.eventId)}
-                    disabled={busyTextEventId === c.eventId}
-                  >
-                    {busyTextEventId === c.eventId ? 'Bezig…' : 'Genereer tekst voor dit onderdeel'}
-                  </Button>
-                  <Button
-                    variant="secondary" size="sm"
-                    icon={<Volume2 size={13} />}
-                    onClick={() => handleGenerateAudioForEvent(c.eventId)}
-                    disabled={busyAudioEventId === c.eventId}
-                  >
-                    {busyAudioEventId === c.eventId ? 'Bezig…' : 'Genereer audio voor dit onderdeel'}
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div style={s.rightColumn}>

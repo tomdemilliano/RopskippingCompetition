@@ -1317,6 +1317,10 @@ per-wedstrijd feature-toggle, standaard uit.
   - `status` — `"tekst-klaar"` \| `"audio-klaar"` \| `"genereren-mislukt"`,
     een gemaksveld voor de UI, altijd herleidbaar uit de andere velden (zelfde
     soort keuze als `block.status`)
+  - `droppedParticipants` — array van `{ participantId, participantName,
+    eventName, kind: "geschrapt"|"hersteld", flaggedAt }`. Signaleert dat de
+    deelnemerslijst gewijzigd is NA het genereren van deze tekst — zie
+    "Rooster-wijziging-detectie" hieronder.
 - **`settings/announcements`** — nieuw, GLOBAAL singleton-document (niet per
   wedstrijd — net als `settings/competition`), beheerd via
   `AnnouncementSettings.jsx` (ManagementView → "Aankondigingen"). Geen
@@ -1589,6 +1593,59 @@ Storage/Firestore opslaat. Twee plekken ruimen ze actief op:
 Beide gebruiken dezelfde "`.catch(() => {})` per bestand"-aanpak: een
 Storage-object dat al weg is (bv. een vorige, gedeeltelijk gelukte opruiming)
 mag de rest van de opruiming niet blokkeren.
+
+### Rooster-wijziging-detectie — tekst kan verouderen door een schrapping
+
+Een al gegenereerde tekst noemt de deelnemers die op het moment van genereren
+in de reeks zaten. Wordt iemand daarna geschrapt (of hersteld) in het
+wedstrijdbeheer, dan verandert die tekst niet vanzelf mee — dit signaleert dat
+aan de beheerder in de "Aankondigingen"-tab, los van de bestaande "Audio
+verouderd"-badge (die gaat over audio-vs-tekst, dit gaat over tekst-vs-
+rooster).
+
+**Detectie** (`AppContext.jsx#flagAnnouncementRosterChange`, aangeroepen
+vanuit `scratchFromEvent`/`scratchFromAll`): vóór de eigenlijke
+`participantFactory.setScratched...`-schrijfactie wordt voor elke entry die
+van schrap-status wisselt, nagegaan of de wedstrijd `isAnnouncementsEnabled`
+heeft én er al een aankondiging MET tekst bestaat voor die `(eventId,
+seriesNr)`. Zo ja: een item `{ participantId, participantName, eventName,
+kind: "geschrapt"|"hersteld", flaggedAt }` wordt toegevoegd aan
+`droppedParticipants` (`announcementFactory.flagRosterChange`). Zowel
+schrappen als herstellen triggert dit — herstellen betekent dat de tekst nu
+net iemand MIST, even stale als iemand die er niet meer bij hoort. Best-
+effort (`.catch(() => {})`): een mislukte waarschuwing mag de schrap-actie
+zelf nooit blokkeren, zelfde redenering als de audio-opruiming hierboven.
+
+Omdat dit vanuit het Deelnemers-tabblad gebeurt (niet vanuit de
+Aankondigingen-tab), laadt `CompetitionDetail.jsx` `announcements` nu
+onvoorwaardelijk in zijn mount-`useEffect` (samen met `participants`/
+`blocks`) i.p.v. pas wanneer `AnnouncementManager.jsx` zelf opent — anders zou
+de detectie op een lege/verouderde `announcements`-state werken.
+
+**Opheffen van de waarschuwing** — twee manieren, allebei resetten
+`droppedParticipants` naar `[]`:
+- **Automatisch**: `announcementFactory.updateText`/`regenerateText` wissen
+  het veld altijd mee als onderdeel van dezelfde schrijfactie — een manuele
+  correctie of "Tekst opnieuw genereren" lost het probleem per definitie op.
+- **Manueel**: de "Markeer als verwerkt"-knop in `AnnouncementReview`
+  (`AnnouncementManager.jsx`) roept `clearAnnouncementRosterFlags()` aan,
+  voor wanneer de beheerder de tekst bewust ongewijzigd laat. Eén knop wist
+  de volledige lijst in één keer — geen aparte dismissal per deelnemer.
+
+**UI** (`AnnouncementManager.jsx`):
+- Een meldingsbalk bovenaan de tab somt alle reeksen met openstaande
+  waarschuwingen op (onderdeel, reeksnummer, wie wegvalt/terugkomt), elk met
+  een "Ga naar reeks"-knop die de bestaande reeksnavigator rechtstreeks naar
+  die reeks zet.
+- Een kleine badge op de event-kaart linksboven toont het aantal reeksen per
+  onderdeel dat aandacht nodig heeft.
+- `AnnouncementReview` zelf toont, boven de tekst, een rood waarschuwingsvak
+  met de volledige lijst (naam, geschrapt/hersteld, tijdstip) en de "Markeer
+  als verwerkt"-knop.
+
+Bewust **niet** meegenomen: dit is enkel zichtbaar in het wedstrijdbeheer
+(`AnnouncementManager.jsx`) — het speakerscherm (`LiveView.jsx`/
+`AnnouncementPanel.jsx`) toont deze waarschuwing niet.
 
 ---
 
