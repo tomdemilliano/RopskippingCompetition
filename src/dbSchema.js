@@ -388,6 +388,11 @@ const competitionConverter = {
  * @property {string}          categoryLabel   bv. "13-15j M (ANT)" — enkel relevant bij freestyle
  *                                              (podium-groepering, Fase 3); PDF-import vult dit,
  *                                              CSV-import laat het leeg
+ * @property {boolean}         isReskip        gezet door EditParticipantModal.jsx's reskip-actie
+ *                                              (herkansing — zelfde veld, ander tijdslot, zie
+ *                                              eventSlots.js). Blijft staan zodra gezet — enkel
+ *                                              informatief (toont een "Reskip"-pill naast de naam
+ *                                              in LiveView/DisplayView), stuurt zelf geen gedrag aan.
  */
 
 /**
@@ -427,6 +432,7 @@ function normalizeEntry(raw) {
     scheduledTime: raw.scheduledTime ?? '',
     isScratched:   raw.isScratched   ?? false,
     categoryLabel: raw.categoryLabel ?? '',
+    isReskip:      raw.isReskip      ?? false,
   };
 }
 

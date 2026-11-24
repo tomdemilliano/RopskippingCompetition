@@ -159,7 +159,9 @@ name, clubId → clubs, externalId ("{name}_{clubId}"), isPresent, entries[], cr
 ```
 eventId → events, seriesNr, fieldNr, scheduledTime "HH:MM", isScratched,
 categoryLabel ("13-15j M (ANT)", enkel bij freestyle — podium-groepering,
-Fase 3; leeg bij CSV-import, gevuld door PDF-import)
+Fase 3; leeg bij CSV-import, gevuld door PDF-import),
+isReskip (gezet door een reskip-actie, blijft staan — puur informatief,
+toont een "Reskip"-pill in DisplayView/LiveView, zie "Deelnemersbeheer")
 ```
 
 **`block/{id}`** (subcollectie van competition — zie "Dagtijdlijn (blocks)")
@@ -658,6 +660,21 @@ het veld ook vast i.p.v. vrij in te vullen. "+ Onderdeel toevoegen" heeft
 geen oorspronkelijk veld (de deelnemer zat nog niet in dit onderdeel) en
 geeft dus geen `lockedFieldNr` mee — daar blijft elk veld vrij kiesbaar,
 zoals voorheen.
+
+**`entry.isReskip` — zichtbaar op groot scherm en speakerscherm.**
+`handleReskip` (`EditParticipantModal.jsx`) zet dit veld op `true` op de
+entry die verplaatst wordt; eenmaal gezet blijft het staan (geen "ongedaan
+maken"-actie) — puur informatief, stuurt zelf geen gedrag aan (net als
+`categoryLabel`). Een `ReskipPill`-component (amber, los gedefinieerd in
+zowel `DisplayView.jsx` als `LiveView.jsx` — geen gedeelde module voor één
+klein badge-component, zelfde afweging als elders in deze bestanden) toont
+"Reskip" naast de naam, in beide onderdeeltypes (freestyle én speed/
+endurance/triple-under):
+- `DisplayView.jsx` (groot scherm) — naast de naam in zowel de "Nu bezig"-
+  lijst (`fullFieldsList`) als de "Volgende"-tabel (`displayList`).
+- `LiveView.jsx` (speakerscherm) — naast de naam in de speed-velden-tabel
+  (`fieldInfoPill`), en voor freestyle in "NU AAN DE BEURT", "VOLGENDE" en
+  "VERDER PROGRAMMA".
 
 **`AddParticipantModal`** ("Nieuwe deelnemer") maakt een kale deelnemer aan
 (`participantFactory.create` — naam + club, `entries: []`) en opent meteen

@@ -49,6 +49,26 @@ function buildFieldList(seriesNr, eventParticipants) {
   return padFieldList(raw, maxFieldNr(eventParticipants));
 }
 
+/** Pill naast de naam van een deelnemer die via een reskip hier staat. */
+function ReskipPill() {
+  return (
+    <span style={{
+      marginLeft: '0.5rem',
+      background: color.warning,
+      color: color.stage,
+      fontSize: '0.7rem',
+      fontWeight: 800,
+      padding: '2px 8px',
+      borderRadius: radius.pill,
+      textTransform: 'uppercase',
+      letterSpacing: '0.03em',
+      verticalAlign: 'middle',
+    }}>
+      Reskip
+    </span>
+  );
+}
+
 /** Afwijking t.o.v. het geplande uur — enkel zichtbaar vanaf > 2 minuten. */
 function TimeDeviationBadge({ timeDiff }) {
   if (timeDiff === null || Math.abs(timeDiff) <= 2) return null;
@@ -616,6 +636,7 @@ export default function DisplayView({ onClose }) {
                       <span style={{ fontStyle: p._isEmpty ? 'italic' : 'normal' }}>
                         {p._isEmpty ? '---' : p.name}
                       </span>
+                      {!p._isEmpty && p._entry?.isReskip && <ReskipPill />}
                       {!p._isEmpty && p.clubId && (
                         <span style={{ color: color.muted, fontSize: '0.8rem', marginLeft: '0.5rem' }}>
                           ({getClub(p.clubId)?.name ?? ''})
@@ -764,6 +785,7 @@ export default function DisplayView({ onClose }) {
                         fontStyle: p._isEmpty ? 'italic' : 'normal',
                       }}>
                         {p._isEmpty ? '---' : p.name}
+                        {!p._isEmpty && entry?.isReskip && <ReskipPill />}
                       </td>
                       <td style={{
                         padding: '0.5rem 0.875rem',
