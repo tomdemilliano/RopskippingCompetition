@@ -18,7 +18,7 @@ daarna zijn eigen route en een eigen recht (zie "Authenticatie & rechten"):
 |--------------|-------------------|----------------|------|
 | *(landingspagina)* | `/`         | ingelogd       | tegeloverzicht — enige plek waarvandaan tussen schermen genavigeerd wordt |
 | Beheer       | `/beheer`         | beheerder-only | wedstrijden en deelnemers aanmaken, CSV-import, clubs, blokken, gebruikers |
-| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden/afwezig melden |
+| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden (geen "afwezig melden": dat loopt via de coach naar de wedstrijdleiding) |
 | Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (tabs: Reeksen, Podium, Boodschap) |
 | Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (huidige/volgende reeks + boodschap-vak) |
 | Podium       | `/scherm/podium`  | `podium`       | groot scherm — podium-onthulling voor de prijsuitreiking (zie "Podium & prijsuitreiking") |
@@ -605,11 +605,14 @@ Hergebruikt zoveel mogelijk van het bestaande CSV-stramien (`ImportModal`):
   blokken bevatte.
 
 De deelnemerstabel in `CompetitionDetail` (Beheer) is het overzicht waar
-correcties gebeuren — dit is de **enige** plek waar per-onderdeel forfait
-(schrappen) mogelijk is; Aanwezigheidsregistratie (`AttendanceView`) toont
-onderdelen enkel read-only als pilletjes onder naam/club, zonder een actie
-erop (haar eigen "Afwezig melden" schrapt bewust altijd van ALLE onderdelen
-tegelijk — dat is algemene aanwezigheid, geen per-onderdeel forfait).
+correcties gebeuren — dit is de **enige** plek waar forfait (schrappen,
+zowel per-onderdeel als "van alle onderdelen tegelijk" via `scratchFromAll`)
+mogelijk is. Aanwezigheidsregistratie (`AttendanceView`, de inkomtafel) heeft
+bewust GEEN "afwezig melden"-actie meer: een coach meldt een afwezigheid aan
+de wedstrijdleiding, die de deelnemer dan hier in `CompetitionDetail`
+schrapt. `AttendanceView` toont onderdelen enkel read-only als pilletjes
+onder naam/club (zonder actie erop), en toont — als een deelnemer elders al
+geschrapt is — enkel de resulterende status met een "Herstellen"-knop.
 
 **`EditParticipantModal`** (open via "Bewerken" in de deelnemerstabel) biedt:
 - naam/club bewerken;
