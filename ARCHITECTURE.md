@@ -647,6 +647,18 @@ hoogste bestaande + 1). Bij freestyle bestaat "een leeg veld in een
 bestaande reeks" niet (elke reeks is er precies 1 deelnemer) — daar is enkel
 een nieuwe reeks mogelijk.
 
+**Reskip = enkel in de tijd verplaatsen, nooit naar een ander veld.** Een
+reskip geeft een deelnemer een herkansing op een ANDER moment, maar blijft
+fysiek op hetzelfde veld — `EditParticipantModal.jsx` geeft daarom bij een
+reskip het oorspronkelijke veld van de deelnemer mee aan de slot-picker als
+`lockedFieldNr`. `computeEventSlots` laat dan enkel bestaande reeksen zien
+waar precies dát veld leeg is (de veld-keuzelijst binnen een reeks vervalt —
+er is toch maar één relevant veld), en bij "nieuwe reeks aan het einde" ligt
+het veld ook vast i.p.v. vrij in te vullen. "+ Onderdeel toevoegen" heeft
+geen oorspronkelijk veld (de deelnemer zat nog niet in dit onderdeel) en
+geeft dus geen `lockedFieldNr` mee — daar blijft elk veld vrij kiesbaar,
+zoals voorheen.
+
 **`AddParticipantModal`** ("Nieuwe deelnemer") maakt een kale deelnemer aan
 (`participantFactory.create` — naam + club, `entries: []`) en opent meteen
 `EditParticipantModal` erop, zodat onderdelen via dezelfde "+ Onderdeel

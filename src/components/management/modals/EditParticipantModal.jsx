@@ -5,8 +5,12 @@
  * Laat ook toe om de deelnemer aan een NIEUW onderdeel toe te voegen, of een
  * bestaande reeks-plaats te verplaatsen ("reskip" — een deelnemer die een
  * herkansing krijgt) naar een bestaand leeg tijdslot of een nieuwe reeks
- * achteraan het onderdeel. Dit is de enige plek waar zulke correcties
- * gebeuren — Aanwezigheidsregistratie toont onderdelen enkel read-only.
+ * achteraan het onderdeel. Een reskip verplaatst enkel in de TIJD, nooit naar
+ * een ander fysiek veld — de slot-picker beperkt zich daarom tot het
+ * oorspronkelijke veld van de deelnemer (`lockedFieldNr`, zie eventSlots.js);
+ * "+ Onderdeel toevoegen" heeft geen oorspronkelijk veld en blijft dus vrij
+ * kiesbaar. Dit is de enige plek waar zulke correcties gebeuren —
+ * Aanwezigheidsregistratie toont onderdelen enkel read-only.
  *
  * Optionele prop `focusEventId`: opent de modal meteen met de reskip-picker
  * van dat ene onderdeel uitgeklapt (gebruikt door CompetitionDetail.jsx's
@@ -76,20 +80,24 @@ const ps = {
  * @param {{id:string,name:string,scoringType:string}} props.event
  * @param {Array} props.participants   alle deelnemers van de wedstrijd
  * @param {string} [props.excludeParticipantId]
+ * @param {number|string} [props.lockedFieldNr] bij een reskip: het
+ *   oorspronkelijke veld van de deelnemer — een reskip verplaatst enkel in
+ *   de tijd, nooit naar een ander fysiek veld, dus het veld is dan niet
+ *   vrij kiesbaar (zie eventSlots.js).
  * @param {function} props.onConfirm   cb({ seriesNr, fieldNr, scheduledTime })
  * @param {function} props.onCancel
  */
-function SlotPicker({ event, participants, excludeParticipantId, onConfirm, onCancel }) {
+function SlotPicker({ event, participants, excludeParticipantId, lockedFieldNr, onConfirm, onCancel }) {
   const slots = useMemo(
-    () => computeEventSlots(event.id, participants, event, excludeParticipantId),
-    [event, participants, excludeParticipantId]
+    () => computeEventSlots(event.id, participants, event, excludeParticipantId, lockedFieldNr ?? null),
+    [event, participants, excludeParticipantId, lockedFieldNr]
   );
 
   const hasExisting = slots.existingReeksen.length > 0;
   const [mode, setMode] = useState(hasExisting ? 'existing' : 'new');
   const [seriesNr, setSeriesNr] = useState(slots.existingReeksen[0]?.seriesNr ?? slots.nextSeriesNr);
   const [fieldNr, setFieldNr] = useState(
-    slots.existingReeksen[0]?.emptyFieldNrs[0] ?? (event.scoringType === 'freestyle' ? 'A' : 1)
+    lockedFieldNr ?? slots.existingReeksen[0]?.emptyFieldNrs[0] ?? (event.scoringType === 'freestyle' ? 'A' : 1)
   );
   const [scheduledTime, setScheduledTime] = useState(slots.suggestedTime);
 
@@ -98,7 +106,7 @@ function SlotPicker({ event, participants, excludeParticipantId, onConfirm, onCa
   const handleReeksChange = (nr) => {
     const reeks = slots.existingReeksen.find(r => r.seriesNr === Number(nr));
     setSeriesNr(Number(nr));
-    setFieldNr(reeks?.emptyFieldNrs[0] ?? 1);
+    setFieldNr(lockedFieldNr ?? reeks?.emptyFieldNrs[0] ?? 1);
   };
 
   const handleConfirm = () => {
@@ -111,6 +119,12 @@ function SlotPicker({ event, participants, excludeParticipantId, onConfirm, onCa
 
   return (
     <div style={ps.panel}>
+      {lockedFieldNr != null && (
+        <div style={{ fontSize: '0.75rem', color: color.muted }}>
+          Een reskip kan enkel naar hetzelfde veld (veld {lockedFieldNr}) — enkel de tijd/reeks wijzigt.
+        </div>
+      )}
+
       {hasExisting && (
         <label style={ps.radioLabel}>
           <input type="radio" checked={mode === 'existing'} onChange={() => setMode('existing')} />
@@ -126,11 +140,13 @@ function SlotPicker({ event, participants, excludeParticipantId, onConfirm, onCa
               </option>
             ))}
           </select>
-          <select style={ps.smallSelect} value={fieldNr} onChange={e => setFieldNr(Number(e.target.value))}>
-            {currentReeks?.emptyFieldNrs.map(f => (
-              <option key={f} value={f}>Veld {f}</option>
-            ))}
-          </select>
+          {lockedFieldNr == null && (
+            <select style={ps.smallSelect} value={fieldNr} onChange={e => setFieldNr(Number(e.target.value))}>
+              {currentReeks?.emptyFieldNrs.map(f => (
+                <option key={f} value={f}>Veld {f}</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
@@ -140,7 +156,7 @@ function SlotPicker({ event, participants, excludeParticipantId, onConfirm, onCa
       </label>
       {mode === 'new' && (
         <div style={ps.row}>
-          {event.scoringType === 'freestyle' ? (
+          {lockedFieldNr != null ? null : event.scoringType === 'freestyle' ? (
             <select style={ps.smallSelect} value={fieldNr} onChange={e => setFieldNr(e.target.value)}>
               <option value="A">Veld A</option>
               <option value="B">Veld B</option>
@@ -377,6 +393,7 @@ export default function EditParticipantModal({ competitionId, participant, focus
                           event={ev}
                           participants={participantsForSlots}
                           excludeParticipantId={participant.id}
+                          lockedFieldNr={entry?.fieldNr}
                           onConfirm={slot => handleReskip(ev.id, slot)}
                           onCancel={() => setActivePicker(null)}
                         />
