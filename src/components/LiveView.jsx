@@ -1003,7 +1003,9 @@ export default function LiveView() {
                   </>
                 ) : (
                   <button style={s.nextBtn} onClick={handleFinishSeries}>
-                    {isLastSeries ? `${activeEvent?.name} klaar` : 'Volgende'}
+                    {isLastSeries
+                      ? `${activeEvent?.name} klaar`
+                      : (isFreestyle ? 'Skipper klaar' : 'Reeks klaar')}
                     <ChevronRight size={18} />
                   </button>
                 )}
