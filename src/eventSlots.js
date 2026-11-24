@@ -63,14 +63,22 @@ export function computeEventSlots(
   let existingReeksen = [];
 
   if (scoringType !== 'freestyle') {
+    // Over het HELE onderdeel berekend, niet per reeks — zelfde reden als
+    // fieldLayout.js#maxFieldNr: een veld kan voor één specifieke reeks
+    // (of, zoals hier, voor een hele reeks ACHTEREENVOLGENDE reeksen tot het
+    // einde van het blok) structureel leeg blijven terwijl het elders in het
+    // onderdeel wel gebruikt wordt — dat veld bestaat dan nog altijd en moet
+    // als leeg plekje aangeboden worden, i.p.v. stilzwijgend te verdwijnen
+    // omdat PRECIES die reeks toevallig niemand op dat veld heeft staan.
+    const eventMaxFieldNr = Math.max(0, ...entries.map(e => parseInt(e.fieldNr) || 0));
+
     existingReeksen = seriesNrs.map(seriesNr => {
       const reeksEntries = entries.filter(e => e.seriesNr === seriesNr);
       const occupied = new Set(
         reeksEntries.filter(e => !e.isScratched).map(e => parseInt(e.fieldNr) || 0)
       );
-      const maxFieldNr = Math.max(0, ...reeksEntries.map(e => parseInt(e.fieldNr) || 0));
       const emptyFieldNrs = [];
-      for (let f = 1; f <= maxFieldNr; f++) {
+      for (let f = 1; f <= eventMaxFieldNr; f++) {
         if (!occupied.has(f)) emptyFieldNrs.push(f);
       }
       return {

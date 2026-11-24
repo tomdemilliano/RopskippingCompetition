@@ -649,6 +649,20 @@ hoogste bestaande + 1). Bij freestyle bestaat "een leeg veld in een
 bestaande reeks" niet (elke reeks is er precies 1 deelnemer) — daar is enkel
 een nieuwe reeks mogelijk.
 
+**Maximum veldnummer over het HELE onderdeel berekend, niet per reeks** —
+zelfde reden als `fieldLayout.js#maxFieldNr` (zie "Lege velden" hierboven):
+een veld kan voor een hele REEKS OPEENVOLGENDE reeksen tot het einde van het
+blok leeg blijven (bv. veld 10 wordt vanaf reeks 9 van de 11 niet meer
+gebruikt). `computeEventSlots` berekende dit oorspronkelijk per reeks
+afzonderlijk (`Math.max(...reeksEntries)`, enkel de entries VAN die ene
+reeks) — zodra een reeks zelf geen enkele entry op dat veld had, viel het
+veld dus beneden haar eigen, te laag berekende maximum en kon een reskip er
+nooit naartoe, ook al bestond het veld nog gewoon structureel (gebruikt in
+eerdere reeksen van hetzelfde onderdeel). `eventMaxFieldNr` wordt nu één
+keer over ALLE entries van het onderdeel berekend en voor elke reeks
+hergebruikt, exact zoals `fieldLayout.js` dat al deed voor de (niet-
+bewerkbare) reeksweergave in LiveView/DisplayView.
+
 **Reskip = enkel in de tijd verplaatsen, nooit naar een ander veld.** Een
 reskip geeft een deelnemer een herkansing op een ANDER moment, maar blijft
 fysiek op hetzelfde veld — `EditParticipantModal.jsx` geeft daarom bij een
