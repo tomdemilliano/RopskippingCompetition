@@ -943,6 +943,37 @@ op een heats-blok in de linkerkolom (dagtijdlijn) blijft een handmatige
 "overschrijf-optie" om naar eender welk onderdeel te springen, los van de
 dagtijdlijn.
 
+### Venster volgt het BEKEKEN blok, niet het live blok
+
+`eventParticipants` (de deelnemerslijst/reeksen die effectief getoond worden)
+werd oorspronkelijk afgebakend tot het tijdvenster van de LIVE `currentBlock`
+(`needsBlockWindow`/`inSyncWithBlock`). Bij een onderdeel met meerdere blokken
+(Freestyle - pauze - Freestyle - pauze - …) klikte de operator in de
+dagtijdlijn op bv. het TWEEDE Freestyle-blok via `viewedBlockId` — maar zolang
+de live `currentBlock` dat tweede blok nog niet zelf bereikt had (bv. nog op
+de pauze, of nog op het eerste blok), bleef de venster-berekening op het live
+blok gebaseerd i.p.v. op het aangeklikte. `blocksForActiveEvent.length > 1`
+bleef wel waar, maar `inSyncWithBlock` (gebaseerd op `currentBlock`) klopte
+dan niet meer met wat er op het scherm stond — `needsBlockWindow` viel terug
+op `false`, en `eventParticipants` toonde dus de volledige, onafgebakende
+deelnemerslijst van het HELE onderdeel. Gevolg: de reeksnavigator sprong naar
+de eerste niet-afgewerkte reeks van het hele onderdeel i.p.v. van het
+aangeklikte blok.
+
+Opgelost door de venster-berekening te baseren op `viewedBlock` (het blok dat
+de operator effectief bekijkt — bestond al, zie hierboven voor het
+pauzescherm) i.p.v. op `currentBlock`: `viewedBlockMatchesEvent` vervangt
+`inSyncWithBlock` in `needsBlockWindow`, en `viewedNextBlock` vervangt de
+oude, enkel-hiervoor-gebruikte `nextBlock`. `inSyncWithBlock` zelf blijft
+bestaan en op `currentBlock` gebaseerd — dat stuurt een aparte beslissing
+(`handleFinishSeries`: of "reeks klaar" ook meteen het blok zelf afsluit).
+Daarnaast moest het effect dat `activeSeriesNr` initialiseert
+(`prevBlockOrderRef`-effect) ook `viewedBlockId` in zijn dependency-array
+krijgen — voorheen reageerde het enkel op `activeEventId`/`currentBlock?.id`,
+die bij het wisselen tussen twee blokken van HETZELFDE onderdeel geen van
+beide wijzigen, dus herberekende het effect niet mee ook al was `seriesNrs`
+zelf intussen wel al correct afgebakend.
+
 ### Nummering in het navigatievak — binnen het blok, niet over de hele wedstrijd
 
 `seriesNr` loopt globaal door over de hele wedstrijd (zie "Grammatica"
@@ -1008,6 +1039,35 @@ eerstvolgende blok in de VOLLEDIGE dagtijdlijn, van eender welk type).
 `previousSameField` vergelijkt nu expliciet of de huidige en de vorige
 reeks in hetzelfde blok vallen (`sameBlockAsPrevious`), en vertrekt daarbij
 van `allEventParticipants` (nooit zelf afgebakend) i.p.v. `eventParticipants`.
+
+### Opgelegde wedstrijdflow — "klaar"-knoppen enkel actief in volgorde
+
+Om te vermijden dat de speaker per vergissing een reeks of blok overslaat
+(iets wat zonder "heropenen" niet meer recht te zetten is), is elke "klaar"-
+knop pas actief als de voorgaande stap effectief afgerond is:
+- **"Skipper klaar"/"Reeks klaar"** (`canFinishSeries`, in de navigatiekaart)
+  — bij de EERSTE reeks van een blok moet het vorige blok in de volledige
+  dagtijdlijn (eender welk type — pauze, een ander onderdeel, …) al
+  `'afgewerkt'` zijn; bij elke andere reeks moet de vorige reeks `BINNEN dit
+  blok` (`seriesNrs[seriesIdx - 1]`, al afgebakend zoals hierboven) al als
+  klaar gemarkeerd staan (`doneInEvent`/`finishedSeries`). Welk blok de
+  actieve reeks bevat, wordt via `findHeatsBlockIdForTime(plannedTime,
+  blocksForActiveEvent, sortedBlocks)` gevonden — dezelfde functie als bij
+  `previousSameField` hierboven.
+- **"Volgende"** op een pauze/briefing/proefjury/prijsuitreiking-blok
+  (`canFinishBlock`) — enkel actief als het blok daarvóór in de dagtijdlijn
+  al `'afgewerkt'` is. Dit was door hoe `currentBlock` al berekend wordt
+  (het EERSTE nog niet afgewerkte blok, dus structureel nooit "huidig" vóór
+  een eerder blok klaar is) in de praktijk altijd al zo, maar wordt hier
+  ook expliciet en onafhankelijk bevestigd, i.p.v. stilzwijgend op die
+  aanname te steunen.
+- **Geen vorig blok** (het allereerste blok van de hele wedstrijd) ⇒ geen
+  controle mogelijk, dus gewoon toegelaten — `!previousBlockForSeries`/
+  `!previousBlockOfViewed` kortsluit dan naar `true`.
+
+Enkel de knop zelf wordt uitgeschakeld (`disabled`, grijze stijl, `title`
+die uitlegt waarom) — geen aparte foutmelding nodig, en niets verandert aan
+de onderliggende data.
 
 ### Een reeks of blok heropenen (vergissingen rechtzetten)
 
