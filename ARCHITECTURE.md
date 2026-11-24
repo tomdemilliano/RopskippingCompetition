@@ -18,7 +18,7 @@ daarna zijn eigen route en een eigen recht (zie "Authenticatie & rechten"):
 |--------------|-------------------|----------------|------|
 | *(landingspagina)* | `/`         | ingelogd       | tegeloverzicht — enige plek waarvandaan tussen schermen genavigeerd wordt |
 | Beheer       | `/beheer`         | beheerder-only | wedstrijden en deelnemers aanmaken, CSV-import, clubs, blokken, gebruikers |
-| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden (geen "afwezig melden": dat loopt via de coach naar de wedstrijdleiding) |
+| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, grote filterknoppen (nog niet aangemeld/aangemeld), aanmelden (geen "afwezig melden": dat loopt via de coach naar de wedstrijdleiding) |
 | Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (tabs: Reeksen, Podium, Boodschap) |
 | Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (huidige/volgende reeks + boodschap-vak) |
 | Podium       | `/scherm/podium`  | `podium`       | groot scherm — podium-onthulling voor de prijsuitreiking (zie "Podium & prijsuitreiking") |
@@ -611,8 +611,22 @@ mogelijk is. Aanwezigheidsregistratie (`AttendanceView`, de inkomtafel) heeft
 bewust GEEN "afwezig melden"-actie meer: een coach meldt een afwezigheid aan
 de wedstrijdleiding, die de deelnemer dan hier in `CompetitionDetail`
 schrapt. `AttendanceView` toont onderdelen enkel read-only als pilletjes
-onder naam/club (zonder actie erop), en toont — als een deelnemer elders al
-geschrapt is — enkel de resulterende status met een "Herstellen"-knop.
+onder naam/club (zonder actie erop).
+
+**`AttendanceView` — enkel nog "is deze deelnemer al aangemeld".** Een
+volledig geschrapte deelnemer (`isFullyScratched`) verdwijnt hier meteen uit
+beeld — `activeParticipants` (alle verdere afgeleiden: clublijst, tellingen,
+filtering vertrekken hiervan, nooit van de ruwe `participants`) filtert ze
+er bewust uit, in plaats van zoals voorheen een "Afwezig — geschrapt"-status
+met een "Herstellen"-knop te tonen: schrappen/herstellen hoort nu exclusief
+bij `CompetitionDetail` thuis. Twee grote filterknoppen bovenaan het scherm
+("Nog niet aangemeld" — de standaardweergave — en "Aangemeld", allebei met
+een live aantal) vervangen de oude, ongefilterde lijst; binnen "Aangemeld"
+kan een per ongeluk aangemelde deelnemer via "Zet terug op niet aangemeld"
+(`setPresence(..., false)`) gecorrigeerd worden. De clubs-zijbalk toont per
+club `aangemeld/totaal` (`clubStats`, dezelfde `activeParticipants`-bron) en
+een groen vinkje (`CheckCircle`) vóór de clubnaam zodra iedereen van die club
+aangemeld is.
 
 **`EditParticipantModal`** (open via "Bewerken" in de deelnemerstabel) biedt:
 - naam/club bewerken;
@@ -916,6 +930,32 @@ synchroniseert automatisch met `currentBlock.eventId` via een effect; klikken
 op een heats-blok in de linkerkolom (dagtijdlijn) blijft een handmatige
 "overschrijf-optie" om naar eender welk onderdeel te springen, los van de
 dagtijdlijn.
+
+### Freestyle — waarschuwing bij onderbroken veldafwisseling
+
+Bij freestyle is elke reeks precies 1 deelnemer (zie "Grammatica" hierboven),
+met velden die afwisselen tussen (meestal) twee kolommen (`Veld A`/`Veld B`
+bij PDF-import) — zo staat de volgende springer al klaar op het andere veld
+terwijl de huidige aan de beurt is. Valt er een deelnemer tussenuit
+(geschrapt uit dit onderdeel ná de PDF-import), dan verdwijnt die reeks
+gewoon uit `eventParticipants` (al gefilterd op `!isScratched`) — met als
+gevolg dat twee nu opeenvolgende reeksen toevallig hetzelfde veld kunnen
+hebben, wat de normale afwisseling doorbreekt zonder dat iemand dat merkt
+vóór het misloopt op het podium.
+
+`LiveView.jsx#upcomingSameField` (pure vergelijking, geen extra Firestore-
+data nodig): `true` zodra `currentSeriesParticipants[0]._entry.fieldNr ===
+upcomingParticipants[0]._entry.fieldNr` (en de huidige reeks nog niet
+voltooid is). Getoond op twee plekken in de freestyle-UI:
+- in de "NU AAN DE BEURT"-kaart (`currentCard`) — zodat de speaker het al
+  ziet terwijl de huidige springer aangekondigd wordt, en het meteen mee kan
+  aankondigen ("en de volgende springt ook op veld X");
+- in de "VOLGENDE"-kaart (`nextCard`) — ter bevestiging wanneer de speaker
+  vooruitkijkt.
+
+Enkel een UI-waarschuwing, geen datawijziging: de velden zelf worden niet
+herverdeeld (dat zou de PDF-brongegevens tegenspreken) — de speaker beslist
+zelf hoe dit mondeling opgevangen wordt.
 
 ### Een reeks of blok heropenen (vergissingen rechtzetten)
 
@@ -1442,24 +1482,27 @@ ook als een korte ruisklik kan afspelen.
   `LiveView.jsx`'s navigatievak (zie hieronder), en de "genereer audio voor
   heel dit onderdeel"-knop staat niet meer hier maar enkel nog in
   `AnnouncementManager.jsx` (wedstrijdbeheer).
-- **`LiveView.jsx`'s navigatievak** — twee gelabelde, natieve
-  `<audio controls>`-spelers ("Aankondiging" / "Jury klaar / skippers
-  klaar"), onder elkaar boven de "Volgende"-knop, enkel zichtbaar onder
-  dezelfde voorwaarde als `AnnouncementPanel`. De aankondigingsspeler toont
-  een plaatshoudertekst i.p.v. een speler zolang er geen audio is
-  (`currentAnnouncement?.audioUrl`); het vaste fragment
-  (`public/audio/skippers-klaar-jury-klaar.wav`) is altijd beschikbaar. Geen
-  eigen afspeel-/stoplogica meer nodig — de native controls geven start/
-  pauze én een voortgangsbalk, en "stoppen" is gewoon pauzeren (eventueel
-  met de balk terugslepen). Een slider erboven ("Algemeen volume") stelt het
-  volume van beide spelers tegelijk in — lokale UI-state (`announcementVolume`
-  in `LiveView.jsx`), geen Firestore-data. De aankondigingsspeler krijgt een
-  nieuwe `key` per reeks (nodig zodat de browser de nieuwe audio betrouwbaar
-  laadt), wat normaal het volume van dat `<audio>`-element bij elke
-  reekswissel naar de browserstandaard (100%) zou terugzetten; een
+- **`LiveView.jsx`'s navigatievak** — één gelabelde, natieve
+  `<audio controls>`-speler ("Aankondiging"), boven de "Volgende"-knop, enkel
+  zichtbaar onder dezelfde voorwaarde als `AnnouncementPanel`. Toont een
+  plaatshoudertekst i.p.v. een speler zolang er geen audio is
+  (`currentAnnouncement?.audioUrl`). Geen eigen afspeel-/stoplogica nodig —
+  de native controls geven start/pauze én een voortgangsbalk, en "stoppen" is
+  gewoon pauzeren (eventueel met de balk terugslepen). Een slider erboven
+  ("Algemeen volume") stelt het volume van deze speler in — lokale UI-state
+  (`announcementVolume` in `LiveView.jsx`), geen Firestore-data. De speler
+  krijgt een nieuwe `key` per reeks (nodig zodat de browser de nieuwe audio
+  betrouwbaar laadt), wat normaal het volume van dat `<audio>`-element bij
+  elke reekswissel naar de browserstandaard (100%) zou terugzetten; een
   callback-ref (i.p.v. een gewone ref) zet `el.volume` daarom expliciet bij
   élke (her)mount én bij elke aanpassing van de slider, zodat het ingestelde
   volume behouden blijft bij het navigeren doorheen de reeksen.
+
+  **Geen "skippers klaar, jury klaar?"-fragment meer.** Dit vaste, niet-
+  gegenereerde geluidsfragment (`public/audio/skippers-klaar-jury-klaar.wav`)
+  is bewust verwijderd uit de app: de fysieke speaker moet dit zelf,
+  mondeling aankondigen — zo kan die nog ingrijpen als blijkt dat iemand toch
+  niet klaarstaat. De app checkt of vermeldt dit op geen enkele manier.
 - **`AnnouncementManager.jsx`** — nieuwe tab "Aankondigingen" in
   `CompetitionDetail.jsx` (wedstrijdbeheer), **enkel zichtbaar wanneer
   `competition.isAnnouncementsEnabled` aan staat** (de eerste conditioneel
@@ -1484,10 +1527,10 @@ ook als een korte ruisklik kan afspelen.
 
   **Bewust géén hergebruik van `AnnouncementPanel.jsx` hier** — dat
   speakerscherm-component bevat zaken die in dit beheerscontext niet thuis-
-  horen (het vaste "skippers klaar"-fragment, de preload-bufferbadge, de
-  "genereer audio voor heel dit onderdeel"-knop, die hier al links in de
-  kolom per onderdeel staat) en gebruikte voorheen losse Afspelen/Stop-
-  knoppen i.p.v. een echte afspeelbalk. `AnnouncementReview` is een eigen,
+  horen (de preload-bufferbadge, de "genereer audio voor heel dit
+  onderdeel"-knop, die hier al links in de kolom per onderdeel staat) en
+  gebruikte voorheen losse Afspelen/Stop-knoppen i.p.v. een echte
+  afspeelbalk. `AnnouncementReview` is een eigen,
   lichtere review-UI die wel dezelfde AppContext-acties hergebruikt
   (`generateAnnouncementTextForReeks`, `updateAnnouncementText`,
   `generateAnnouncementAudio`).
@@ -1551,9 +1594,9 @@ i.p.v. telkens maar 1 reeks:
 
 Staat `competition.isAnnouncementsEnabled` uit, dan mag er nergens iets van
 zichtbaar of actief zijn. Plekken die dit respecteren:
-- `LiveView.jsx` — `AnnouncementPanel` én de twee audiospelers in het
-  navigatievak worden enkel gerenderd, en `preloadUpcomingAnnouncementAudio`
-  enkel aangeroepen, wanneer de toggle aan staat (naast `!isFreestyle`).
+- `LiveView.jsx` — `AnnouncementPanel` én de audiospeler in het navigatievak
+  worden enkel gerenderd, en `preloadUpcomingAnnouncementAudio` enkel
+  aangeroepen, wanneer de toggle aan staat (naast `!isFreestyle`).
 - `CompetitionDetail.jsx` — de "Aankondigingen"-tab (`AnnouncementManager`)
   verschijnt enkel in de tabbalk, en de bijhorende tabbody is bovendien ook
   zelf nog eens op de toggle gecontroleerd (dubbele guard).

@@ -12,7 +12,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, CheckCircle, Check, RotateCcw,
   Mic2, FastForward, Ghost, Clock,
-  ListTodo, Trophy, Settings, Megaphone, Volume2, VolumeX,
+  ListTodo, Trophy, Settings, Megaphone, Volume2, VolumeX, AlertTriangle,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
@@ -318,6 +318,22 @@ const s = {
     alignItems: 'center',
     boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
   },
+  // Waarschuwing wanneer de normale veldafwisseling in freestyle onderbroken
+  // is (een deelnemer viel tussenuit, waardoor twee opeenvolgende reeksen op
+  // hetzelfde veld uitkomen) — zie `upcomingSameField` hieronder.
+  fieldClashWarning: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginTop: '0.6rem',
+    padding: '0.45rem 0.75rem',
+    background: color.warningSoft,
+    color: color.warning,
+    border: `1px solid ${color.warningBorder}`,
+    borderRadius: '8px',
+    fontSize: '0.78rem',
+    fontWeight: 700,
+  },
   programTable: {
     maxHeight: '320px',
     overflowY: 'auto',
@@ -404,10 +420,6 @@ const s = {
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Zelfde vast, niet-gegenereerd fragment als AnnouncementPanel.jsx — hier
-// opnieuw gedefinieerd i.p.v. een gedeelde module voor één stringconstante.
-const FIXED_CLIP_URL = '/audio/skippers-klaar-jury-klaar.wav';
 
 function calcExpectedTime(scheduledTime, timeDiff) {
   if (!scheduledTime || !timeDiff || Math.abs(timeDiff) <= 2) return scheduledTime;
@@ -648,8 +660,8 @@ export default function LiveView() {
     a => a.eventId === activeEventId && a.seriesNr === activeSeriesNr
   );
 
-  // Algemeen volume voor de twee audiospelers — lokale UI-voorkeur, geen
-  // Firestore-data. De aankondigingsspeler krijgt bij elke nieuwe reeks een
+  // Volume van de aankondigingsspeler — lokale UI-voorkeur, geen
+  // Firestore-data. De speler krijgt bij elke nieuwe reeks een
   // nieuwe `key` (zie hieronder) zodat de browser de nieuwe audio betrouwbaar
   // laadt, maar dat betekent ook een nieuw <audio>-element, dat zonder meer
   // weer op het browserstandaard-volume (100%) zou starten. Callback-refs
@@ -659,10 +671,6 @@ export default function LiveView() {
   // reeksen.
   const [announcementVolume, setAnnouncementVolume] = useState(1);
   const setAnnouncementAudioVolume = useCallback(
-    (el) => { if (el) el.volume = announcementVolume; },
-    [announcementVolume]
-  );
-  const setFixedClipAudioVolume = useCallback(
     (el) => { if (el) el.volume = announcementVolume; },
     [announcementVolume]
   );
@@ -706,6 +714,18 @@ export default function LiveView() {
   const upcomingParticipants = useMemo(() =>
     eventParticipants.filter(p => p._entry.seriesNr > activeSeriesNr),
   [eventParticipants, activeSeriesNr]);
+
+  // Bij freestyle wisselen de velden normaal af tussen opeenvolgende reeksen
+  // (de volgende springer staat al klaar op het andere veld terwijl de
+  // huidige aan de beurt is). Valt er een deelnemer tussenuit (geschrapt),
+  // dan kan de eerstvolgende reeks toch op hetzelfde veld uitkomen als de
+  // huidige — dat verrast de speaker als het niet expliciet gewaarschuwd
+  // wordt (zie "NU AAN DE BEURT"/"VOLGENDE" hieronder).
+  const upcomingSameField = isFreestyle
+    && !isSeriesDone
+    && !!currentSeriesParticipants[0]
+    && !!upcomingParticipants[0]
+    && currentSeriesParticipants[0]._entry.fieldNr === upcomingParticipants[0]._entry.fieldNr;
 
   const handleFinishSeries = async () => {
     // "Klaar" voor het hele onderdeel (finishedEvents) betekent de ECHTE
@@ -920,8 +940,7 @@ export default function LiveView() {
                 </button>
               </div>
 
-              {/* Aankondiging/"skippers klaar"-audiospelers — onder elkaar,
-                  boven de "Volgende"-knop. */}
+              {/* Audiospeler voor de aankondiging — boven de "Volgende"-knop. */}
               {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
                 <div style={s.announcementPlayers}>
                   <div style={s.volumeRow}>
@@ -951,10 +970,6 @@ export default function LiveView() {
                     ) : (
                       <span style={s.playerPlaceholder}>Nog geen audio</span>
                     )}
-                  </div>
-                  <div style={s.playerRow}>
-                    <span style={s.playerLabel}>Jury klaar / skippers klaar</span>
-                    <audio ref={setFixedClipAudioVolume} controls src={FIXED_CLIP_URL} style={s.audioPlayer} />
                   </div>
                 </div>
               )}
@@ -1059,36 +1074,53 @@ export default function LiveView() {
                       </div>
                     </div>
                   </div>
+
+                  {upcomingSameField && (
+                    <div style={s.fieldClashWarning}>
+                      <AlertTriangle size={14} />
+                      Volgende springt ook op veld {upcomingParticipants[0]._entry.fieldNr} —
+                      normale veldafwisseling onderbroken (deelnemer tussenuit gevallen)
+                    </div>
+                  )}
                 </div>
 
                 {/* Volgende + programma (alleen als reeks niet klaar) */}
                 {!isSeriesDone && upcomingParticipants.length > 0 && (
                   <>
                     {/* Eerstvolgende */}
-                    <div style={s.nextCard}>
-                      <div>
-                        <div style={{
-                          color: color.muted, fontWeight: 700, fontSize: '0.65rem',
-                          display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px',
-                        }}>
-                          <FastForward size={13} /> VOLGENDE
+                    <div>
+                      <div style={s.nextCard}>
+                        <div>
+                          <div style={{
+                            color: color.muted, fontWeight: 700, fontSize: '0.65rem',
+                            display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px',
+                          }}>
+                            <FastForward size={13} /> VOLGENDE
+                          </div>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
+                            {upcomingParticipants[0].name}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: color.muted }}>
+                            {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
-                          {upcomingParticipants[0].name}
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: color.muted }}>
-                          {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
+                        <div style={{ textAlign: 'right', color: color.muted }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.slate }}>
+                            VELD {upcomingParticipants[0]._entry.fieldNr}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                            <Clock size={12} />
+                            {calcExpectedTime(upcomingParticipants[0]._entry.scheduledTime, timeDiff)}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right', color: color.muted }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.slate }}>
-                          VELD {upcomingParticipants[0]._entry.fieldNr}
+
+                      {upcomingSameField && (
+                        <div style={s.fieldClashWarning}>
+                          <AlertTriangle size={14} />
+                          Geen veldwissel — zelfde veld als de huidige springer
                         </div>
-                        <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                          <Clock size={12} />
-                          {calcExpectedTime(upcomingParticipants[0]._entry.scheduledTime, timeDiff)}
-                        </div>
-                      </div>
+                      )}
                     </div>
 
                     {/* Verder programma */}
