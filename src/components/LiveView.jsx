@@ -504,11 +504,6 @@ export default function LiveView() {
   const currentBlock = useMemo(() =>
     sortedBlocks.find(b => b.status !== 'afgewerkt') ?? null,
   [sortedBlocks]);
-  const nextBlock = useMemo(() => {
-    if (!currentBlock) return null;
-    const idx = sortedBlocks.findIndex(b => b.id === currentBlock.id);
-    return idx >= 0 ? (sortedBlocks[idx + 1] ?? null) : null;
-  }, [sortedBlocks, currentBlock]);
 
   // Vult de audio-preloadbuffer al aan zodra een blok currentBlock wordt —
   // nog vóór de speaker de eerste reeks ervan gestart heeft (fire-and-forget,
@@ -538,6 +533,31 @@ export default function LiveView() {
   const BreakIcon = getBlockIcon(resolveBlockIconKey(viewedBlock));
   const viewedBlockIsCurrent = viewedBlock?.id === currentBlock?.id;
   const viewedBlockIsDone = viewedBlock?.status === 'afgewerkt';
+
+  // Tijdvenster-berekening (eventParticipants hieronder) volgt VIEWEDBLOCK —
+  // het blok dat de operator effectief bekijkt — en niet de live currentBlock.
+  // Zonder dit gebruikt het klikken op een ANDER blok van hetzelfde onderdeel
+  // (bv. het tweede Freestyle-blok na een pauze) nog altijd het venster van
+  // het live blok, en toont de reeksnavigatie dan foutief de eerste niet-
+  // afgewerkte reeks van het HELE onderdeel i.p.v. van het aangeklikte blok.
+  const viewedNextBlock = useMemo(() => {
+    if (!viewedBlock) return null;
+    const idx = sortedBlocks.findIndex(b => b.id === viewedBlock.id);
+    return idx >= 0 ? (sortedBlocks[idx + 1] ?? null) : null;
+  }, [sortedBlocks, viewedBlock]);
+
+  // Vorig blok van het bekeken blok (eender welk type) — voor de "vorig blok
+  // moet klaar zijn"-controle op de "Volgende"-knop van pauze/prijsuitreiking-
+  // blokken hieronder. Een pauze kan door hoe `currentBlock` berekend wordt
+  // (het eerste nog niet afgewerkte blok) normaal nooit "huidig" worden vóór
+  // een eerder blok afgewerkt is — deze check is een expliciete, zelfstandige
+  // bevestiging daarvan, zodat dit niet stilzwijgend van die aanname afhangt.
+  const previousBlockOfViewed = useMemo(() => {
+    if (!viewedBlock) return null;
+    const idx = sortedBlocks.findIndex(b => b.id === viewedBlock.id);
+    return idx > 0 ? sortedBlocks[idx - 1] : null;
+  }, [sortedBlocks, viewedBlock]);
+  const canFinishBlock = !previousBlockOfViewed || previousBlockOfViewed.status === 'afgewerkt';
 
   const handleFinishBlock = () => {
     if (!activeCompetition || !currentBlock) return;
@@ -622,13 +642,19 @@ export default function LiveView() {
     () => sortedBlocks.filter(b => b.type === 'heats' && b.eventId === activeEventId),
     [sortedBlocks, activeEventId]
   );
+  // Let op: `inSyncWithBlock` hieronder is gebaseerd op de LIVE currentBlock
+  // en stuurt een andere beslissing (of "reeks klaar" ook meteen het blok zelf
+  // afsluit, zie handleFinishSeries) — de venster-afbakening hier volgt
+  // bewust `viewedBlock` (zie hierboven), niet deze variabele.
   const inSyncWithBlock = !!currentBlock && currentBlock.type === 'heats' && currentBlock.eventId === activeEventId;
-  const needsBlockWindow = inSyncWithBlock && blocksForActiveEvent.length > 1;
+  const viewedBlockMatchesEvent =
+    !!viewedBlock && viewedBlock.type === 'heats' && viewedBlock.eventId === activeEventId;
+  const needsBlockWindow = viewedBlockMatchesEvent && blocksForActiveEvent.length > 1;
 
   const eventParticipants = useMemo(() => {
     if (!needsBlockWindow) return allEventParticipants;
-    const startMin = timeToMinutes(currentBlock.scheduledTime);
-    const endMin = nextBlock?.scheduledTime ? timeToMinutes(nextBlock.scheduledTime) : null;
+    const startMin = timeToMinutes(viewedBlock.scheduledTime);
+    const endMin = viewedNextBlock?.scheduledTime ? timeToMinutes(viewedNextBlock.scheduledTime) : null;
     return allEventParticipants.filter(p => {
       const mins = timeToMinutes(p._entry.scheduledTime);
       if (mins === null || startMin === null) return true; // niet te bepalen — liever tonen dan verbergen
@@ -636,7 +662,7 @@ export default function LiveView() {
       if (endMin !== null && mins >= endMin) return false;
       return true;
     });
-  }, [needsBlockWindow, allEventParticipants, currentBlock, nextBlock]);
+  }, [needsBlockWindow, allEventParticipants, viewedBlock, viewedNextBlock]);
 
   // Unieke reeksnummers binnen het huidige (eventueel afgebakende) venster
   const seriesNrs = useMemo(() =>
@@ -650,7 +676,14 @@ export default function LiveView() {
   // Reset reeks bij event-wissel of bij een blok-wissel binnen hetzelfde
   // onderdeel (bv. van het eerste naar het tweede Freestyles-blok na een
   // pauze) — anders blijft activeSeriesNr hangen op de net afgesloten reeks
-  // van het vorige venster.
+  // van het vorige venster. `viewedBlockId` zit expliciet in de dependency-
+  // array: klikken op een ANDER blok van hetzelfde onderdeel in de
+  // dagtijdlijn wijzigt noch `activeEventId` (zelfde onderdeel) noch
+  // `currentBlock` (dat blijft het live blok) — zonder `viewedBlockId` hier
+  // zou dit effect dan niet herberekenen, en bleef de reeksnavigator foutief
+  // op de eerste niet-afgewerkte reeks van het HELE onderdeel staan i.p.v.
+  // van het aangeklikte blok (`seriesNrs` is zelf al wel correct afgebakend
+  // via `viewedBlock`, zie hierboven — enkel dit effect moest ook volgen).
   //
   // currentBlock wisselt ook TERUG naar een vroeger blok bij het heropenen
   // van een reeks (handleUnfinishSeries hieronder) — de blokken-listener en
@@ -674,7 +707,7 @@ export default function LiveView() {
       const first = seriesNrs.find(nr => !done.includes(nr)) ?? seriesNrs[0] ?? 1;
       setActiveSeriesNr(first);
     }
-  }, [activeEventId, currentBlock?.id]);
+  }, [activeEventId, currentBlock?.id, viewedBlockId]);
 
   // Deelnemers in de actieve reeks
   const currentSeriesParticipants = useMemo(() =>
@@ -726,6 +759,21 @@ export default function LiveView() {
   const isLastSeries  = seriesIdx === seriesNrs.length - 1;
   const isSeriesDone  = doneInEvent.includes(activeSeriesNr);
   const isEventDone   = finishedEvents.includes(activeEventId);
+
+  // "Skipper klaar"/"Reeks klaar" mag enkel actief zijn als de opgelegde
+  // wedstrijdflow gevolgd wordt (om te vermijden dat de speaker per
+  // vergissing een reeks overslaat): bij de eerste reeks van een blok moet
+  // het VORIGE blok (eender welk type, globaal in de dagtijdlijn) al
+  // 'afgewerkt' zijn — geen vorig blok (het allereerste blok van de
+  // wedstrijd) ⇒ altijd toegelaten; anders moet de vorige reeks binnen dit
+  // (eventueel tot het blok afgebakende, zie `seriesNrs` hierboven) venster
+  // al klaar zijn.
+  const activeHeatsBlockId = findHeatsBlockIdForTime(plannedTime, blocksForActiveEvent, sortedBlocks);
+  const activeHeatsBlockIdx = sortedBlocks.findIndex(b => b.id === activeHeatsBlockId);
+  const previousBlockForSeries = activeHeatsBlockIdx > 0 ? sortedBlocks[activeHeatsBlockIdx - 1] : null;
+  const canFinishSeries = isFirstSeries
+    ? (!previousBlockForSeries || previousBlockForSeries.status === 'afgewerkt')
+    : doneInEvent.includes(seriesNrs[seriesIdx - 1]);
 
   // Max veld van het onderdeel (voor speed) — bewust over ALLE reeksen van
   // het onderdeel berekend, niet enkel de getoonde reeks: blijft een veld in
@@ -938,7 +986,12 @@ export default function LiveView() {
               </div>
             </div>
             {viewedBlockIsCurrent && !viewedBlockIsDone && (
-              <button style={s.nextBtn} onClick={handleFinishBlock}>
+              <button
+                style={canFinishBlock ? s.nextBtn : { ...s.nextBtn, opacity: 0.4, cursor: 'not-allowed' }}
+                onClick={handleFinishBlock}
+                disabled={!canFinishBlock}
+                title={canFinishBlock ? undefined : 'Het vorige blok moet eerst als klaar gemarkeerd worden'}
+              >
                 Volgende <ChevronRight size={18} />
               </button>
             )}
@@ -1039,7 +1092,16 @@ export default function LiveView() {
                     </button>
                   </>
                 ) : (
-                  <button style={s.nextBtn} onClick={handleFinishSeries}>
+                  <button
+                    style={canFinishSeries ? s.nextBtn : { ...s.nextBtn, opacity: 0.4, cursor: 'not-allowed' }}
+                    onClick={handleFinishSeries}
+                    disabled={!canFinishSeries}
+                    title={canFinishSeries ? undefined : (
+                      isFirstSeries
+                        ? 'Het vorige blok moet eerst als klaar gemarkeerd worden'
+                        : `De vorige ${isFreestyle ? 'skipper' : 'reeks'} moet eerst klaar gemarkeerd worden`
+                    )}
+                  >
                     {isLastSeries
                       ? `${activeEvent?.name} klaar`
                       : (isFreestyle ? 'Skipper klaar' : 'Reeks klaar')}
