@@ -264,15 +264,22 @@ export default function EditParticipantModal({ competitionId, participant, focus
         scheduledTime: slot.scheduledTime,
         isScratched:   false,
         categoryLabel: '',
+        isReskip:      false,
       },
     ]);
     setActivePicker(null);
   };
 
+  // `isReskip: true` blijft staan — enkel informatief (toont een "Reskip"-
+  // pill naast de naam in LiveView/DisplayView, zie ARCHITECTURE.md), geen
+  // "ongedaan maken"-actie nodig.
   const handleReskip = (eventId, slot) => {
     setLocalEntries(prev => prev.map(e =>
       e.eventId === eventId
-        ? { ...e, seriesNr: slot.seriesNr, fieldNr: slot.fieldNr, scheduledTime: slot.scheduledTime, isScratched: false }
+        ? {
+            ...e, seriesNr: slot.seriesNr, fieldNr: slot.fieldNr,
+            scheduledTime: slot.scheduledTime, isScratched: false, isReskip: true,
+          }
         : e
     ));
     setActivePicker(null);

@@ -421,6 +421,28 @@ const s = {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Pill naast de naam van een deelnemer die via een reskip hier staat. */
+function ReskipPill() {
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      fontSize: '0.68rem',
+      fontWeight: 800,
+      color: color.warning,
+      background: color.warningSoft,
+      border: `1px solid ${color.warningBorder}`,
+      borderRadius: radius.pill,
+      padding: '1px 7px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.03em',
+      flexShrink: 0,
+    }}>
+      Reskip
+    </span>
+  );
+}
+
 function calcExpectedTime(scheduledTime, timeDiff) {
   if (!scheduledTime || !timeDiff || Math.abs(timeDiff) <= 2) return scheduledTime;
   try {
@@ -1129,8 +1151,11 @@ export default function LiveView() {
                         </td>
                         <td style={s.fieldInfoCell}>
                           <div style={s.fieldInfoPill(!!skipper, isSeriesDone)}>
-                            <span style={s.fieldNameText(!!skipper)}>
-                              {skipper?.name ?? '---'}
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                              <span style={s.fieldNameText(!!skipper)}>
+                                {skipper?.name ?? '---'}
+                              </span>
+                              {skipper?._entry?.isReskip && <ReskipPill />}
                             </span>
                             <span style={s.fieldClubText}>
                               {club?.name ?? ''}
@@ -1170,8 +1195,9 @@ export default function LiveView() {
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1.1 }}>
+                      <div style={{ fontSize: '2rem', fontWeight: 900, lineHeight: 1.1, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                         {currentSeriesParticipants[0]?.name ?? '---'}
+                        {currentSeriesParticipants[0]?._entry.isReskip && <ReskipPill />}
                       </div>
                       <div style={{ fontSize: '1rem', opacity: 0.8, marginTop: '2px' }}>
                         {getClub(currentSeriesParticipants[0]?.clubId)?.name ?? ''}
@@ -1214,8 +1240,9 @@ export default function LiveView() {
                         }}>
                           <FastForward size={13} /> VOLGENDE
                         </div>
-                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft }}>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: color.inkSoft, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {upcomingParticipants[0].name}
+                          {upcomingParticipants[0]._entry.isReskip && <ReskipPill />}
                         </div>
                         <div style={{ fontSize: '0.85rem', color: color.muted }}>
                           {getClub(upcomingParticipants[0].clubId)?.name ?? ''}
@@ -1267,6 +1294,7 @@ export default function LiveView() {
                                     </td>
                                     <td style={{ padding: '0.6rem 1rem', fontWeight: 800, color: color.inkSoft }}>
                                       {p.name}
+                                      {p._entry.isReskip && <ReskipPill />}
                                     </td>
                                     <td style={{ padding: '0.6rem 1rem', color: color.muted }}>
                                       {getClub(p.clubId)?.name ?? ''}
