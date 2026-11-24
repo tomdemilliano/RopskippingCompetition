@@ -955,15 +955,20 @@ gevolg dat twee nu opeenvolgende reeksen toevallig hetzelfde veld kunnen
 hebben, wat de normale afwisseling doorbreekt zonder dat iemand dat merkt
 vóór het misloopt op het podium.
 
-`LiveView.jsx#upcomingSameField` (pure vergelijking, geen extra Firestore-
-data nodig): `true` zodra `currentSeriesParticipants[0]._entry.fieldNr ===
-upcomingParticipants[0]._entry.fieldNr` (en de huidige reeks nog niet
-voltooid is). Getoond op twee plekken in de freestyle-UI:
-- in de "NU AAN DE BEURT"-kaart (`currentCard`) — zodat de speaker het al
+Twee onafhankelijke, puur vergelijkende checks (geen extra Firestore-data
+nodig), beide enkel getoond in de "NU AAN DE BEURT"-kaart (`currentCard`) —
+niet meer in de "VOLGENDE"-kaart: dat bleek in de praktijk een verwarrende
+dubbele melding op te leveren voor hetzelfde probleem.
+- **`upcomingSameField`** (vooruitkijkend) — `true` zodra
+  `currentSeriesParticipants[0]._entry.fieldNr ===
+  upcomingParticipants[0]._entry.fieldNr` (en de huidige reeks nog niet
+  voltooid is): "Volgende springt ook op veld X" — zodat de speaker dit al
   ziet terwijl de huidige springer aangekondigd wordt, en het meteen mee kan
-  aankondigen ("en de volgende springt ook op veld X");
-- in de "VOLGENDE"-kaart (`nextCard`) — ter bevestiging wanneer de speaker
-  vooruitkijkt.
+  aankondigen.
+- **`previousSameField`** (terugkijkend) — zelfde vergelijking, maar dan met
+  de vorige (nog bestaande) reeks vóór `activeSeriesNr`: "Vorige springer
+  sprong ook op dit veld. Wacht op OK van jury" — relevant omdat de jury dan
+  mogelijk nog niet klaar is met dat veld.
 
 Enkel een UI-waarschuwing, geen datawijziging: de velden zelf worden niet
 herverdeeld (dat zou de PDF-brongegevens tegenspreken) — de speaker beslist
