@@ -1468,24 +1468,27 @@ ook als een korte ruisklik kan afspelen.
   `LiveView.jsx`'s navigatievak (zie hieronder), en de "genereer audio voor
   heel dit onderdeel"-knop staat niet meer hier maar enkel nog in
   `AnnouncementManager.jsx` (wedstrijdbeheer).
-- **`LiveView.jsx`'s navigatievak** — twee gelabelde, natieve
-  `<audio controls>`-spelers ("Aankondiging" / "Jury klaar / skippers
-  klaar"), onder elkaar boven de "Volgende"-knop, enkel zichtbaar onder
-  dezelfde voorwaarde als `AnnouncementPanel`. De aankondigingsspeler toont
-  een plaatshoudertekst i.p.v. een speler zolang er geen audio is
-  (`currentAnnouncement?.audioUrl`); het vaste fragment
-  (`public/audio/skippers-klaar-jury-klaar.wav`) is altijd beschikbaar. Geen
-  eigen afspeel-/stoplogica meer nodig — de native controls geven start/
-  pauze én een voortgangsbalk, en "stoppen" is gewoon pauzeren (eventueel
-  met de balk terugslepen). Een slider erboven ("Algemeen volume") stelt het
-  volume van beide spelers tegelijk in — lokale UI-state (`announcementVolume`
-  in `LiveView.jsx`), geen Firestore-data. De aankondigingsspeler krijgt een
-  nieuwe `key` per reeks (nodig zodat de browser de nieuwe audio betrouwbaar
-  laadt), wat normaal het volume van dat `<audio>`-element bij elke
-  reekswissel naar de browserstandaard (100%) zou terugzetten; een
+- **`LiveView.jsx`'s navigatievak** — één gelabelde, natieve
+  `<audio controls>`-speler ("Aankondiging"), boven de "Volgende"-knop, enkel
+  zichtbaar onder dezelfde voorwaarde als `AnnouncementPanel`. Toont een
+  plaatshoudertekst i.p.v. een speler zolang er geen audio is
+  (`currentAnnouncement?.audioUrl`). Geen eigen afspeel-/stoplogica nodig —
+  de native controls geven start/pauze én een voortgangsbalk, en "stoppen" is
+  gewoon pauzeren (eventueel met de balk terugslepen). Een slider erboven
+  ("Algemeen volume") stelt het volume van deze speler in — lokale UI-state
+  (`announcementVolume` in `LiveView.jsx`), geen Firestore-data. De speler
+  krijgt een nieuwe `key` per reeks (nodig zodat de browser de nieuwe audio
+  betrouwbaar laadt), wat normaal het volume van dat `<audio>`-element bij
+  elke reekswissel naar de browserstandaard (100%) zou terugzetten; een
   callback-ref (i.p.v. een gewone ref) zet `el.volume` daarom expliciet bij
   élke (her)mount én bij elke aanpassing van de slider, zodat het ingestelde
   volume behouden blijft bij het navigeren doorheen de reeksen.
+
+  **Geen "skippers klaar, jury klaar?"-fragment meer.** Dit vaste, niet-
+  gegenereerde geluidsfragment (`public/audio/skippers-klaar-jury-klaar.wav`)
+  is bewust verwijderd uit de app: de fysieke speaker moet dit zelf,
+  mondeling aankondigen — zo kan die nog ingrijpen als blijkt dat iemand toch
+  niet klaarstaat. De app checkt of vermeldt dit op geen enkele manier.
 - **`AnnouncementManager.jsx`** — nieuwe tab "Aankondigingen" in
   `CompetitionDetail.jsx` (wedstrijdbeheer), **enkel zichtbaar wanneer
   `competition.isAnnouncementsEnabled` aan staat** (de eerste conditioneel
@@ -1510,10 +1513,10 @@ ook als een korte ruisklik kan afspelen.
 
   **Bewust géén hergebruik van `AnnouncementPanel.jsx` hier** — dat
   speakerscherm-component bevat zaken die in dit beheerscontext niet thuis-
-  horen (het vaste "skippers klaar"-fragment, de preload-bufferbadge, de
-  "genereer audio voor heel dit onderdeel"-knop, die hier al links in de
-  kolom per onderdeel staat) en gebruikte voorheen losse Afspelen/Stop-
-  knoppen i.p.v. een echte afspeelbalk. `AnnouncementReview` is een eigen,
+  horen (de preload-bufferbadge, de "genereer audio voor heel dit
+  onderdeel"-knop, die hier al links in de kolom per onderdeel staat) en
+  gebruikte voorheen losse Afspelen/Stop-knoppen i.p.v. een echte
+  afspeelbalk. `AnnouncementReview` is een eigen,
   lichtere review-UI die wel dezelfde AppContext-acties hergebruikt
   (`generateAnnouncementTextForReeks`, `updateAnnouncementText`,
   `generateAnnouncementAudio`).
@@ -1577,9 +1580,9 @@ i.p.v. telkens maar 1 reeks:
 
 Staat `competition.isAnnouncementsEnabled` uit, dan mag er nergens iets van
 zichtbaar of actief zijn. Plekken die dit respecteren:
-- `LiveView.jsx` — `AnnouncementPanel` én de twee audiospelers in het
-  navigatievak worden enkel gerenderd, en `preloadUpcomingAnnouncementAudio`
-  enkel aangeroepen, wanneer de toggle aan staat (naast `!isFreestyle`).
+- `LiveView.jsx` — `AnnouncementPanel` én de audiospeler in het navigatievak
+  worden enkel gerenderd, en `preloadUpcomingAnnouncementAudio` enkel
+  aangeroepen, wanneer de toggle aan staat (naast `!isFreestyle`).
 - `CompetitionDetail.jsx` — de "Aankondigingen"-tab (`AnnouncementManager`)
   verschijnt enkel in de tabbalk, en de bijhorende tabbody is bovendien ook
   zelf nog eens op de toggle gecontroleerd (dubbele guard).

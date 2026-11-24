@@ -130,9 +130,10 @@ const s = {
     overflow: 'hidden',
   },
 
-  // Clubs-zijbalk
+  // Clubs-zijbalk — breed genoeg voor de langste clubnaam ("ROPE SKIPPING
+  // OOSTENDE VZW") zonder afkapping (ellipsis).
   sidebar: {
-    width: '220px',
+    width: '280px',
     flexShrink: 0,
     borderRight: `1px solid ${color.border}`,
     background: color.surface,

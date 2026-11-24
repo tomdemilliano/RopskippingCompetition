@@ -421,10 +421,6 @@ const s = {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Zelfde vast, niet-gegenereerd fragment als AnnouncementPanel.jsx — hier
-// opnieuw gedefinieerd i.p.v. een gedeelde module voor één stringconstante.
-const FIXED_CLIP_URL = '/audio/skippers-klaar-jury-klaar.wav';
-
 function calcExpectedTime(scheduledTime, timeDiff) {
   if (!scheduledTime || !timeDiff || Math.abs(timeDiff) <= 2) return scheduledTime;
   try {
@@ -664,8 +660,8 @@ export default function LiveView() {
     a => a.eventId === activeEventId && a.seriesNr === activeSeriesNr
   );
 
-  // Algemeen volume voor de twee audiospelers — lokale UI-voorkeur, geen
-  // Firestore-data. De aankondigingsspeler krijgt bij elke nieuwe reeks een
+  // Volume van de aankondigingsspeler — lokale UI-voorkeur, geen
+  // Firestore-data. De speler krijgt bij elke nieuwe reeks een
   // nieuwe `key` (zie hieronder) zodat de browser de nieuwe audio betrouwbaar
   // laadt, maar dat betekent ook een nieuw <audio>-element, dat zonder meer
   // weer op het browserstandaard-volume (100%) zou starten. Callback-refs
@@ -675,10 +671,6 @@ export default function LiveView() {
   // reeksen.
   const [announcementVolume, setAnnouncementVolume] = useState(1);
   const setAnnouncementAudioVolume = useCallback(
-    (el) => { if (el) el.volume = announcementVolume; },
-    [announcementVolume]
-  );
-  const setFixedClipAudioVolume = useCallback(
     (el) => { if (el) el.volume = announcementVolume; },
     [announcementVolume]
   );
@@ -948,8 +940,7 @@ export default function LiveView() {
                 </button>
               </div>
 
-              {/* Aankondiging/"skippers klaar"-audiospelers — onder elkaar,
-                  boven de "Volgende"-knop. */}
+              {/* Audiospeler voor de aankondiging — boven de "Volgende"-knop. */}
               {!isFreestyle && activeCompetition?.isAnnouncementsEnabled && (
                 <div style={s.announcementPlayers}>
                   <div style={s.volumeRow}>
@@ -979,10 +970,6 @@ export default function LiveView() {
                     ) : (
                       <span style={s.playerPlaceholder}>Nog geen audio</span>
                     )}
-                  </div>
-                  <div style={s.playerRow}>
-                    <span style={s.playerLabel}>Jury klaar / skippers klaar</span>
-                    <audio ref={setFixedClipAudioVolume} controls src={FIXED_CLIP_URL} style={s.audioPlayer} />
                   </div>
                 </div>
               )}

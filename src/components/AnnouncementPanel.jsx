@@ -5,11 +5,10 @@
  * `activeCompetition.isAnnouncementsEnabled` aan staat EN de huidige reeks
  * geen freestyle is (zie LiveView.jsx). Toont/bewerkt de tekst voor de
  * huidige reeks en genereert audio op aanvraag. Afspelen gebeurt NIET hier
- * — dat loopt via de twee audiospelers in LiveView.jsx's navigatievak
- * (boven de "Volgende"-knop), zodat de speaker niet tussen dit vak en de
- * navigatie moet wisselen om een aankondiging of het vaste "skippers klaar,
- * jury klaar?"-fragment te starten. Data/acties komen volledig via
- * AppContext — geen eigen Firestore-toegang (CLAUDE.md).
+ * — dat loopt via de audiospeler in LiveView.jsx's navigatievak (boven de
+ * "Volgende"-knop), zodat de speaker niet tussen dit vak en de navigatie
+ * moet wisselen om een aankondiging te starten. Data/acties komen volledig
+ * via AppContext — geen eigen Firestore-toegang (CLAUDE.md).
  *
  * Zie "Aankondigingen (TTS)" in ARCHITECTURE.md.
  */
