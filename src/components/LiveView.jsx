@@ -967,7 +967,7 @@ export default function LiveView() {
 
                 <div style={{ textAlign: 'center', flex: 1 }}>
                   <div style={s.seriesLabel(isSeriesDone)}>
-                    {isFreestyle ? activeEvent?.name : 'Reeks'} {activeSeriesNr}
+                    {isFreestyle ? activeEvent?.name : 'Reeks'} {seriesIdx + 1}
                     <span style={s.seriesCount}>/ {seriesNrs.length}</span>
                   </div>
                   <div style={s.timeInfo}>

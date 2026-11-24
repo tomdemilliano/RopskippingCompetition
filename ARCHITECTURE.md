@@ -943,6 +943,21 @@ op een heats-blok in de linkerkolom (dagtijdlijn) blijft een handmatige
 "overschrijf-optie" om naar eender welk onderdeel te springen, los van de
 dagtijdlijn.
 
+### Nummering in het navigatievak — binnen het blok, niet over de hele wedstrijd
+
+`seriesNr` loopt globaal door over de hele wedstrijd (zie "Grammatica"
+hierboven) — bij een onderdeel dat over meerdere blokken verdeeld is (bv.
+Freestyle - pauze - Freestyle - pauze - Freestyle), telt het dus gewoon
+verder waar het vorige blok gebleven was (bv. 11, 12, 13, … i.p.v. opnieuw
+bij 1 te beginnen). Het grote getal in het navigatievak toont daarom bewust
+NIET `activeSeriesNr` zelf, maar `seriesIdx + 1` — de positie van de huidige
+reeks binnen `seriesNrs` (dat al afgebakend is tot het huidige blok zodra
+`needsBlockWindow` actief is, zie hierboven) — zodat dit altijd netjes
+"Reeks 3 / 5" toont voor het derde blok, nooit "Reeks 13 / 5". De interne
+`seriesNr`-waarde zelf (voor Firestore-matching, aankondigingen, enz.)
+blijft overal ongewijzigd de globale waarde — enkel dit ene schermgetal is
+herberekend.
+
 ### Freestyle — waarschuwing bij onderbroken veldafwisseling
 
 Bij freestyle is elke reeks precies 1 deelnemer (zie "Grammatica" hierboven),
