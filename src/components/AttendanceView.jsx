@@ -5,15 +5,21 @@
  * één druk om aan te melden. Afwezig melden gebeurt hier bewust NIET — de
  * coach meldt afwezigheden aan de wedstrijdleiding, die de deelnemer dan
  * elders (CompetitionDetail.jsx, wedstrijdbeheer) schrapt via
- * `scratchFromAll`. Dit scherm toont enkel de resulterende status (incl.
- * "Herstellen" om een eerder geschrapte deelnemer terug aan te melden).
+ * `scratchFromAll`. Een deelnemer die zo (volledig) geschrapt wordt,
+ * verdwijnt hier meteen uit de lijst (`isFullyScratched`) — deze lijst
+ * draait enkel nog om "is deze deelnemer al aangemeld", niet om schrappen.
+ *
+ * Standaard toont de lijst enkel de nog niet aangemelde deelnemers (de
+ * grote filterknoppen bovenaan het scherm wisselen naar "Aangemeld"). Een
+ * per ongeluk aangemelde deelnemer kan in die "Aangemeld"-weergave terug op
+ * "nog niet aangemeld" gezet worden.
  *
  * Data komt volledig uit AppContext — geen directe Firebase-toegang.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Search, Calendar, ChevronLeft, Check, UserPlus, UserX, RotateCcw,
+  Search, Calendar, ChevronLeft, Check, CheckCircle, UserPlus, RotateCcw,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow } from '../theme';
@@ -167,10 +173,18 @@ const s = {
     fontWeight: active ? 700 : 500,
     cursor: 'pointer',
   }),
+  clubBtnNameWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    flex: 1,
+    minWidth: 0,
+  },
   clubBtnName: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    minWidth: 0,
   },
   clubBtnCount: {
     fontSize: '0.72rem',
@@ -178,6 +192,38 @@ const s = {
     color: color.faint,
     flexShrink: 0,
   },
+
+  // Grote filterknoppen bovenaan het scherm — wisselen tussen "nog niet
+  // aangemeld" (standaard) en "aangemeld" i.p.v. een losse dropdown/checkbox,
+  // consistent met de "kiosk-scherm: grote taps"-opzet van deze view.
+  filterBar: {
+    display: 'flex',
+    gap: '0.6rem',
+    padding: '0.9rem 1.5rem',
+    background: color.surface,
+    borderBottom: `1px solid ${color.border}`,
+    flexShrink: 0,
+  },
+  filterBtn: (active) => ({
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '0.9rem 1rem',
+    borderRadius: radius.md,
+    border: `2px solid ${active ? color.primary : color.border}`,
+    background: active ? color.primarySoft : color.surface,
+    color: active ? color.primary : color.body,
+    fontWeight: 800,
+    fontSize: '0.95rem',
+    cursor: 'pointer',
+  }),
+  filterBtnCount: (active) => ({
+    fontSize: '0.8rem',
+    fontWeight: 700,
+    color: active ? color.primary : color.faint,
+  }),
 
   // Hoofdinhoud
   main: {
@@ -267,17 +313,6 @@ const s = {
     padding: '0.5rem 0.9rem',
     borderRadius: radius.pill,
   },
-  statusAbsent: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    background: color.dangerSoft,
-    color: color.danger,
-    fontWeight: 700,
-    fontSize: '0.8rem',
-    padding: '0.5rem 0.9rem',
-    borderRadius: radius.pill,
-  },
   meldAanBtn: {
     display: 'flex',
     alignItems: 'center',
@@ -337,13 +372,17 @@ const s = {
 export default function AttendanceView() {
   const {
     competitions, participants, loadParticipants, getClub,
-    isFullyScratched, isScratchedFromEvent, setPresence, scratchFromAll,
+    isFullyScratched, isScratchedFromEvent, setPresence,
     getSortedEvents,
   } = useAppContext();
 
   const [selectedCompId, setSelectedCompId] = useState(null);
   const [searchTerm, setSearchTerm]         = useState('');
   const [clubFilter, setClubFilter]         = useState('alle');
+  // Standaard enkel de nog niet aangemelde deelnemers tonen — dat is wat de
+  // inkomtafel het meest nodig heeft. "aangemeld" laat toe een per ongeluk
+  // aangemelde deelnemer terug te zetten (zie handleUndoCheckIn hieronder).
+  const [statusFilter, setStatusFilter]     = useState('niet-aangemeld');
 
   useEffect(() => {
     loadParticipants(selectedCompId);
@@ -362,41 +401,57 @@ export default function AttendanceView() {
     [selectedCompetition, getSortedEvents]
   );
 
+  // Een volledig geschrapte deelnemer verdwijnt hier meteen uit beeld — deze
+  // lijst gaat enkel nog over aanmelden, niet over schrappen (dat gebeurt
+  // elders, in het wedstrijdbeheer). Alle verdere afleidingen (clublijst,
+  // tellingen, filtering) vertrekken bewust van deze lijst, niet van de
+  // ruwe `participants`.
+  const activeParticipants = useMemo(
+    () => participants.filter(p => !isFullyScratched(p)),
+    [participants, isFullyScratched]
+  );
+
   // Clubs die in deze wedstrijd voorkomen, alfabetisch — voor de zijbalk.
   const clubsInCompetition = useMemo(() => {
-    const ids = new Set(participants.map(p => p.clubId).filter(Boolean));
+    const ids = new Set(activeParticipants.map(p => p.clubId).filter(Boolean));
     return [...ids]
       .map(id => getClub(id))
       .filter(Boolean)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [participants, getClub]);
+  }, [activeParticipants, getClub]);
 
-  // Aantal deelnemers per club, voor het telletje naast elke clubnaam.
-  const participantCountByClub = useMemo(() => {
-    const counts = {};
-    for (const p of participants) {
+  // Aantal deelnemers per club (totaal + al aangemeld), voor het telletje en
+  // het "volledig aangemeld"-vinkje naast elke clubnaam.
+  const clubStats = useMemo(() => {
+    const stats = {};
+    for (const p of activeParticipants) {
       if (!p.clubId) continue;
-      counts[p.clubId] = (counts[p.clubId] ?? 0) + 1;
+      const entry = stats[p.clubId] ?? (stats[p.clubId] = { total: 0, present: 0 });
+      entry.total += 1;
+      if (p.isPresent) entry.present += 1;
     }
-    return counts;
-  }, [participants]);
+    return stats;
+  }, [activeParticipants]);
 
   const filteredParticipants = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    return participants
+    const wantPresent = statusFilter === 'aangemeld';
+    return activeParticipants
       .filter(p => {
+        if (p.isPresent !== wantPresent) return false;
         if (clubFilter !== 'alle' && p.clubId !== clubFilter) return false;
         if (!term) return true;
         return p.name.toLowerCase().includes(term) ||
           (getClub(p.clubId)?.name ?? '').toLowerCase().includes(term);
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [participants, searchTerm, clubFilter, getClub]);
+  }, [activeParticipants, searchTerm, clubFilter, statusFilter, getClub]);
 
-  const presentCount = participants.filter(p => p.isPresent && !isFullyScratched(p)).length;
+  const presentCount = activeParticipants.filter(p => p.isPresent).length;
+  const notPresentCount = activeParticipants.length - presentCount;
 
-  const handleRestore = (participant) => {
-    scratchFromAll(selectedCompId, participant, false);
+  const handleUndoCheckIn = (participant) => {
+    setPresence(selectedCompId, participant.id, false);
   };
 
   // ── Wedstrijdkeuze ────────────────────────────────────────────────────────
@@ -439,7 +494,24 @@ export default function AttendanceView() {
           </button>
           <div style={s.compTitle}>{selectedCompetition.name}</div>
         </div>
-        <div style={s.counter}>{presentCount} / {participants.length} aangemeld</div>
+        <div style={s.counter}>{presentCount} / {activeParticipants.length} aangemeld</div>
+      </div>
+
+      <div style={s.filterBar}>
+        <button
+          style={s.filterBtn(statusFilter === 'niet-aangemeld')}
+          onClick={() => setStatusFilter('niet-aangemeld')}
+        >
+          Nog niet aangemeld
+          <span style={s.filterBtnCount(statusFilter === 'niet-aangemeld')}>{notPresentCount}</span>
+        </button>
+        <button
+          style={s.filterBtn(statusFilter === 'aangemeld')}
+          onClick={() => setStatusFilter('aangemeld')}
+        >
+          Aangemeld
+          <span style={s.filterBtnCount(statusFilter === 'aangemeld')}>{presentCount}</span>
+        </button>
       </div>
 
       <div style={s.body}>
@@ -447,19 +519,31 @@ export default function AttendanceView() {
           <div style={s.sidebar}>
             <div style={s.sidebarLabel}>Clubs</div>
             <button style={s.clubBtn(clubFilter === 'alle')} onClick={() => setClubFilter('alle')}>
-              <span style={s.clubBtnName}>Alle clubs</span>
-              <span style={s.clubBtnCount}>{participants.length}</span>
+              <span style={s.clubBtnNameWrap}>
+                {activeParticipants.length > 0 && presentCount === activeParticipants.length && (
+                  <CheckCircle size={13} color={color.success} />
+                )}
+                <span style={s.clubBtnName}>Alle clubs</span>
+              </span>
+              <span style={s.clubBtnCount}>{presentCount}/{activeParticipants.length}</span>
             </button>
-            {clubsInCompetition.map(club => (
-              <button
-                key={club.id}
-                style={s.clubBtn(clubFilter === club.id)}
-                onClick={() => setClubFilter(club.id)}
-              >
-                <span style={s.clubBtnName} title={club.name}>{club.name}</span>
-                <span style={s.clubBtnCount}>{participantCountByClub[club.id] ?? 0}</span>
-              </button>
-            ))}
+            {clubsInCompetition.map(club => {
+              const stat = clubStats[club.id] ?? { total: 0, present: 0 };
+              const allPresent = stat.total > 0 && stat.present === stat.total;
+              return (
+                <button
+                  key={club.id}
+                  style={s.clubBtn(clubFilter === club.id)}
+                  onClick={() => setClubFilter(club.id)}
+                >
+                  <span style={s.clubBtnNameWrap}>
+                    {allPresent && <CheckCircle size={13} color={color.success} />}
+                    <span style={s.clubBtnName} title={club.name}>{club.name}</span>
+                  </span>
+                  <span style={s.clubBtnCount}>{stat.present}/{stat.total}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -486,13 +570,12 @@ export default function AttendanceView() {
             )}
 
             {filteredParticipants.map(participant => {
-              const scratched = isFullyScratched(participant);
               const club = getClub(participant.clubId);
 
               return (
                 <div
                   key={participant.id}
-                  style={s.row(scratched ? color.danger : participant.isPresent ? color.success : 'transparent')}
+                  style={s.row(participant.isPresent ? color.success : 'transparent')}
                 >
                   <div>
                     <div style={s.rowName}>{participant.name}</div>
@@ -508,16 +591,12 @@ export default function AttendanceView() {
                     </div>
                   </div>
 
-                  {scratched ? (
-                    <div style={s.actionsCol}>
-                      <div style={s.statusAbsent}><UserX size={14} /> Afwezig — geschrapt</div>
-                      <button style={s.restoreBtn} onClick={() => handleRestore(participant)}>
-                        <RotateCcw size={12} /> Herstellen
-                      </button>
-                    </div>
-                  ) : participant.isPresent ? (
+                  {participant.isPresent ? (
                     <div style={s.actionsCol}>
                       <div style={s.statusPresent}><Check size={14} /> Aangemeld</div>
+                      <button style={s.restoreBtn} onClick={() => handleUndoCheckIn(participant)}>
+                        <RotateCcw size={12} /> Zet terug op niet aangemeld
+                      </button>
                     </div>
                   ) : (
                     <div style={s.actionsCol}>

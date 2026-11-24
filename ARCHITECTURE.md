@@ -18,7 +18,7 @@ daarna zijn eigen route en een eigen recht (zie "Authenticatie & rechten"):
 |--------------|-------------------|----------------|------|
 | *(landingspagina)* | `/`         | ingelogd       | tegeloverzicht — enige plek waarvandaan tussen schermen genavigeerd wordt |
 | Beheer       | `/beheer`         | beheerder-only | wedstrijden en deelnemers aanmaken, CSV-import, clubs, blokken, gebruikers |
-| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, aanmelden (geen "afwezig melden": dat loopt via de coach naar de wedstrijdleiding) |
+| Aanwezigheid | `/aanwezigheid`   | `aanwezigheid` | aanwezigheidsregistratie aan de inkomtafel — wedstrijdkeuze, zoeken, clubfilter, grote filterknoppen (nog niet aangemeld/aangemeld), aanmelden (geen "afwezig melden": dat loopt via de coach naar de wedstrijdleiding) |
 | Speaker      | `/speaker`        | `speaker`      | operatorscherm tijdens een actieve wedstrijd (tabs: Reeksen, Podium, Boodschap) |
 | Display      | `/scherm`         | `backstage`    | groot scherm voor in de opwarmruimte (huidige/volgende reeks + boodschap-vak) |
 | Podium       | `/scherm/podium`  | `podium`       | groot scherm — podium-onthulling voor de prijsuitreiking (zie "Podium & prijsuitreiking") |
@@ -611,8 +611,22 @@ mogelijk is. Aanwezigheidsregistratie (`AttendanceView`, de inkomtafel) heeft
 bewust GEEN "afwezig melden"-actie meer: een coach meldt een afwezigheid aan
 de wedstrijdleiding, die de deelnemer dan hier in `CompetitionDetail`
 schrapt. `AttendanceView` toont onderdelen enkel read-only als pilletjes
-onder naam/club (zonder actie erop), en toont — als een deelnemer elders al
-geschrapt is — enkel de resulterende status met een "Herstellen"-knop.
+onder naam/club (zonder actie erop).
+
+**`AttendanceView` — enkel nog "is deze deelnemer al aangemeld".** Een
+volledig geschrapte deelnemer (`isFullyScratched`) verdwijnt hier meteen uit
+beeld — `activeParticipants` (alle verdere afgeleiden: clublijst, tellingen,
+filtering vertrekken hiervan, nooit van de ruwe `participants`) filtert ze
+er bewust uit, in plaats van zoals voorheen een "Afwezig — geschrapt"-status
+met een "Herstellen"-knop te tonen: schrappen/herstellen hoort nu exclusief
+bij `CompetitionDetail` thuis. Twee grote filterknoppen bovenaan het scherm
+("Nog niet aangemeld" — de standaardweergave — en "Aangemeld", allebei met
+een live aantal) vervangen de oude, ongefilterde lijst; binnen "Aangemeld"
+kan een per ongeluk aangemelde deelnemer via "Zet terug op niet aangemeld"
+(`setPresence(..., false)`) gecorrigeerd worden. De clubs-zijbalk toont per
+club `aangemeld/totaal` (`clubStats`, dezelfde `activeParticipants`-bron) en
+een groen vinkje (`CheckCircle`) vóór de clubnaam zodra iedereen van die club
+aangemeld is.
 
 **`EditParticipantModal`** (open via "Bewerken" in de deelnemerstabel) biedt:
 - naam/club bewerken;
