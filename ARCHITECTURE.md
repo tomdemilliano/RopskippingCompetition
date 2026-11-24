@@ -647,6 +647,18 @@ hoogste bestaande + 1). Bij freestyle bestaat "een leeg veld in een
 bestaande reeks" niet (elke reeks is er precies 1 deelnemer) — daar is enkel
 een nieuwe reeks mogelijk.
 
+**Reskip = enkel in de tijd verplaatsen, nooit naar een ander veld.** Een
+reskip geeft een deelnemer een herkansing op een ANDER moment, maar blijft
+fysiek op hetzelfde veld — `EditParticipantModal.jsx` geeft daarom bij een
+reskip het oorspronkelijke veld van de deelnemer mee aan de slot-picker als
+`lockedFieldNr`. `computeEventSlots` laat dan enkel bestaande reeksen zien
+waar precies dát veld leeg is (de veld-keuzelijst binnen een reeks vervalt —
+er is toch maar één relevant veld), en bij "nieuwe reeks aan het einde" ligt
+het veld ook vast i.p.v. vrij in te vullen. "+ Onderdeel toevoegen" heeft
+geen oorspronkelijk veld (de deelnemer zat nog niet in dit onderdeel) en
+geeft dus geen `lockedFieldNr` mee — daar blijft elk veld vrij kiesbaar,
+zoals voorheen.
+
 **`AddParticipantModal`** ("Nieuwe deelnemer") maakt een kale deelnemer aan
 (`participantFactory.create` — naam + club, `entries: []`) en opent meteen
 `EditParticipantModal` erop, zodat onderdelen via dezelfde "+ Onderdeel
@@ -943,15 +955,20 @@ gevolg dat twee nu opeenvolgende reeksen toevallig hetzelfde veld kunnen
 hebben, wat de normale afwisseling doorbreekt zonder dat iemand dat merkt
 vóór het misloopt op het podium.
 
-`LiveView.jsx#upcomingSameField` (pure vergelijking, geen extra Firestore-
-data nodig): `true` zodra `currentSeriesParticipants[0]._entry.fieldNr ===
-upcomingParticipants[0]._entry.fieldNr` (en de huidige reeks nog niet
-voltooid is). Getoond op twee plekken in de freestyle-UI:
-- in de "NU AAN DE BEURT"-kaart (`currentCard`) — zodat de speaker het al
+Twee onafhankelijke, puur vergelijkende checks (geen extra Firestore-data
+nodig), beide enkel getoond in de "NU AAN DE BEURT"-kaart (`currentCard`) —
+niet meer in de "VOLGENDE"-kaart: dat bleek in de praktijk een verwarrende
+dubbele melding op te leveren voor hetzelfde probleem.
+- **`upcomingSameField`** (vooruitkijkend) — `true` zodra
+  `currentSeriesParticipants[0]._entry.fieldNr ===
+  upcomingParticipants[0]._entry.fieldNr` (en de huidige reeks nog niet
+  voltooid is): "Volgende springt ook op veld X" — zodat de speaker dit al
   ziet terwijl de huidige springer aangekondigd wordt, en het meteen mee kan
-  aankondigen ("en de volgende springt ook op veld X");
-- in de "VOLGENDE"-kaart (`nextCard`) — ter bevestiging wanneer de speaker
-  vooruitkijkt.
+  aankondigen.
+- **`previousSameField`** (terugkijkend) — zelfde vergelijking, maar dan met
+  de vorige (nog bestaande) reeks vóór `activeSeriesNr`: "Vorige springer
+  sprong ook op dit veld. Wacht op OK van jury" — relevant omdat de jury dan
+  mogelijk nog niet klaar is met dat veld.
 
 Enkel een UI-waarschuwing, geen datawijziging: de velden zelf worden niet
 herverdeeld (dat zou de PDF-brongegevens tegenspreken) — de speaker beslist

@@ -17,6 +17,11 @@
  * bezet — een geschrapte deelnemer laat zijn veld dus vrij voor herbruik,
  * consistent met hoe LiveView/DisplayView geschrapte entries al onzichtbaar
  * maken in het reeksenraster.
+ *
+ * Een reskip (`lockedFieldNr`) mag enkel naar het veld waarop de deelnemer
+ * oorspronkelijk stond — een reskip verplaatst iemand enkel in de TIJD
+ * (een andere reeks), niet naar een ander fysiek veld. Opgegeven, dan worden
+ * bestaande reeksen zonder dat specifieke veld vrij er niet getoond.
  */
 
 /**
@@ -26,6 +31,10 @@
  * @param {string} [excludeParticipantId] deelnemer die zelf verplaatst wordt
  *                                        (reskip) — zijn eigen huidige slot
  *                                        telt niet mee als "bezet"
+ * @param {number|string|null} [lockedFieldNr] bij een reskip: het veld
+ *                                        waarop de deelnemer oorspronkelijk
+ *                                        stond — enkel reeksen met dát veld
+ *                                        vrij komen dan nog in aanmerking
  * @returns {{
  *   scoringType: string,
  *   existingReeksen: Array<{ seriesNr: number, scheduledTime: string, emptyFieldNrs: number[] }>,
@@ -33,7 +42,9 @@
  *   suggestedTime: string,
  * }}
  */
-export function computeEventSlots(eventId, participants, event, excludeParticipantId = null) {
+export function computeEventSlots(
+  eventId, participants, event, excludeParticipantId = null, lockedFieldNr = null
+) {
   const entries = [];
   for (const p of participants) {
     if (p.id === excludeParticipantId) continue;
@@ -68,6 +79,11 @@ export function computeEventSlots(eventId, participants, event, excludeParticipa
         emptyFieldNrs,
       };
     }).filter(r => r.emptyFieldNrs.length > 0);
+
+    if (lockedFieldNr !== null) {
+      const locked = parseInt(lockedFieldNr) || 0;
+      existingReeksen = existingReeksen.filter(r => r.emptyFieldNrs.includes(locked));
+    }
   }
 
   return { scoringType, existingReeksen, nextSeriesNr, suggestedTime };

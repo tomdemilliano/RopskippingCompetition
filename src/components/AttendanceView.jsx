@@ -139,7 +139,7 @@ const s = {
   // Clubs-zijbalk — breed genoeg voor de langste clubnaam ("ROPE SKIPPING
   // OOSTENDE VZW") zonder afkapping (ellipsis).
   sidebar: {
-    width: '280px',
+    width: '340px',
     flexShrink: 0,
     borderRight: `1px solid ${color.border}`,
     background: color.surface,
