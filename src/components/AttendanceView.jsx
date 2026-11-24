@@ -2,9 +2,11 @@
  * AttendanceView.jsx — SkipFlow
  *
  * Aanwezigheidsregistratie voor de inkomtafel. Kiosk-scherm: grote taps,
- * één druk om aan te melden. Afwezig melden schrapt de deelnemer uit alle
- * onderdelen (scratchFromAll — timings blijven ongemoeid, CLAUDE.md) en is
- * daarom een bewuste, bevestigde stap i.p.v. een gewone toggle.
+ * één druk om aan te melden. Afwezig melden gebeurt hier bewust NIET — de
+ * coach meldt afwezigheden aan de wedstrijdleiding, die de deelnemer dan
+ * elders (CompetitionDetail.jsx, wedstrijdbeheer) schrapt via
+ * `scratchFromAll`. Dit scherm toont enkel de resulterende status (incl.
+ * "Herstellen" om een eerder geschrapte deelnemer terug aan te melden).
  *
  * Data komt volledig uit AppContext — geen directe Firebase-toegang.
  */
@@ -288,14 +290,16 @@ const s = {
     borderRadius: radius.md,
     cursor: 'pointer',
   },
-  secondaryAction: {
-    background: 'none',
-    border: 'none',
-    color: color.faint,
-    fontSize: '0.75rem',
-    cursor: 'pointer',
-    textDecoration: 'underline',
-    padding: 0,
+  noticeBar: {
+    margin: '0.9rem 1.5rem 0',
+    padding: '0.75rem 1rem',
+    background: color.warningSoft,
+    border: `1px solid ${color.warningBorder}`,
+    color: color.warning,
+    borderRadius: radius.md,
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    textAlign: 'center',
   },
   actionsCol: {
     display: 'flex',
@@ -390,15 +394,6 @@ export default function AttendanceView() {
 
   const presentCount = participants.filter(p => p.isPresent && !isFullyScratched(p)).length;
 
-  const handleMarkAbsent = (participant) => {
-    const ok = window.confirm(
-      `${participant.name} afwezig melden?\n\nDit schrapt de deelnemer uit alle onderdelen. De tijdschema's blijven ongewijzigd.`
-    );
-    if (!ok) return;
-    scratchFromAll(selectedCompId, participant, true);
-    if (participant.isPresent) setPresence(selectedCompId, participant.id, false);
-  };
-
   const handleRestore = (participant) => {
     scratchFromAll(selectedCompId, participant, false);
   };
@@ -480,6 +475,10 @@ export default function AttendanceView() {
             </div>
           </div>
 
+          <div style={s.noticeBar}>
+            Afwezigheden moeten door de coach gemeld worden aan de wedstrijdleiding.
+          </div>
+
           <div style={s.list}>
             {filteredParticipants.length === 0 && (
               <div style={s.emptyList}>Geen deelnemers gevonden.</div>
@@ -518,9 +517,6 @@ export default function AttendanceView() {
                   ) : participant.isPresent ? (
                     <div style={s.actionsCol}>
                       <div style={s.statusPresent}><Check size={14} /> Aangemeld</div>
-                      <button style={s.secondaryAction} onClick={() => handleMarkAbsent(participant)}>
-                        Afwezig melden
-                      </button>
                     </div>
                   ) : (
                     <div style={s.actionsCol}>
@@ -529,9 +525,6 @@ export default function AttendanceView() {
                         onClick={() => setPresence(selectedCompId, participant.id, true)}
                       >
                         <UserPlus size={15} /> Meld aan
-                      </button>
-                      <button style={s.secondaryAction} onClick={() => handleMarkAbsent(participant)}>
-                        Afwezig melden
                       </button>
                     </div>
                   )}

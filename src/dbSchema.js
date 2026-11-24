@@ -1430,30 +1430,41 @@ export const messageFactory = {
  * @property {string} status          "tekst-klaar" | "audio-klaar" | "genereren-mislukt"
  *                                     — gemaksveld, altijd herleidbaar uit de
  *                                     andere velden, zelfde soort keuze als block.status
+ * @property {Array<{participantId: string, participantName: string, eventName: string, kind: 'geschrapt'|'hersteld', flaggedAt: string}>} droppedParticipants
+ *                                     deelnemers die na het genereren van deze
+ *                                     tekst geschrapt/hersteld zijn — signaleert
+ *                                     dat de tekst mogelijk niet meer klopt met
+ *                                     de huidige deelnemerslijst (zie
+ *                                     "Aankondigingen (TTS)" in ARCHITECTURE.md)
  * @property {string} updatedAt
  */
 const announcementConverter = {
   fromFirestore(snapshot) {
     const d = snapshot.data();
     return {
-      id:                snapshot.id,
-      eventId:           d.eventId           ?? '',
-      seriesNr:          d.seriesNr          ?? 0,
-      text:              d.text              ?? '',
-      generatedText:     d.generatedText     ?? '',
-      textVersion:       d.textVersion       ?? 0,
-      audioTextVersion:  d.audioTextVersion  ?? -1,
-      audioStoragePath:  d.audioStoragePath  ?? '',
-      audioUrl:          d.audioUrl          ?? '',
-      status:            d.status            ?? 'tekst-klaar',
-      updatedAt:         d.updatedAt         ?? '',
+      id:                 snapshot.id,
+      eventId:            d.eventId            ?? '',
+      seriesNr:           d.seriesNr           ?? 0,
+      text:               d.text               ?? '',
+      generatedText:      d.generatedText      ?? '',
+      textVersion:        d.textVersion        ?? 0,
+      audioTextVersion:   d.audioTextVersion   ?? -1,
+      audioStoragePath:   d.audioStoragePath   ?? '',
+      audioUrl:           d.audioUrl           ?? '',
+      status:             d.status             ?? 'tekst-klaar',
+      droppedParticipants: d.droppedParticipants ?? [],
+      updatedAt:          d.updatedAt          ?? '',
     };
   },
   toFirestore({
     eventId, seriesNr, text, generatedText = '', textVersion = 0,
     audioTextVersion = -1, audioStoragePath = '', audioUrl = '', status = 'tekst-klaar',
+    droppedParticipants = [],
   }) {
-    return { eventId, seriesNr, text, generatedText, textVersion, audioTextVersion, audioStoragePath, audioUrl, status };
+    return {
+      eventId, seriesNr, text, generatedText, textVersion, audioTextVersion,
+      audioStoragePath, audioUrl, status, droppedParticipants,
+    };
   },
 };
 
@@ -1505,6 +1516,9 @@ export const announcementFactory = {
   updateText(competitionId, announcementId, text, nextTextVersion) {
     return updateDoc(paths.announcement(competitionId, announcementId), {
       text, textVersion: nextTextVersion, status: 'tekst-klaar',
+      // De beheerder heeft de tekst zonet zelf nagekeken/aangepast — een
+      // eventuele "rooster gewijzigd"-waarschuwing is daarmee opgelost.
+      droppedParticipants: [],
       updatedAt: new Date().toISOString(),
     });
   },
@@ -1523,7 +1537,41 @@ export const announcementFactory = {
   regenerateText(competitionId, announcementId, text, nextTextVersion) {
     return updateDoc(paths.announcement(competitionId, announcementId), {
       text, generatedText: text, textVersion: nextTextVersion, status: 'tekst-klaar',
+      // De tekst is net herbouwd uit de huidige (niet-geschrapte) deelnemers
+      // — een eventuele "rooster gewijzigd"-waarschuwing is daarmee opgelost.
+      droppedParticipants: [],
       updatedAt: new Date().toISOString(),
+    });
+  },
+
+  /**
+   * Signaleer dat een deelnemer na het genereren van deze tekst geschrapt of
+   * hersteld is — de tekst vermeldt dan mogelijk iemand die niet meer meedoet
+   * (of mist iemand die er terug bij is). Wordt aangeroepen vanuit
+   * AppContext.jsx#scratchFromEvent/scratchFromAll, enkel wanneer er al een
+   * aankondiging MET tekst bestaat voor de betrokken (event, reeks).
+   * @param {string} competitionId
+   * @param {string} announcementId
+   * @param {Array<{participantId: string, participantName: string, eventName: string, kind: 'geschrapt'|'hersteld', flaggedAt: string}>} nextDroppedParticipants
+   *   de volledige nieuwe array (huidige + de nieuwe melding(en)) — de
+   *   aanroeper kent de huidige waarde al via de live-subscription, zelfde
+   *   patroon als updateText()'s nextTextVersion.
+   */
+  flagRosterChange(competitionId, announcementId, nextDroppedParticipants) {
+    return updateDoc(paths.announcement(competitionId, announcementId), {
+      droppedParticipants: nextDroppedParticipants,
+    });
+  },
+
+  /**
+   * Markeer alle openstaande rooster-waarschuwingen van een aankondiging als
+   * verwerkt (beheerder heeft de tekst nagekeken en bewust niets gewijzigd).
+   * @param {string} competitionId
+   * @param {string} announcementId
+   */
+  clearDroppedParticipants(competitionId, announcementId) {
+    return updateDoc(paths.announcement(competitionId, announcementId), {
+      droppedParticipants: [],
     });
   },
 

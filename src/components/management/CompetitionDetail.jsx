@@ -629,6 +629,7 @@ export default function CompetitionDetail({
     scratchFromAll,
     blocks,
     loadBlocks,
+    loadAnnouncements,
     blockTypeLabels,
     createBlock,
     setBlockStatus,
@@ -670,13 +671,19 @@ export default function CompetitionDetail({
 
   const competition = competitions.find(c => c.id === competitionId) ?? null;
 
-  // Laad deelnemers en programma (blocks) bij selectie
+  // Laad deelnemers, programma (blocks) en aankondigingen bij selectie.
+  // Aankondigingen altijd laden (niet pas zodra de Aankondigingen-tab
+  // geopend wordt): schrappen gebeurt vanop het Deelnemers-tabblad, en de
+  // rooster-wijziging-detectie in AppContext.jsx#scratchFromEvent/
+  // scratchFromAll heeft de geladen `announcements` daarvoor al nodig (zie
+  // "Aankondigingen (TTS)" in ARCHITECTURE.md).
   useEffect(() => {
     if (competitionId) {
       loadParticipants(competitionId);
       loadBlocks(competitionId);
+      loadAnnouncements(competitionId);
     }
-  }, [competitionId, loadParticipants, loadBlocks]);
+  }, [competitionId, loadParticipants, loadBlocks, loadAnnouncements]);
 
   const sortedBlocks = useMemo(
     () => [...blocks].sort((a, b) => a.order - b.order),
