@@ -968,11 +968,31 @@ dubbele melding op te leveren voor hetzelfde probleem.
 - **`previousSameField`** (terugkijkend) — zelfde vergelijking, maar dan met
   de vorige (nog bestaande) reeks vóór `activeSeriesNr`: "Vorige springer
   sprong ook op dit veld. Wacht op OK van jury" — relevant omdat de jury dan
-  mogelijk nog niet klaar is met dat veld.
+  mogelijk nog niet klaar is met dat veld. Toont bewust NIET wanneer er een
+  ander blok (een pauze, of eender wat) tussen de twee reeksen in de
+  dagtijdlijn zit — zie hieronder.
 
 Enkel een UI-waarschuwing, geen datawijziging: de velden zelf worden niet
 herverdeeld (dat zou de PDF-brongegevens tegenspreken) — de speaker beslist
 zelf hoe dit mondeling opgevangen wordt.
+
+**`previousSameField` mag nooit over een blokgrens (bv. een pauze) heen
+waarschuwen.** Twee opeenvolgende `seriesNr`-waarden kunnen best in
+verschillende fysieke blokken liggen (freestyle onderbroken door een pauze
+— zie "Dagtijdlijn" hierboven); de normale veldafwisseling geldt dan niet
+meer over die grens heen. De initiële implementatie vergeleek de twee
+reeksen enkel binnen `eventParticipants`, dat afgebakend wordt tot het
+tijdvenster van de **live** `currentBlock` (`needsBlockWindow`) — maar de
+speaker kan al verder genavigeerd zijn dan die live voortgang (bv. tijdens
+een pauze alvast de eerste reeks van het blok erna bekijken), waardoor die
+afbakening nog niet actief was en de waarschuwing toch verscheen.
+`findHeatsBlockIdForTime(scheduledTime, blocksForActiveEvent, sortedBlocks)`
+lost dit structureel op: zoekt, los van elke live-navigatiestatus, in welk
+fysiek heats-blok een scheduledTime valt (het venster loopt tot het
+eerstvolgende blok in de VOLLEDIGE dagtijdlijn, van eender welk type).
+`previousSameField` vergelijkt nu expliciet of de huidige en de vorige
+reeks in hetzelfde blok vallen (`sameBlockAsPrevious`), en vertrekt daarbij
+van `allEventParticipants` (nooit zelf afgebakend) i.p.v. `eventParticipants`.
 
 ### Een reeks of blok heropenen (vergissingen rechtzetten)
 

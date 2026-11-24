@@ -433,6 +433,33 @@ function calcExpectedTime(scheduledTime, timeDiff) {
   }
 }
 
+/**
+ * Vindt het ID van het fysieke heats-blok (uit `blocksForEvent`, alle heats-
+ * blokken van één onderdeel) waarvan het tijdvenster een gegeven
+ * scheduledTime bevat — het venster loopt tot het eerstvolgende blok in de
+ * VOLLEDIGE dagtijdlijn (`allSortedBlocks`), van eender welk type (pauze,
+ * ander onderdeel, …), net als `eventParticipants`'s venster-berekening
+ * hierboven. Bewust losstaand van de live `currentBlock` (het "huidige"
+ * blok volgens de dagtijdlijn-voortgang): de speaker kan al verder
+ * genavigeerd zijn dan dat (bv. tijdens een pauze alvast naar de eerste
+ * reeks van het blok erna kijken) — enkel zo'n ONAFHANKELIJKE tijd-naar-blok
+ * opzoeking geeft voor "vorige deelnemer, zelfde veld" betrouwbaar het juiste
+ * antwoord, ongeacht waar de live voortgang zich bevindt.
+ */
+function findHeatsBlockIdForTime(scheduledTime, blocksForEvent, allSortedBlocks) {
+  const mins = timeToMinutes(scheduledTime);
+  if (mins === null) return null;
+  for (const b of blocksForEvent) {
+    const startMin = timeToMinutes(b.scheduledTime);
+    if (startMin === null) continue;
+    const idx = allSortedBlocks.findIndex(x => x.id === b.id);
+    const next = idx >= 0 ? allSortedBlocks[idx + 1] : null;
+    const endMin = next?.scheduledTime ? timeToMinutes(next.scheduledTime) : null;
+    if (mins >= startMin && (endMin === null || mins < endMin)) return b.id;
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -730,14 +757,24 @@ export default function LiveView() {
   // Zelfde controle, maar dan terugkijkend: de vorige (nog bestaande)
   // reeks kan door een tussenuit gevallen deelnemer ook toevallig op
   // hetzelfde veld als de huidige uitgekomen zijn — de jury heeft dan
-  // mogelijk nog niet opgeruimd/klaargezet op dat veld.
-  const previousParticipants = eventParticipants.filter(p => p._entry.seriesNr < activeSeriesNr);
+  // mogelijk nog niet opgeruimd/klaargezet op dat veld. Vertrekt bewust van
+  // `allEventParticipants` (nooit afgebakend tot een tijdvenster) i.p.v.
+  // `eventParticipants`, en controleert zelf of de twee reeksen in hetzelfde
+  // fysieke blok vallen (`findHeatsBlockIdForTime`) — zit er een pauze (of
+  // eender welk ander blok) tussen, dan is "de vorige reeks" niet meer
+  // relevant en mag deze waarschuwing niet verschijnen, ongeacht of de live
+  // dagtijdlijn-voortgang dat blok al "bijgebeend" heeft.
+  const previousParticipants = allEventParticipants.filter(p => p._entry.seriesNr < activeSeriesNr);
   const previousParticipant = previousParticipants[previousParticipants.length - 1];
+  const sameBlockAsPrevious = !!currentSeriesParticipants[0] && !!previousParticipant &&
+    findHeatsBlockIdForTime(currentSeriesParticipants[0]._entry.scheduledTime, blocksForActiveEvent, sortedBlocks) ===
+    findHeatsBlockIdForTime(previousParticipant._entry.scheduledTime, blocksForActiveEvent, sortedBlocks);
   const previousSameField = isFreestyle
     && !isSeriesDone
     && !!currentSeriesParticipants[0]
     && !!previousParticipant
-    && currentSeriesParticipants[0]._entry.fieldNr === previousParticipant._entry.fieldNr;
+    && currentSeriesParticipants[0]._entry.fieldNr === previousParticipant._entry.fieldNr
+    && sameBlockAsPrevious;
 
   const handleFinishSeries = async () => {
     // "Klaar" voor het hele onderdeel (finishedEvents) betekent de ECHTE
@@ -1003,7 +1040,9 @@ export default function LiveView() {
                   </>
                 ) : (
                   <button style={s.nextBtn} onClick={handleFinishSeries}>
-                    {isLastSeries ? `${activeEvent?.name} klaar` : 'Volgende'}
+                    {isLastSeries
+                      ? `${activeEvent?.name} klaar`
+                      : (isFreestyle ? 'Skipper klaar' : 'Reeks klaar')}
                     <ChevronRight size={18} />
                   </button>
                 )}
