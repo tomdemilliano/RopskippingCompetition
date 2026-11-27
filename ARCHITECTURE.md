@@ -1358,6 +1358,13 @@ duidelijker te maken; bij speed blijft de kaart ongewijzigd (die kaart toont
 daar al meerdere velden, dus is al visueel duidelijk anders dan de
 "Volgende"-kaart).
 
+**Verkorte clubnaam bij de volgende deelnemers.** Elke rij in de
+"Volgende"-lijst toont naast de naam ook `getClub(p.clubId)?.shortName`
+tussen haakjes (fallback op `name` als `shortName` leeg is) — dezelfde
+`shortName` die bij Clubbeheer wordt ingesteld. Enkel bij "Volgende", niet
+bij "Nu bezig" (dat toont daar al de volledige clubnaam, zoals op het groot
+scherm).
+
 **QR-code op `DisplayView.jsx`.** Nieuwe dependency `qrcode` (puur
 client-side/offline — bewust geen externe image-API, dat zou de live-URL
 naar een derde partij lekken tijdens een live evenement). De gegenereerde

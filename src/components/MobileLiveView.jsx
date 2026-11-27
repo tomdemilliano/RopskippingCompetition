@@ -417,6 +417,11 @@ export default function MobileLiveView({ competitionId }) {
                       {p._isEmpty ? '---' : p.name}
                     </span>
                     {!p._isEmpty && p._entry?.isReskip && <ReskipPill />}
+                    {!p._isEmpty && p.clubId && (
+                      <span style={{ color: color.stageMuted, fontSize: '0.78rem' }}>
+                        ({getClub(p.clubId)?.shortName || getClub(p.clubId)?.name || ''})
+                      </span>
+                    )}
                   </div>
                 );
               })
@@ -438,6 +443,11 @@ export default function MobileLiveView({ competitionId }) {
                     {p._isEmpty ? '---' : p.name}
                   </span>
                   {!p._isEmpty && p._entry?.isReskip && <ReskipPill />}
+                  {!p._isEmpty && p.clubId && (
+                    <span style={{ color: color.stageMuted, fontSize: '0.78rem' }}>
+                      ({getClub(p.clubId)?.shortName || getClub(p.clubId)?.name || ''})
+                    </span>
+                  )}
                 </div>
               ))
             )}
