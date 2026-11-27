@@ -1328,6 +1328,19 @@ Terugvalschermen ("Ongeldige link" zonder `id`; "Deze link is niet meer
 geldig" zonder/niet-'bezig' document) vallen nooit terug op een andere
 wedstrijd tonen.
 
+**Huidige tijd + verwachte tijdstippen — zelfde weergave als het groot
+scherm.** `MobileLiveView.jsx` houdt zijn eigen `currentTime`-state bij
+(elke 10s bijgewerkt) en herhaalt `DisplayView.jsx`'s `timeDiff`/
+`calcExpectedTime`/afwijkingsbadge-logica lokaal (bewust niet in
+`liveProgress.js`, zie dat bestand — hangt af van React-tijd-state, niet
+puur herleidbaar uit de wedstrijddata). De header toont de live klok plus
+een rode/groene `+X min`/`-X min`-badge zodra de wedstrijd meer dan 2
+minuten voor- of achterloopt; de "Volgende"-sectie toont per freestyle-rij
+een eigen verwacht uur (+ badge), en bij speed/endurance/triple under één
+gedeeld verwacht uur naast de "Volgende"-titel (alle velden van een heat
+delen dezelfde reekstijd) — exact dezelfde "gegroepeerd vs. per-rij"-logica
+als het groot scherm.
+
 **QR-code op `DisplayView.jsx`.** Nieuwe dependency `qrcode` (puur
 client-side/offline — bewust geen externe image-API, dat zou de live-URL
 naar een derde partij lekken tijdens een live evenement). De gegenereerde

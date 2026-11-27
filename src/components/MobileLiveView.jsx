@@ -20,6 +20,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { Clock } from 'lucide-react';
 import {
   competitionFactory, eventFactory, clubFactory, competitionTypeFactory,
   participantFactory, blockFactory, messageFactory,
@@ -38,6 +39,47 @@ const FREESTYLE_UPCOMING_COUNT = 10;
 function buildFieldList(seriesNr, eventParticipants) {
   const raw = eventParticipants.filter(p => p._entry.seriesNr === seriesNr);
   return padFieldList(raw, maxFieldNr(eventParticipants));
+}
+
+// ── Tijdsafwijking — zelfde logica als DisplayView.jsx, bewust niet in
+// liveProgress.js (zie dat bestand): hangt af van de "huidige tijd", die
+// hier zijn eigen React-state is, niet puur herleidbaar uit de wedstrijd-
+// data zelf. ──────────────────────────────────────────────────────────────
+
+/** Verschil in minuten tussen nu en het geplande uur van de huidige reeks —
+ * null zolang de wedstrijd nog niet écht gestart is, zodat calcExpectedTime
+ * en TimeDeviationBadge overal gewoon het kale geplande uur tonen. */
+function computeTimeDiff(plannedTime, hasProgressStarted, currentTime) {
+  if (!plannedTime || !hasProgressStarted) return null;
+  const [h, m] = plannedTime.split(':').map(Number);
+  const planned = new Date();
+  planned.setHours(h, m, 0, 0);
+  return Math.floor((currentTime - planned) / 60000);
+}
+
+function calcExpectedTime(scheduledTime, timeDiff) {
+  if (!scheduledTime || !timeDiff) return scheduledTime;
+  try {
+    const [h, m] = scheduledTime.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h, m + timeDiff, 0);
+    return d.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    return scheduledTime;
+  }
+}
+
+/** Afwijking t.o.v. het geplande uur — enkel zichtbaar vanaf > 2 minuten. */
+function TimeDeviationBadge({ timeDiff }) {
+  if (timeDiff === null || Math.abs(timeDiff) <= 2) return null;
+  return (
+    <span style={{
+      marginLeft: '0.4rem', fontWeight: 700, fontSize: '0.75rem',
+      color: timeDiff > 0 ? '#f87171' : '#34d399',
+    }}>
+      {timeDiff > 0 ? `+${timeDiff}` : timeDiff} min
+    </span>
+  );
 }
 
 /** Pill naast de naam van een deelnemer die via een reskip hier staat. */
@@ -84,6 +126,12 @@ export default function MobileLiveView({ competitionId }) {
   const [participants, setParticipants] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setCurrentTime(new Date()), 10000);
+    return () => clearInterval(t);
+  }, []);
 
   // De ene, expliciete wedstrijd uit de link — nooit de collectie-brede
   // subscribe() (zie bestandskop).
@@ -143,11 +191,16 @@ export default function MobileLiveView({ competitionId }) {
 
   const {
     officialEvent, isFreestyle, eventParticipants, seriesNrs, officialSeriesNr,
-    totalSeries, isBreakBlock, currentSkippers, plannedTime,
+    totalSeries, isBreakBlock, currentSkippers, plannedTime, hasProgressStarted,
   } = deriveLiveProgress({
     competition, events, competitionTypes, participants, blocks,
     finishedEvents: competition.finishedEvents, finishedSeries: competition.finishedSeries,
   });
+
+  // Tijdsverschil in minuten t.o.v. het geplande uur van de huidige reeks —
+  // zelfde betekenis als op het groot scherm: hoe ver loopt de wedstrijd nu
+  // voor/achter op schema, toegepast op elk "verwacht"-uur hieronder.
+  const timeDiff = computeTimeDiff(plannedTime, hasProgressStarted, currentTime);
 
   const nowList = isFreestyle ? currentSkippers : buildFieldList(officialSeriesNr, eventParticipants);
 
@@ -159,16 +212,46 @@ export default function MobileLiveView({ competitionId }) {
     ? eventParticipants.filter(p => p._entry.seriesNr > officialSeriesNr).slice(0, FREESTYLE_UPCOMING_COUNT)
     : (nextSeriesNr != null ? buildFieldList(nextSeriesNr, eventParticipants) : []);
 
+  // Bij speed/endurance/triple under delen alle rijen van nextList dezelfde
+  // scheduledTime — die hoort dan ook maar één keer getoond te worden, naast
+  // de "Volgende"-titel, i.p.v. overbodig op elke rij (zelfde als groot
+  // scherm). Freestyle-rijen tonen hun uur gewoon per rij.
+  const nextGroupExpected = !isFreestyle && nextList.length > 0
+    ? calcExpectedTime(nextList.find(p => !p._isEmpty)?._entry?.scheduledTime ?? null, timeDiff)
+    : null;
+
   return (
     <div style={{
       minHeight: '100vh', background: color.stage, color: color.stageInk,
       fontFamily: font.body, padding: '1rem', boxSizing: 'border-box',
     }}>
       {/* Header */}
-      <div style={{ marginBottom: '0.75rem' }}>
-        <div style={{ fontSize: '1.15rem', fontWeight: 900 }}>{competition.name}</div>
-        <div style={{ color: color.info, fontWeight: 700, fontSize: '0.95rem' }}>
-          {officialEvent?.name ?? '—'}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+        marginBottom: '0.75rem', gap: '0.75rem',
+      }}>
+        <div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 900 }}>{competition.name}</div>
+          <div style={{ color: color.info, fontWeight: 700, fontSize: '0.95rem' }}>
+            {officialEvent?.name ?? '—'}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{
+            fontSize: '1.05rem', fontWeight: 900, display: 'flex',
+            alignItems: 'center', gap: '0.3rem', justifyContent: 'flex-end',
+          }}>
+            <Clock size={16} color={color.info} />
+            {currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', hour12: false })}
+          </div>
+          {timeDiff !== null && timeDiff !== 0 && (
+            <div style={{
+              fontSize: '0.75rem', fontWeight: 700,
+              color: timeDiff > 0 ? '#f87171' : '#34d399',
+            }}>
+              {timeDiff > 0 ? `+${timeDiff} min` : `${timeDiff} min`}
+            </div>
+          )}
         </div>
       </div>
 
@@ -240,31 +323,54 @@ export default function MobileLiveView({ competitionId }) {
       {nextList.length > 0 && (
         <div>
           <div style={{
-            color: color.stageMuted, fontWeight: 700, fontSize: '0.75rem',
-            textTransform: 'uppercase', marginBottom: '0.4rem',
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            marginBottom: '0.4rem',
           }}>
-            Volgende
+            <div style={{
+              color: color.stageMuted, fontWeight: 700, fontSize: '0.75rem',
+              textTransform: 'uppercase',
+            }}>
+              Volgende
+            </div>
+            {nextGroupExpected && (
+              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: color.stageMuted }}>
+                {nextGroupExpected}
+                <TimeDeviationBadge timeDiff={timeDiff} />
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            {nextList.map((p, i) => (
-              <div key={i} style={{
-                background: 'rgba(30,41,59,0.3)', borderRadius: radius.sm,
-                padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center',
-                gap: '0.6rem', opacity: p._isEmpty ? 0.4 : 1,
-              }}>
-                <span style={{
-                  background: color.slate, color: '#fff', minWidth: '1.5rem',
-                  textAlign: 'center', borderRadius: '4px', fontSize: '0.72rem',
-                  fontWeight: 700, padding: '0.1rem 0.3rem', flexShrink: 0,
+            {nextList.map((p, i) => {
+              const expected = isFreestyle ? calcExpectedTime(p._entry?.scheduledTime, timeDiff) : null;
+              return (
+                <div key={i} style={{
+                  background: 'rgba(30,41,59,0.3)', borderRadius: radius.sm,
+                  padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center',
+                  gap: '0.6rem', opacity: p._isEmpty ? 0.4 : 1,
                 }}>
-                  {p._entry?.fieldNr ?? '-'}
-                </span>
-                <span style={{ fontStyle: p._isEmpty ? 'italic' : 'normal', fontSize: '0.88rem' }}>
-                  {p._isEmpty ? '---' : p.name}
-                </span>
-                {!p._isEmpty && p._entry?.isReskip && <ReskipPill />}
-              </div>
-            ))}
+                  {isFreestyle && (
+                    <span style={{
+                      fontSize: '0.72rem', fontWeight: 700, color: color.stageMuted,
+                      minWidth: '2.6rem', flexShrink: 0,
+                    }}>
+                      {expected || '--:--'}
+                      <TimeDeviationBadge timeDiff={timeDiff} />
+                    </span>
+                  )}
+                  <span style={{
+                    background: color.slate, color: '#fff', minWidth: '1.5rem',
+                    textAlign: 'center', borderRadius: '4px', fontSize: '0.72rem',
+                    fontWeight: 700, padding: '0.1rem 0.3rem', flexShrink: 0,
+                  }}>
+                    {p._entry?.fieldNr ?? '-'}
+                  </span>
+                  <span style={{ fontStyle: p._isEmpty ? 'italic' : 'normal', fontSize: '0.88rem' }}>
+                    {p._isEmpty ? '---' : p.name}
+                  </span>
+                  {!p._isEmpty && p._entry?.isReskip && <ReskipPill />}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
