@@ -23,11 +23,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import {
   competitionFactory, eventFactory, clubFactory, competitionTypeFactory,
-  participantFactory, blockFactory, messageFactory,
+  participantFactory, blockFactory, messageFactory, BLOCK_TYPE_LABELS,
 } from '../dbSchema';
 import { color, radius, font } from '../theme';
 import { deriveLiveProgress } from '../liveProgress';
 import { maxFieldNr, padFieldList } from '../fieldLayout';
+import { timeToMinutes } from '../timeUtils';
 
 const DEFAULT_DISPLAY_MESSAGE = { id: null, text: 'Veel succes aan alle deelnemers', icon: '' };
 
@@ -220,6 +221,32 @@ export default function MobileLiveView({ competitionId }) {
     ? calcExpectedTime(nextList.find(p => !p._isEmpty)?._entry?.scheduledTime ?? null, timeDiff)
     : null;
 
+  // Freestyle: tussenliggende pauze/briefing/prijsuitreiking-blokken uit de
+  // dagtijdlijn mengen tussen de volgende deelnemers (net als groot scherm's
+  // displayList), zodat zo'n blok niet gewoon verdwijnt uit de lijst van
+  // "volgende". Enkel blokken NA de huidige reeks en VOOR het laatst getoonde
+  // item — een blok na de laatste getoonde deelnemer hoort hier nog niet in.
+  let freestyleDisplayList = [];
+  if (isFreestyle && nextList.length > 0) {
+    const skipperItems = nextList.map(p => ({
+      kind: 'skipper', data: p, _min: timeToMinutes(p._entry?.scheduledTime),
+    }));
+    const startMin = timeToMinutes(plannedTime);
+    const blockItems = startMin === null ? [] : blocks
+      .filter(b => b.type !== 'heats')
+      .map(b => ({ kind: 'block', data: b, _min: timeToMinutes(b.scheduledTime) }))
+      .filter(b => b._min !== null && b._min > startMin);
+    const merged = [...skipperItems, ...blockItems].sort((a, b) => {
+      const am = a._min ?? Infinity;
+      const bm = b._min ?? Infinity;
+      if (am !== bm) return am - bm;
+      if (a.kind !== b.kind) return a.kind === 'block' ? -1 : 1;
+      return 0;
+    });
+    const lastSkipperIdx = merged.reduce((last, item, i) => item.kind === 'skipper' ? i : last, -1);
+    freestyleDisplayList = merged.slice(0, lastSkipperIdx + 1);
+  }
+
   return (
     <div style={{
       minHeight: '100vh', background: color.stage, color: color.stageInk,
@@ -287,6 +314,7 @@ export default function MobileLiveView({ competitionId }) {
           <div style={{
             background: 'rgba(30,41,59,0.4)', borderRadius: radius.md,
             padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem',
+            border: isFreestyle ? `2px solid ${color.info}` : '1px solid transparent',
           }}>
             {nowList.map((p, i) => (
               <div key={i} style={{
@@ -340,23 +368,65 @@ export default function MobileLiveView({ competitionId }) {
             )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            {nextList.map((p, i) => {
-              const expected = isFreestyle ? calcExpectedTime(p._entry?.scheduledTime, timeDiff) : null;
-              return (
-                <div key={i} style={{
-                  background: 'rgba(30,41,59,0.3)', borderRadius: radius.sm,
-                  padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center',
-                  gap: '0.6rem', opacity: p._isEmpty ? 0.4 : 1,
-                }}>
-                  {isFreestyle && (
+            {isFreestyle ? (
+              freestyleDisplayList.map((item, i) => {
+                if (item.kind === 'block') {
+                  const b = item.data;
+                  const label = b.label || BLOCK_TYPE_LABELS[b.type] || b.type;
+                  return (
+                    <div key={`block-${b.id}`} style={{
+                      borderRadius: radius.sm, padding: '0.5rem 0.6rem',
+                      background: 'rgba(56,189,248,0.12)', border: `1px dashed ${color.info}`,
+                      textAlign: 'center',
+                    }}>
+                      <span style={{
+                        color: color.info, fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase',
+                      }}>
+                        {label}
+                      </span>
+                      {b.scheduledTime && (
+                        <span style={{ color: color.stageMuted, fontWeight: 700, fontSize: '0.75rem', marginLeft: '0.4rem' }}>
+                          {b.scheduledTime}
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+                const p = item.data;
+                const expected = calcExpectedTime(p._entry?.scheduledTime, timeDiff);
+                return (
+                  <div key={i} style={{
+                    background: 'rgba(30,41,59,0.3)', borderRadius: radius.sm,
+                    padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center',
+                    gap: '0.6rem', opacity: p._isEmpty ? 0.4 : 1,
+                  }}>
                     <span style={{
                       fontSize: '0.72rem', fontWeight: 700, color: color.stageMuted,
                       minWidth: '2.6rem', flexShrink: 0,
                     }}>
                       {expected || '--:--'}
-                      <TimeDeviationBadge timeDiff={timeDiff} />
                     </span>
-                  )}
+                    <span style={{
+                      background: color.slate, color: '#fff', minWidth: '1.5rem',
+                      textAlign: 'center', borderRadius: '4px', fontSize: '0.72rem',
+                      fontWeight: 700, padding: '0.1rem 0.3rem', flexShrink: 0,
+                    }}>
+                      {p._entry?.fieldNr ?? '-'}
+                    </span>
+                    <span style={{ fontStyle: p._isEmpty ? 'italic' : 'normal', fontSize: '0.88rem' }}>
+                      {p._isEmpty ? '---' : p.name}
+                    </span>
+                    {!p._isEmpty && p._entry?.isReskip && <ReskipPill />}
+                  </div>
+                );
+              })
+            ) : (
+              nextList.map((p, i) => (
+                <div key={i} style={{
+                  background: 'rgba(30,41,59,0.3)', borderRadius: radius.sm,
+                  padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center',
+                  gap: '0.6rem', opacity: p._isEmpty ? 0.4 : 1,
+                }}>
                   <span style={{
                     background: color.slate, color: '#fff', minWidth: '1.5rem',
                     textAlign: 'center', borderRadius: '4px', fontSize: '0.72rem',
@@ -369,8 +439,8 @@ export default function MobileLiveView({ competitionId }) {
                   </span>
                   {!p._isEmpty && p._entry?.isReskip && <ReskipPill />}
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
         </div>
       )}

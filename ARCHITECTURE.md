@@ -1339,7 +1339,24 @@ minuten voor- of achterloopt; de "Volgende"-sectie toont per freestyle-rij
 een eigen verwacht uur (+ badge), en bij speed/endurance/triple under één
 gedeeld verwacht uur naast de "Volgende"-titel (alle velden van een heat
 delen dezelfde reekstijd) — exact dezelfde "gegroepeerd vs. per-rij"-logica
-als het groot scherm.
+als het groot scherm. Elke freestyle-rij toont wel nog zijn eigen verwachte
+uur, maar NIET de `+/-`-afwijkingsbadge: die staat al één keer in de header
+(naast de live klok) en is per rij overbodig/storend.
+
+**Freestyle — tussenliggende pauzes mee in "Volgende", en een kader om de
+huidige deelnemer.** Net als `DisplayView.jsx`'s `displayList` mengt
+`freestyleDisplayList` (lokaal in `MobileLiveView.jsx`, dezelfde opbouw:
+skipper- en blok-items samen chronologisch sorteren op `timeToMinutes`,
+afgekapt tot de laatst getoonde deelnemer) niet-heats-blokken (pauze/
+briefing/prijsuitreiking) tussen de volgende freestyle-deelnemers — zo'n
+blok verdwijnt niet zomaar uit de lijst. Enkel voor freestyle; bij speed/
+endurance/triple under blijft de volgende-heat-kaart ongewijzigd (geen
+blokken ertussen gemengd — daar is maar één "volgende" tijdstip voor de
+hele heat). De "Nu bezig"-kaart krijgt bij freestyle een opvallend kader
+(`border: 2px solid color.info`) om het onderscheid met de "Volgende"-lijst
+duidelijker te maken; bij speed blijft de kaart ongewijzigd (die kaart toont
+daar al meerdere velden, dus is al visueel duidelijk anders dan de
+"Volgende"-kaart).
 
 **QR-code op `DisplayView.jsx`.** Nieuwe dependency `qrcode` (puur
 client-side/offline — bewust geen externe image-API, dat zou de live-URL
