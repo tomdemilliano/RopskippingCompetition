@@ -62,6 +62,7 @@ src/
   blockCascade.js                  # computeReopenCascade — gedeeld door LiveView.jsx en CompetitionDetail.jsx
   blockParticipants.js             # resolveBlockEntries — reeksen/deelnemers van een blok (CompetitionDetail.jsx)
   fieldLayout.js                   # maxFieldNr/padFieldList — lege velden tonen (LiveView/DisplayView/CompetitionDetail)
+  liveProgress.js                  # deriveLiveProgress — "wat is nu aan de beurt", gedeeld door DisplayView/MobileLiveView
   blockIcons.jsx                   # resolveBlockIconKey/getBlockIcon + JumpRopeIcon — icoon per blok (zie "Icoon per blok")
   pdfSchedule.js                   # Pure grammatica-parser voor een PDF-wedstrijdschema
   pdfExtract.js                    # pdfjs-dist-laag: tekst + doorstreping uit een PDF trekken
@@ -82,6 +83,7 @@ src/
     PodiumManager.jsx               # Gedeeld podiumbeheer (CompetitionDetail + LiveView)
     PodiumCeremonyPanel.jsx         # Speaker-onthullingsbediening (enkel LiveView)
     MessageManager.jsx              # Gedeeld boodschapbeheer (CompetitionDetail + LiveView)
+    MobileLiveView.jsx              # Publieke mobiele live-weergave — /mobile.html?id=..., geen login (zie "Mobiele publieke live-weergave")
 
     ui/
       Button.jsx                   # Gedeelde knop (variant/size/icon), gebouwd uit theme.js
@@ -107,7 +109,11 @@ src/
     seed-main.jsx                   # Standalone Firebase init voor seed-pagina
     SeedPage.jsx                    # Seed van events/competitionTypes + bootstrap eerste beheerder
 
+  mobile/
+    mobile-main.jsx                 # Standalone Firebase init voor mobiele live-weergave — GEEN firebase/auth
+
 seed.html                          # Standalone HTML entry point voor seed-pagina
+mobile.html                        # Standalone HTML entry point voor mobiele live-weergave (QR-code op groot scherm)
 firestore.rules                    # Referentie-security-rules — niet auto-gedeployed (zie bestand)
 ```
 
@@ -1222,6 +1228,120 @@ en dus de volledige voortgang van het onderdeel wiste). Fix: een
 het effect slaat zijn herberekening over zodra de nieuwe order LAGER is dan
 voorheen — zo'n terugsprong gebeurt alleen bij heropenen, en `activeSeriesNr`
 staat dan al correct (de reopen-handler verandert het zelf niet).
+
+---
+
+## Mobiele publieke live-weergave + QR-code
+
+Een deelnemer kan zijn telefoon scannen (QR-code op het groot scherm) om een
+compacte, mobiel-vriendelijke versie van de live-voortgang te volgen, zonder
+in te loggen. Bereikbaar via `/mobile.html?id=<competitionId>` — buiten de
+normale, ingelogde app om.
+
+**Waarom buiten de normale auth-flow.** `App.jsx`'s `AppRoutes()` toont
+`<LoginView/>` vóór de `<Routes>`-boom zelfs maar opgebouwd wordt zodra er
+geen `currentUser` is — geen enkele react-router-route is dus bereikbaar
+zonder login. Dit entrypoint hergebruikt daarom het bestaande `/seed.html`-
+patroon: een volledig losstaande Vite-buildentry (`vite.config.js`'s derde
+`rollupOptions.input`), met een eigen `ReactDOM.createRoot` en eigen
+Firebase-init (`src/mobile/mobile-main.jsx`), zonder `AppContext`/
+react-router.
+
+**Geen enkele `firebase/auth`-import — structureel, niet enkel beloofd.**
+In tegenstelling tot `seed-main.jsx` (dat `signInAnonymously` aanroept)
+importeert `mobile-main.jsx` NERGENS uit `firebase/auth`. Dit is de
+garantie dat deze pagina nooit een nieuwe Firebase Auth-gebruiker aanmaakt —
+een vaste randvoorwaarde van de gebruiker ("geen lange lijst van anoniem
+aangelogde users"). **Voeg hier later nooit een auth-aanroep aan toe** om
+een leesprobleem te "fixen" — pas in dat geval de Firestore-rules aan
+(zie hieronder), niet deze pagina.
+
+**Wedstrijd-ID in de URL, nooit "de toevallig actieve wedstrijd".** De link
+bevat het wedstrijd-ID (`?id=...`), gelezen via `URLSearchParams` in
+`mobile-main.jsx`. `MobileLiveView.jsx` gebruikt daarom
+`competitionFactory.subscribeOne(competitionId, callback)` (nieuw in
+`dbSchema.js`, naast de bestaande collectie-brede `subscribe(callback)`) —
+een single-document listener op precies dat ID. Dit maakt de link
+tegelijk:
+- **Uniek per wedstrijd** — het ID zit letterlijk in de link.
+- **Zelf-vervallend** — de Firestore-leesregel test `status == 'bezig'` op
+  dat exacte document; zodra de beheerder de wedstrijd beëindigt, weigert
+  de regel verder lezen en toont de pagina haar terugvalscherm.
+- **Nooit "meeschuivend" naar een andere wedstrijd** — de pagina vraagt
+  nooit "wat is nu actief", enkel "wat zegt dit ene document". Was dit
+  i.p.v. `subscribeOne` een collectie-brede `subscribe(callback)` geweest
+  (zoals bij de eerste ontwerpversie overwogen, via de
+  `settings/competition`-pointer), dan had een oude link een intussen
+  ANDERE, later-'bezig' wedstrijd kunnen tonen — exact het lek dat dit
+  ontwerp vermijdt. `settings/competition` is dan ook nergens in dit
+  entrypoint nodig en blijft volledig ongemoeid/privé.
+
+**Firestore-rules — krap afgebakende publieke leestoegang** (zie
+`firestore.rules`, manueel te plakken in Firebase Console → Firestore →
+Rules, zoals bij elke eerdere regelwijziging in dit project — geen
+auto-deploy in deze repo):
+- `events`, `clubs`, `competitionTypes` → onvoorwaardelijk `allow read: if
+  true` (gedeelde referentiedata zonder persoonsgegevens).
+- `competitions/{id}` → `allow read` ook zonder login, enkel zolang
+  `resource.data.status == 'bezig'` voor PRECIES dat document.
+- `competitions/{id}/participants`, `/blocks`, `/messages` → publiek
+  leesbaar via een `get()` op de ouder-wedstrijd, enkel wanneer die
+  `status == 'bezig'` heeft.
+- `competitions/{id}/podiums`, `/announcements`, `settings/*`, `users/*` →
+  **geen** publieke leesregel — bewust buiten scope (podiumuitslagen en
+  TTS-aankondigingen worden niet publiek gemaakt).
+- Geen enkele `write`-regel wijzigt — alles blijft `isSignedIn()`-only.
+
+**Geen enumeratie-risico.** Firestore document-ID's zijn auto-gegenereerde,
+lange, niet-raadbare ID's (nooit namen, per CLAUDE.md) — er is geen
+voorspelbare ID-reeks om af te lopen. Een `list`-query op de hele
+`competitions`-collectie zonder bekend ID levert vanuit een publieke sessie
+dankzij de per-document rule-evaluatie hoogstens de huidige 'bezig'-
+wedstrijd op, nooit de volledige wedstrijdhistoriek. Ter ondersteuning (niet
+als vervanging van de rule-gebaseerde garantie): de app dwingt op
+applicatieniveau al af dat maximaal één wedstrijd tegelijk `status ===
+'bezig'` kan hebben (de `alreadyActive`-check in `startCompetition`,
+`AppContext.jsx`).
+
+**`src/liveProgress.js` — gedeelde "wat is nu aan de beurt"-afleiding.**
+`DisplayView.jsx` berekende dit voorheen volledig inline. `deriveLiveProgress
+({ competition, events, competitionTypes, participants, blocks,
+finishedEvents, finishedSeries })` trekt het herbruikbare deel (officieel
+actief event/reeks/deelnemers, huidig dagtijdlijn-blok, pauze-detectie) over
+naar een puur bestand, nu gebruikt door zowel `DisplayView.jsx` als
+`MobileLiveView.jsx`. Bewust NIET geëxtraheerd (blijft `DisplayView`-only,
+of eigen eenvoudiger logica in `MobileLiveView.jsx`): de tijdsafwijkings-
+badge (`timeDiff`/`calcExpectedTime`), de uitgebreide cross-event-
+"volgende"-opbouw met tussengevoegde dagtijdlijn-blokken (`nextList`/
+`displayList`), en de meerdere-blokken-pauzeweergave (`breakSequence`).
+
+**`MobileLiveView.jsx` — freestyle/speed-onderscheid.** Net als het groot
+scherm toont de mobiele weergave niet voor elk onderdeel evenveel: bij
+freestyle de huidige deelnemer + de 10 eerstvolgende
+(`eventParticipants.filter(... > officialSeriesNr).slice(0, 10)`); bij
+speed/endurance/triple under de volledige huidige heat + de volledige
+volgende heat (alle velden, via `fieldLayout.js#buildFieldList`-achtige
+opbouw), niet enkel een samenvattende regel. Tijdens een pauze/
+prijsuitreiking-blok toont de pagina een bewust minimale regel (bv. "⏸
+Pauze — Volgende: Freestyles 16+ om 14:30"), bevestigd met de gebruiker.
+Terugvalschermen ("Ongeldige link" zonder `id`; "Deze link is niet meer
+geldig" zonder/niet-'bezig' document) vallen nooit terug op een andere
+wedstrijd tonen.
+
+**QR-code op `DisplayView.jsx`.** Nieuwe dependency `qrcode` (puur
+client-side/offline — bewust geen externe image-API, dat zou de live-URL
+naar een derde partij lekken tijdens een live evenement). De gegenereerde
+URL is altijd `${window.location.origin}/mobile.html?id=${activeCompetition
+.id}` — het ID van de wedstrijd die het groot scherm op dat moment toont,
+nooit een generieke link. Getoond onderaan de dagtijdlijn-kolom.
+
+**Resterend, bewust aanvaard risico.** Iedereen met een geldige link kan,
+zolang de wedstrijd `'bezig'` is, de live voortgang van PRECIES die
+wedstrijd lezen — dezelfde blootstelling als het bestaande groot scherm
+(ook zonder login bereikbaar voor wie op het scherm kan kijken), enkel een
+nieuw kanaal voor dezelfde informatie. Leesquota-misbruik van de nieuwe
+publieke regels (geen Firebase App Check/rate-limiting in dit project) is
+expliciet buiten scope voor deze toevoeging.
 
 ---
 
