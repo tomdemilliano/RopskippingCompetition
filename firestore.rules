@@ -21,6 +21,15 @@ rules_version = '2';
 // users/{uid}-document op zijn eigen uid bestaat. De allereerste beheerder
 // wordt daarom één keer manueel toegevoegd via de Firebase Console, ná het
 // aanmaken van het Auth-account op /seed.html (zie SeedPage.jsx).
+//
+// Eén publieke, niet-ingelogde leesuitzondering: /mobile.html?id=<competition
+// Id> (QR-code op het groot scherm) leest competitionTypes/events/clubs altijd
+// publiek, en competitions/{id} + zijn participants/blocks/messages enkel
+// zolang die ÉNE wedstrijd `status == 'bezig'` heeft — nooit schrijfbaar, en
+// podiums/announcements/settings/users blijven volledig onaangeroerd privé.
+// Zie ARCHITECTURE.md — "Mobiele publieke live-weergave" voor de volledige
+// beveiligingsredenering (geen Auth-aanroep in die pagina, geen enumeratie-
+// risico, link vervalt automatisch bij beëindigen).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -55,29 +64,48 @@ service cloud.firestore {
       match /settings/{docId} {
         allow read, write: if isSignedIn();
       }
+      // Onvoorwaardelijk publiek leesbaar — gedeelde referentiedata zonder
+      // persoonsgegevens, nodig om namen te tonen op de publieke mobiele
+      // live-weergave (/mobile.html?id=..., zie ARCHITECTURE.md — Mobiele
+      // publieke live-weergave). Geen enkele write-regel wijzigt.
       match /competitionTypes/{id} {
-        allow read, write: if isSignedIn();
+        allow read: if true;
+        allow write: if isSignedIn();
       }
       match /events/{id} {
-        allow read, write: if isSignedIn();
+        allow read: if true;
+        allow write: if isSignedIn();
       }
       match /clubs/{id} {
-        allow read, write: if isSignedIn();
+        allow read: if true;
+        allow write: if isSignedIn();
       }
       match /competitions/{id} {
-        allow read, write: if isSignedIn();
+        allow read: if isSignedIn() || resource.data.status == 'bezig';
+        allow write: if isSignedIn();
 
+        // Publiek leesbaar zolang de WEDSTRIJD (de ouder van deze
+        // subcollectie) 'bezig' is — vervalt dus automatisch zodra de
+        // beheerder de wedstrijd beëindigt, en kan nooit "meeschuiven" naar
+        // een andere wedstrijd (de mobiele weergave vraagt altijd maar één,
+        // uit haar URL gekend id op, zie dbSchema.js#subscribeOne).
         match /participants/{participantId} {
-          allow read, write: if isSignedIn();
+          allow read: if isSignedIn() ||
+            get(/databases/$(database)/documents/artifacts/$(appId)/public/data/competitions/$(id)).data.status == 'bezig';
+          allow write: if isSignedIn();
         }
         match /blocks/{blockId} {
-          allow read, write: if isSignedIn();
+          allow read: if isSignedIn() ||
+            get(/databases/$(database)/documents/artifacts/$(appId)/public/data/competitions/$(id)).data.status == 'bezig';
+          allow write: if isSignedIn();
         }
         match /podiums/{podiumId} {
           allow read, write: if isSignedIn();
         }
         match /messages/{messageId} {
-          allow read, write: if isSignedIn();
+          allow read: if isSignedIn() ||
+            get(/databases/$(database)/documents/artifacts/$(appId)/public/data/competitions/$(id)).data.status == 'bezig';
+          allow write: if isSignedIn();
         }
         match /announcements/{announcementId} {
           allow read, write: if isSignedIn();

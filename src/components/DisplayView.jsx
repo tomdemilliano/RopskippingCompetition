@@ -14,12 +14,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Maximize2, Minimize2, Clock, X, ChevronRight, Check,
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useAppContext } from '../AppContext';
 import { color, radius, shadow, font } from '../theme';
 import { MESSAGE_ICON_MAP } from './MessageManager';
 import { timeToMinutes } from '../timeUtils';
 import { maxFieldNr, padFieldList } from '../fieldLayout';
 import { resolveBlockIconKey, getBlockIcon } from '../blockIcons';
+import { deriveLiveProgress } from '../liveProgress';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -91,7 +93,7 @@ export default function DisplayView({ onClose }) {
     activeCompetition,
     participants,
     events,
-    getSortedEvents,
+    competitionTypes,
     getClub,
     finishedEvents,
     finishedSeries,
@@ -121,84 +123,35 @@ export default function DisplayView({ onClose }) {
     return () => clearInterval(t);
   }, []);
 
-  const sortedEvents = getSortedEvents(activeCompetition);
+  // QR-code naar de mobiele weergave van PRECIES deze wedstrijd — het ID
+  // zit in de link (`?id=`), nooit een generieke "toon de actieve
+  // wedstrijd"-link (zie ARCHITECTURE.md — Mobiele publieke live-weergave).
+  const [mobileQrDataUrl, setMobileQrDataUrl] = useState(null);
+  const mobileUrl = activeCompetition
+    ? `${window.location.origin}/mobile.html?id=${activeCompetition.id}`
+    : null;
+  useEffect(() => {
+    if (!mobileUrl) { setMobileQrDataUrl(null); return; }
+    QRCode.toDataURL(mobileUrl, { margin: 1, width: 180 })
+      .then(setMobileQrDataUrl)
+      .catch(() => setMobileQrDataUrl(null));
+  }, [mobileUrl]);
 
-  // Huidig blok in de dagtijdlijn — eerste blok dat nog niet afgewerkt is.
-  // Vóór officialEvent/nextList nodig: welk onderdeel "officieel actief" is,
-  // moet de ECHTE dagtijdlijn-volgorde volgen (zie hieronder), niet de
-  // abstracte onderdelen-volgorde (sortedEvents) — die twee kunnen verschillen
-  // zodra een wedstrijd onderdelen in een andere volgorde plant dan
-  // gebruikelijk (bv. Freestyles vóór Speed/Endurance i.p.v. erna).
-  const sortedAllBlocks = useMemo(() =>
-    [...blocks].sort((a, b) => a.order - b.order),
-  [blocks]);
-  const currentBlock = useMemo(() =>
-    sortedAllBlocks.find(b => b.status !== 'afgewerkt') ?? null,
-  [sortedAllBlocks]);
-
-  // Het huidige blok zelf, of — als het een pauze/briefing/proefjury/... is —
-  // het eerstvolgende heats-blok erna (zie breakSequence hieronder, dezelfde
-  // "kijk vooruit tot het eerste heats-blok"-logica): zolang de wedstrijd in
-  // zo'n informatief blok zit, is DAT onderdeel het onderdeel waar de
-  // dagtijdlijn zo meteen naartoe gaat, en dus wat het grote scherm als
-  // "officieel actief" moet tonen — niet het eerste onderdeel uit de
-  // abstracte onderdelen-volgorde.
-  const currentOrNextHeatsBlock = useMemo(() => {
-    if (!currentBlock) return null;
-    if (currentBlock.type === 'heats') return currentBlock;
-    const startIdx = sortedAllBlocks.findIndex(b => b.id === currentBlock.id);
-    if (startIdx === -1) return null;
-    for (let i = startIdx; i < sortedAllBlocks.length; i++) {
-      if (sortedAllBlocks[i].type === 'heats') return sortedAllBlocks[i];
-    }
-    return null;
-  }, [currentBlock, sortedAllBlocks]);
-
-  // Officieel actief event: het onderdeel van currentOrNextHeatsBlock (de
-  // echte dagtijdlijn) — met de oude, op sortedEvents gebaseerde aanpak enkel
-  // als terugval (geen dagtijdlijn ingesteld, of het blok verwijst naar een
-  // intussen verwijderd onderdeel).
-  const officialEvent = useMemo(() => {
-    const blockEvent = currentOrNextHeatsBlock
-      ? events.find(ev => ev.id === currentOrNextHeatsBlock.eventId)
-      : null;
-    return blockEvent
-      ?? sortedEvents.find(ev => !finishedEvents.includes(ev.id))
-      ?? sortedEvents[0]
-      ?? null;
-  }, [currentOrNextHeatsBlock, events, sortedEvents, finishedEvents]);
-
-  const isFreestyle = officialEvent?.scoringType === 'freestyle';
-
-  // Deelnemers voor het officiële event
-  const eventParticipants = useMemo(() => {
-    if (!officialEvent) return [];
-    return participants
-      .filter(p => p.entries.some(e => e.eventId === officialEvent.id && !e.isScratched))
-      .map(p => ({
-        ...p,
-        _entry: p.entries.find(e => e.eventId === officialEvent.id),
-      }))
-      .sort((a, b) => {
-        if (a._entry.seriesNr !== b._entry.seriesNr) return a._entry.seriesNr - b._entry.seriesNr;
-        return String(a._entry.fieldNr).localeCompare(String(b._entry.fieldNr));
-      });
-  }, [participants, officialEvent]);
-
-  // Unieke reeksnummers
-  const seriesNrs = useMemo(() =>
-    [...new Set(eventParticipants.map(p => p._entry.seriesNr).filter(Boolean))].sort((a, b) => a - b),
-  [eventParticipants]);
-
-  // Officieel actieve reeks = eerste reeks nog niet voltooid
-  const doneInEvent = finishedSeries[officialEvent?.id] ?? [];
-  const officialSeriesNr = useMemo(() =>
-    seriesNrs.find(nr => !doneInEvent.includes(nr)) ?? seriesNrs[0] ?? 1,
-  [seriesNrs, doneInEvent]);
-
-  const totalSeries = seriesNrs.length;
-
-  const isBreakBlock = !!currentBlock && currentBlock.type !== 'heats';
+  // "Wat is nu aan de beurt" — gedeelde afleiding met MobileLiveView.jsx,
+  // zie liveProgress.js voor de volledige redenering per stap.
+  const {
+    sortedAllBlocks, currentBlock, currentOrNextHeatsBlock,
+    officialEvent, isFreestyle, eventParticipants, seriesNrs, officialSeriesNr,
+    totalSeries, isBreakBlock, currentSkippers, plannedTime, hasProgressStarted,
+  } = useMemo(() => deriveLiveProgress({
+    competition: activeCompetition,
+    events,
+    competitionTypes,
+    participants,
+    blocks,
+    finishedEvents,
+    finishedSeries,
+  }), [activeCompetition, events, competitionTypes, participants, blocks, finishedEvents, finishedSeries]);
 
   // Reeks van opeenvolgende niet-heats blokken vanaf het huidige blok, tot en
   // met het eerstvolgende heats-blok (dat laatste enkel ter info — "wat komt
@@ -224,23 +177,6 @@ export default function DisplayView({ onClose }) {
     document.getElementById(`dagtijdlijn-block-${currentBlock.id}`)
       ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [currentBlock?.id]);
-
-  // Deelnemers in de officiële reeks
-  const currentSkippers = useMemo(() =>
-    eventParticipants.filter(p => p._entry.seriesNr === officialSeriesNr),
-  [eventParticipants, officialSeriesNr]);
-
-  const plannedTime = currentSkippers[0]?._entry.scheduledTime ?? null;
-
-  // Is er al effectief voortgang? Zolang er nog niets afgewerkt is — ook
-  // niet als er vóór de eerste reeks meerdere informatieve blokken doorlopen
-  // zijn (deuren, briefing, ...) — is een "verschil tov het geplande uur"
-  // zinloos: de klok loopt dan nog niet mee met de wedstrijd zelf, enkel met
-  // de kalender. Dit is bewust niet gekoppeld aan één specifiek blok, dus
-  // blijft gelden over hoeveel van die informatieve blokken er ook vóór
-  // reeks 1 staan.
-  const hasProgressStarted = finishedEvents.length > 0
-    || Object.values(finishedSeries).some(arr => (arr?.length ?? 0) > 0);
 
   // Tijdsverschil in minuten — null zolang de wedstrijd nog niet écht
   // gestart is (zie hasProgressStarted), zodat calcExpectedTime() en
@@ -556,6 +492,22 @@ export default function DisplayView({ onClose }) {
               </div>
             )}
           </div>
+
+          {mobileQrDataUrl && (
+            <div style={{
+              flexShrink: 0, marginTop: '0.75rem', paddingTop: '0.75rem',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem',
+            }}>
+              <img
+                src={mobileQrDataUrl} alt="QR-code mobiele weergave"
+                style={{ width: '110px', height: '110px', borderRadius: radius.sm, background: '#fff', padding: '4px' }}
+              />
+              <div style={{ fontSize: '0.7rem', color: color.stageMuted, textAlign: 'center' }}>
+                Scan voor live-update op je telefoon
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Midden: huidige reeks of actieve blok(ken) */}

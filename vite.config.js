@@ -13,6 +13,8 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         // Admin-tools (worden meegebuild maar zijn niet gelinkt vanuit de app)
         seed: resolve(__dirname, 'seed.html'),
+        // Publieke mobiele live-weergave (QR-code op het groot scherm)
+        mobile: resolve(__dirname, 'mobile.html'),
       },
     },
   },

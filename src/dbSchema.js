@@ -821,6 +821,28 @@ export const competitionFactory = {
   },
 
   /**
+   * Luister naar ÉÉN specifieke wedstrijd, bij id — gebruikt door de publieke
+   * mobiele weergave (`MobileLiveView.jsx`), die haar wedstrijd-ID rechtstreeks
+   * uit de URL kent (`mobile.html?id=...`) en NOOIT "de toevallig actieve
+   * wedstrijd" via `subscribe()` mag opvragen: dat zou een verlopen link
+   * kunnen laten meeschuiven naar een andere, later actieve wedstrijd (zie
+   * ARCHITECTURE.md — Mobiele publieke live-weergave). Geeft `null` als het
+   * document niet (meer) bestaat, of als de leesregel het weigert (bv. omdat
+   * de wedstrijd intussen beëindigd is en de publieke `status == 'bezig'`-
+   * voorwaarde niet meer voldaan is).
+   * @param {string} competitionId
+   * @param {function} callback  cb(Competition|null)
+   * @returns {function} unsubscribe
+   */
+  subscribeOne(competitionId, callback) {
+    return onSnapshot(
+      paths.competition(competitionId),
+      (snap) => callback(snap.exists() ? competitionConverter.fromFirestore(snap) : null),
+      () => callback(null)
+    );
+  },
+
+  /**
    * Maak een nieuwe wedstrijd aan.
    * eventOrder wordt initieel overgenomen van het competitionType.
    *
